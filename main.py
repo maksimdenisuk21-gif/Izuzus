@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException
 import os
 import random
+import sqlite3
+import json
 
 app = FastAPI()
 
 # ======================
-# SECURITY (ADMIN)
+# ADMIN SECURITY
 # ======================
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
@@ -14,17 +16,51 @@ def check_admin(token: str):
         raise HTTPException(status_code=403, detail="forbidden")
 
 # ======================
-# DATA STORAGE (TEMP)
+# DATABASE
 # ======================
-users = {}
+conn = sqlite3.connect("game.db", check_same_thread=False)
+cursor = conn.cursor()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    balance INTEGER,
+    inventory TEXT
+)
+""")
+conn.commit()
+
+# ======================
+# USER FUNCTIONS
+# ======================
 def get_user(user_id: str):
-    if user_id not in users:
-        users[user_id] = {
+    cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+
+    if row is None:
+        cursor.execute(
+            "INSERT INTO users VALUES (?, ?, ?)",
+            (user_id, 1000, json.dumps([]))
+        )
+        conn.commit()
+
+        return {
             "balance": 1000,
             "inventory": []
         }
-    return users[user_id]
+
+    return {
+        "balance": row[1],
+        "inventory": json.loads(row[2])
+    }
+
+
+def save_user(user_id: str, user: dict):
+    cursor.execute(
+        "UPDATE users SET balance=?, inventory=? WHERE user_id=?",
+        (user["balance"], json.dumps(user["inventory"]), user_id)
+    )
+    conn.commit()
 
 # ======================
 # USER ENDPOINTS
@@ -33,6 +69,7 @@ def get_user(user_id: str):
 def balance(user_id: str):
     user = get_user(user_id)
     return {"balance": user["balance"]}
+
 
 @app.post("/case/open/{user_id}")
 def open_case(user_id: str):
@@ -59,6 +96,8 @@ def open_case(user_id: str):
     user["inventory"].append(reward)
     user["balance"] += values[reward]
 
+    save_user(user_id, user)
+
     return {
         "reward": reward,
         "balance": user["balance"]
@@ -74,10 +113,13 @@ def admin_give(user_id: str, amount: int, token: str):
     user = get_user(user_id)
     user["balance"] += amount
 
+    save_user(user_id, user)
+
     return {
         "user_id": user_id,
         "balance": user["balance"]
     }
+
 
 @app.post("/admin/set/{user_id}/{amount}")
 def admin_set(user_id: str, amount: int, token: str):
@@ -86,12 +128,16 @@ def admin_set(user_id: str, amount: int, token: str):
     user = get_user(user_id)
     user["balance"] = amount
 
+    save_user(user_id, user)
+
     return {
         "user_id": user_id,
         "balance": user["balance"]
     }
 
-@app.get("/admin/logs")
-def admin_logs(token: str):
+
+@app.get("/admin/user/{user_id}")
+def admin_user(user_id: str, token: str):
     check_admin(token)
-    return {"status": "logs not implemented yet"}
+
+    return get_user(user_id)
