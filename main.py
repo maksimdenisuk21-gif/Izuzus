@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request, HTTPException, Depends, Security
+from fastapi import FastAPI, Request, HTTPException, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 import json
 import os
@@ -8,8 +9,6 @@ import hmac
 import hashlib
 from urllib.parse import parse_qs
 from contextlib import asynccontextmanager
-
-# Асинхронный SQLite
 import aiosqlite
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
@@ -24,10 +23,6 @@ ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=True)
 
 def verify_telegram_data(init_data: str) -> dict:
-    """ 
-    ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА: Проверяет подпись Telegram. 
-    Фронтенд должен передавать window.Telegram.WebApp.initData в заголовке Authorization
-    """
     try:
         parsed_data = parse_qs(init_data)
         received_hash = parsed_data.pop("hash")[0]
@@ -44,7 +39,7 @@ def verify_telegram_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 # ======================
-# DB DB ASYNC MANAGEMENT
+# DB MANAGEMENT
 # ======================
 DB_PATH = "game.db"
 
@@ -58,7 +53,7 @@ async def init_db():
             withdraw_time INTEGER DEFAULT 0
         )""")
         await db.execute("""
-        CREATE TABLE IF NOT EXISTS withdraws (
+        CREATE TABLE IF NOT EXISTS withdrawals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
             amount INTEGER,
@@ -77,26 +72,32 @@ tg_app = None
 async def lifespan(app: FastAPI):
     global tg_app
     await init_db()
-    
-    # Инициализация Telegram бот-движка
     tg_app = Application.builder().token(BOT_TOKEN).build()
     await setup_bot_handlers(tg_app)
     await tg_app.initialize()
     await tg_app.start()
-    print("🚀 BOT & API UP AND RUNNING")
+    print("🚀 API & BOT RUNNING WITH CORS")
     yield
     await tg_app.stop()
     await tg_app.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
+# 🔥 НАСТРОЙКА CORS (Разрешаем запросы от Netlify)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # В продакшене лучше заменить на конкретный URL от Netlify
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ======================
-# API ENDPOINTS (БЕЗОПАСНЫЕ)
+# API ENDPOINTS
 # ======================
 
 @app.get("/api/profile")
 async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
-    """Вход и получение профиля на основе валидного initData"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -105,13 +106,11 @@ async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
             row = await cursor.fetchone()
             
         if not row:
-            # Создаем пользователя, если зашел впервые
             await db.execute("INSERT INTO users (user_id, balance) VALUES (?, ?)", (uid, 1000))
             await db.commit()
             return {"user_id": uid, "balance": 1000, "inventory": []}
             
         return {"user_id": uid, "balance": row[0], "inventory": json.loads(row[1])}
-
 
 @app.post("/api/case/open")
 async def case_open(auth_header: str = Security(API_KEY_HEADER)):
@@ -119,7 +118,6 @@ async def case_open(auth_header: str = Security(API_KEY_HEADER)):
     uid = str(tg_user["id"])
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # Атомарно проверяем и обновляем в рамках одной транзакции
         async with db.execute("SELECT balance, inventory FROM users WHERE user_id=?", (uid,)) as cursor:
             row = await cursor.fetchone()
             
@@ -141,9 +139,8 @@ async def case_open(auth_header: str = Security(API_KEY_HEADER)):
         
         return {"reward": reward, "balance": new_balance}
 
-
 @app.post("/api/withdraw")
-async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
+async def withdraw(amount: int, wallet: str, auth_header: str = Security(API_KEY_HEADER)):
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -165,36 +162,29 @@ async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
         new_balance = balance - amount
         
         await db.execute("UPDATE users SET balance=?, withdraw_time=? WHERE user_id=?", (new_balance, int(time.time()), uid))
-        await db.execute("INSERT INTO withdraws (user_id, amount, payout, status, time) VALUES (?,?,?,?,?)",
+        await db.execute("INSERT INTO withdrawals (user_id, amount, payout, status, time) VALUES (?,?,?,?,?)",
                          (uid, amount, payout, "pending", int(time.time())))
         await db.commit()
         
         return {"status": "pending", "payout": payout, "new_balance": new_balance}
 
-
-# ======================
-# TELEGRAM STARS INVOICE CREATION
-# ======================
 @app.post("/api/stars/buy")
 async def create_stars_invoice(stars_amount: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Создает инвойс для покупки баланса за Telegram Stars"""
     tg_user = verify_telegram_data(auth_header)
     uid = tg_user["id"]
     
     if stars_amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    # Коэффициент: сколько игровых монет даем за 1 Star (например, 1 Star = 100 монет)
     game_coins = stars_amount * 100 
     
     try:
-        # Генерируем нативную платежную ссылку Telegram Stars
         invoice_link = await tg_app.bot.create_invoice_link(
             title="Пополнение баланса",
             description=f"Покупка {game_coins} игровых монет",
             payload=json.dumps({"uid": str(uid), "coins": game_coins}),
-            provider_token="", # Для Telegram Stars всегда пустое поле
-            currency="XTR",    # Код валюты Telegram Stars
+            provider_token="",
+            currency="XTR",
             prices=[LabeledPrice(label="Telegram Stars", amount=stars_amount)]
         )
         return {"invoice_url": invoice_link}
@@ -205,14 +195,11 @@ async def create_stars_invoice(stars_amount: int, auth_header: str = Security(AP
 # BOT HANDLERS & WEBHOOKS
 # ======================
 async def setup_bot_handlers(application: Application):
-    
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("👋 Привет! Открой Mini App через меню бота.")
+        await update.message.reply_text("👋 Открой Mini App через меню бота!")
 
     async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.pre_checkout_query
-        # Обязательно аппрувим запрос на оплату в течение 10 секунд
-        await query.answer(ok=True)
+        await update.pre_checkout_query.answer(ok=True)
 
     async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payload = json.loads(update.message.successful_payment.invoice_payload)
@@ -222,63 +209,43 @@ async def setup_bot_handlers(application: Application):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (coins_to_add, uid))
             await db.commit()
-            
-        await update.message.reply_text(f"🌟 Спасибо за покупку! Начислено {coins_to_add} монет.")
+        await update.message.reply_text(f"🌟 Начислено {coins_to_add} монет.")
 
     async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if str(update.effective_user.id) not in ADMIN_IDS:
-            return
-            
+        if str(update.effective_user.id) not in ADMIN_IDS: return
         async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT * FROM withdraws WHERE status='pending'") as cursor:
+            async with db.execute("SELECT * FROM withdrawals WHERE status='pending'") as cursor:
                 rows = await cursor.fetchall()
-                
         if not rows:
-            await update.message.reply_text("Нет активных заявок на вывод.")
+            await update.message.reply_text("Нет активных заявок.")
             return
-
         for w in rows:
             wid, uid, amount, payout, status, t = w
             kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton("✔ Одобрить", callback_data=f"ap_{wid}"),
                 InlineKeyboardButton("✖ Отклонить", callback_data=f"re_{wid}")
             ]])
-            await update.message.reply_text(
-                f"📥 Заявка #{wid}\nЮзер: {uid}\nСписание: {amount}\nК выплате: {payout} TON",
-                reply_markup=kb
-            )
+            await update.message.reply_text(f"📥 Заявка #{wid}\nЮзер: {uid}\nСписание: {amount}\nTON: {payout}", reply_markup=kb)
 
     async def cb_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
         await q.answer()
-        
-        if str(q.from_user.id) not in ADMIN_IDS:
-            return
-            
+        if str(q.from_user.id) not in ADMIN_IDS: return
         action, wid = q.data.split("_")
         
         async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT user_id, amount FROM withdraws WHERE id=?", (wid,)) as cursor:
+            async with db.execute("SELECT user_id, amount FROM withdrawals WHERE id=?", (wid,)) as cursor:
                 row = await cursor.fetchone()
-                
-            if not row:
-                await q.edit_message_text("Заявка не найдена.")
-                return
-                
+            if not row: return
             uid, amount = row
-            
             if action == "ap":
-                await db.execute("UPDATE withdraws SET status='paid' WHERE id=?", (wid,))
-                await q.edit_message_text(f"✅ Заявка #{wid} одобрена.")
+                await db.execute("UPDATE withdrawals SET status='paid' WHERE id=?", (wid,))
             else:
-                # Защита от багов баланса: инкрементируем прямо в БД
                 await db.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, uid))
-                await db.execute("UPDATE withdraws SET status='rejected' WHERE id=?", (wid,))
-                await q.edit_message_text(f"❌ Заявка #{wid} отклонена. Средства вернулись.")
-                
+                await db.execute("UPDATE withdrawals SET status='rejected' WHERE id=?", (wid,))
             await db.commit()
+            await q.edit_message_text(f"Выполнено для подзапроса #{wid}")
 
-    # Регистрируем хэндлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CallbackQueryHandler(cb_admin))
@@ -287,7 +254,6 @@ async def setup_bot_handlers(application: Application):
 
 @app.post("/telegram")
 async def telegram_webhook(req: Request):
-    """Сюда Telegram шлет апдейты (Webhook)"""
     data = await req.json()
     update = Update.de_json(data, tg_app.bot)
     await tg_app.process_update(update)
