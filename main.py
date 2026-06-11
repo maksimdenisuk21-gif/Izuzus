@@ -21,7 +21,7 @@ from telegram.ext import Application, CommandHandler, PreCheckoutQueryHandler, M
 # CONFIG
 # ======================
 BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
-ADMIN_IDS = ["7092015279"]   # ваш Telegram ID
+ADMIN_IDS = ["7092015279"]
 
 API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=True)
 DB_PATH = "game.db"
@@ -38,7 +38,7 @@ class CrashGame:
         self.cashed: Dict[str, float] = {}
         self.betting_open = False
         self.stage = "waiting"
-        self.next_round_time = 0
+        self.next_round_time = time.time() + 5
         self.betting_open_until = 0
 
 crash_game = CrashGame()
@@ -70,24 +70,6 @@ async def crash_loop():
                     crash_game.stage = "crashed"
                     crash_game.next_round_time = time.time() + 5
                     print(f"💥 КРАШ на {crash_game.multiplier}x!")
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-    asyncio.create_task(crash_loop())
-    
-    global tg_app
-    tg_app = Application.builder().token(BOT_TOKEN).build()
-    await setup_bot_handlers(tg_app)
-    await tg_app.initialize()
-    await tg_app.start()
-    print("✅ Бот и API запущены")
-    yield
-    await tg_app.stop()
-    await tg_app.shutdown()
-
-app = FastAPI(lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ======================
 # DATABASE
@@ -137,6 +119,34 @@ def verify_telegram_data(init_data: str) -> dict:
         return json.loads(parsed_data["user"][0])
     except Exception:
         raise HTTPException(401, "Unauthorized")
+
+# ======================
+# FASTAPI APP
+# ======================
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ======================
+# LIFESPAN
+# ======================
+tg_app = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global tg_app
+    await init_db()
+    asyncio.create_task(crash_loop())
+    
+    tg_app = Application.builder().token(BOT_TOKEN).build()
+    await setup_bot_handlers(tg_app)
+    await tg_app.initialize()
+    await tg_app.start()
+    print("✅ Бот и API запущены")
+    yield
+    await tg_app.stop()
+    await tg_app.shutdown()
+
+app.router.lifespan_context = lifespan
 
 # ======================
 # API ENDPOINTS
@@ -256,7 +266,7 @@ async def crash_state():
         "active": crash_game.active,
         "stage": crash_game.stage,
         "multiplier": crash_game.multiplier,
-        "betting_open_until": crash_game.betting_open_until,
+        "betting_open_until": getattr(crash_game, "betting_open_until", 0),
         "next_round_time": crash_game.next_round_time
     }
 
@@ -431,8 +441,6 @@ async def admin_withdraw(request: Request, auth_header: str = Security(API_KEY_H
 # ======================
 # BOT HANDLERS
 # ======================
-tg_app = None
-
 async def setup_bot_handlers(application: Application):
     async def start(update: Update, context):
         await update.message.reply_text("👋 Открой Mini App через меню бота.")
@@ -463,7 +471,7 @@ async def telegram_webhook(req: Request):
     return {"ok": True}
 
 # ======================
-# ROOT (главная страница с встроенным HTML)
+# ROOT (HTML ВСТРОЕН)
 # ======================
 @app.get("/")
 async def root():
