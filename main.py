@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import json
 import os
 import random
@@ -10,6 +11,7 @@ import hmac
 import hashlib
 import asyncio
 from urllib.parse import parse_qs
+from contextlib import asynccontextmanager
 from typing import Dict
 
 import aiosqlite
@@ -124,38 +126,27 @@ def verify_telegram_data(init_data: str) -> dict:
 # ======================
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Глобальные переменные
 tg_app = None
-crash_task = None
 
-# ======================
-# STARTUP / SHUTDOWN
-# ======================
-@app.on_event("startup")
-async def startup():
-    global tg_app, crash_task
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global tg_app
     await init_db()
-    # Запускаем фоновую задачу краша
-    crash_task = asyncio.create_task(crash_loop())
-    # Инициализируем бота
+    asyncio.create_task(crash_loop())
     tg_app = Application.builder().token(BOT_TOKEN).build()
-    await setup_bot_handlers(tg_app)
     await tg_app.initialize()
     await tg_app.start()
     print("✅ Бот и API запущены")
+    yield
+    await tg_app.stop()
+    await tg_app.shutdown()
 
-@app.on_event("shutdown")
-async def shutdown():
-    global tg_app, crash_task
-    if tg_app:
-        await tg_app.stop()
-        await tg_app.shutdown()
-    if crash_task:
-        crash_task.cancel()
+app.router.lifespan_context = lifespan
 
 # ======================
-# API ENDPOINTS (сокращённо, всё как было)
+# API ENDPOINTS
 # ======================
 @app.get("/api/profile")
 async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
@@ -374,7 +365,7 @@ async def update_inventory(request: Request, auth_header: str = Security(API_KEY
     return {"ok": True}
 
 # ======================
-# ADMIN PANEL (HTML)
+# ADMIN PANEL
 # ======================
 @app.get("/admin.html", response_class=HTMLResponse)
 async def admin_panel(request: Request):
@@ -397,7 +388,8 @@ async def admin_panel(request: Request):
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     </head><body>
     <h1>Заявки на вывод</h1>
-    <table><tr><th>ID</th><th>User ID</th><th>Сумма</th><th>Выплата</th><th>Статус</th><th>Действие</th></tr>
+    <table>
+        <tr><th>ID</th><th>User ID</th><th>Сумма</th><th>Выплата</th><th>Статус</th><th>Действие</th></tr>
     """
     for w in withdraws:
         wid, uid, amt, payout, status, _ = w
@@ -406,7 +398,7 @@ async def admin_panel(request: Request):
             html += f'<button onclick="action({wid},\'approve\')">✅</button> <button onclick="action({wid},\'reject\')">❌</button>'
         else:
             html += status
-        html += "<tr></tr>"
+        html += "</td></tr>"
     html += """</table>
     <script>
     async function action(id, act) {
@@ -477,26 +469,9 @@ async def telegram_webhook(req: Request):
     return {"ok": True}
 
 # ======================
-# ROOT (HTML)
+# ROOT - отдаём HTML файл из папки static
 # ======================
 @app.get("/")
 async def root():
-    # Здесь должен быть ваш длинный HTML, но чтобы не повторять, используем тот же, что ранее.
-    # Я сокращу для наглядности, вы можете вставить полный HTML из предыдущего ответа.
-    # Но для brevity оставлю заглушку – вставьте сюда содержимое HTML из предыдущего сообщения.
-    html_content = """<!DOCTYPE html>
-<html lang="ru">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"><title>Case Fight</title>
-<style>/* такой же стиль, как раньше */</style>
-</head>
-<body> ... (полный HTML из предыдущего ответа) ... </body>
-</html>"""
-    return HTMLResponse(html_content)
-
-# ======================
-# LOCAL RUN (для теста)
-# ======================
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
