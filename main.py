@@ -17,9 +17,6 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, PreCheckoutQueryHandler, MessageHandler, filters
 
-# ======================
-# CONFIG & AUTH
-# ======================
 BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_IDS = ["7092015279"]
 
@@ -46,7 +43,6 @@ def verify_telegram_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 def get_weighted_item(items):
-    """Выбрать предмет по вероятности"""
     total = sum(item["chance"] for item in items)
     r = random.uniform(0, total)
     current = 0
@@ -56,9 +52,6 @@ def get_weighted_item(items):
             return item
     return items[-1]
 
-# ======================
-# GAME CONFIGS - 8 КЕЙСОВ (50, 200, 500, 5000)
-# ======================
 CASES_CONFIG = {
     "stars_cheap": {
         "cost": 50,
@@ -71,6 +64,8 @@ CASES_CONFIG = {
             {"name": "50 звёзд", "value": 50, "rarity": "rare", "chance": 0.12},
             {"name": "100 звёзд", "value": 100, "rarity": "epic", "chance": 0.05},
             {"name": "5 звёзд", "value": 5, "rarity": "trash", "chance": 0.03},
+            {"name": "25 звёзд", "value": 25, "rarity": "uncommon", "chance": 0.0},
+            {"name": "75 звёзд", "value": 75, "rarity": "rare", "chance": 0.0},
         ]
     },
     "stars_medium": {
@@ -84,6 +79,8 @@ CASES_CONFIG = {
             {"name": "300 звёзд", "value": 300, "rarity": "epic", "chance": 0.15},
             {"name": "500 звёзд", "value": 500, "rarity": "legendary", "chance": 0.08},
             {"name": "30 звёзд", "value": 30, "rarity": "trash", "chance": 0.02},
+            {"name": "150 звёзд", "value": 150, "rarity": "uncommon", "chance": 0.0},
+            {"name": "400 звёзд", "value": 400, "rarity": "epic", "chance": 0.0},
         ]
     },
     "stars_premium": {
@@ -97,6 +94,8 @@ CASES_CONFIG = {
             {"name": "1000 звёзд", "value": 1000, "rarity": "epic", "chance": 0.20},
             {"name": "1500 звёзд", "value": 1500, "rarity": "legendary", "chance": 0.12},
             {"name": "2000 звёзд", "value": 2000, "rarity": "mythic", "chance": 0.03},
+            {"name": "300 звёзд", "value": 300, "rarity": "uncommon", "chance": 0.0},
+            {"name": "600 звёзд", "value": 600, "rarity": "rare", "chance": 0.0},
         ]
     },
     "stars_legendary": {
@@ -110,6 +109,8 @@ CASES_CONFIG = {
             {"name": "10000 звёзд", "value": 10000, "rarity": "epic", "chance": 0.25},
             {"name": "15000 звёзд", "value": 15000, "rarity": "legendary", "chance": 0.15},
             {"name": "25000 звёзд", "value": 25000, "rarity": "mythic", "chance": 0.10},
+            {"name": "5000 звёзд", "value": 5000, "rarity": "uncommon", "chance": 0.0},
+            {"name": "12000 звёзд", "value": 12000, "rarity": "epic", "chance": 0.0},
         ]
     },
     "nft_starter": {
@@ -123,6 +124,8 @@ CASES_CONFIG = {
             {"name": "Goblin Town", "value": 300, "rarity": "common", "chance": 0.15},
             {"name": "Loot", "value": 1000, "rarity": "epic", "chance": 0.08},
             {"name": "DigiDaigaku", "value": 250, "rarity": "trash", "chance": 0.02},
+            {"name": "World of Women", "value": 700, "rarity": "uncommon", "chance": 0.0},
+            {"name": "Art Blocks", "value": 900, "rarity": "rare", "chance": 0.0},
         ]
     },
     "nft_premium": {
@@ -136,6 +139,8 @@ CASES_CONFIG = {
             {"name": "Moonbirds", "value": 2500, "rarity": "legendary", "chance": 0.15},
             {"name": "Invisible Friends", "value": 800, "rarity": "uncommon", "chance": 0.15},
             {"name": "Blur Blur", "value": 600, "rarity": "common", "chance": 0.05},
+            {"name": "Pudgy Penguin Rare", "value": 1800, "rarity": "epic", "chance": 0.0},
+            {"name": "Murakami Flower", "value": 950, "rarity": "rare", "chance": 0.0},
         ]
     },
     "nft_elite": {
@@ -149,6 +154,8 @@ CASES_CONFIG = {
             {"name": "Pudgy Penguin Rare", "value": 2500, "rarity": "rare", "chance": 0.20},
             {"name": "ENS Names", "value": 1500, "rarity": "uncommon", "chance": 0.15},
             {"name": "Murakami Flower", "value": 1000, "rarity": "common", "chance": 0.05},
+            {"name": "Autoglyphs", "value": 4000, "rarity": "legendary", "chance": 0.0},
+            {"name": "Nakamigos", "value": 2800, "rarity": "epic", "chance": 0.0},
         ]
     },
     "nft_mythic": {
@@ -162,13 +169,12 @@ CASES_CONFIG = {
             {"name": "Autoglyphs", "value": 5000, "rarity": "legendary", "chance": 0.15},
             {"name": "VeeFriends", "value": 3000, "rarity": "epic", "chance": 0.20},
             {"name": "Bitcoin Ordinals", "value": 4000, "rarity": "epic", "chance": 0.20},
+            {"name": "Moonbirds Odd", "value": 4500, "rarity": "legendary", "chance": 0.0},
+            {"name": "Yuga Labs Metaverse", "value": 6500, "rarity": "mythic", "chance": 0.0},
         ]
     }
 }
 
-# ======================
-# DB MANAGEMENT
-# ======================
 DB_PATH = "game.db"
 
 async def init_db():
@@ -181,7 +187,6 @@ async def init_db():
             inventory TEXT DEFAULT '[]',
             nft_inventory TEXT DEFAULT '[]',
             withdraw_time INTEGER DEFAULT 0,
-            profile_photo TEXT,
             created_at INTEGER DEFAULT 0
         )""")
         await db.execute("""
@@ -204,9 +209,6 @@ async def init_db():
         )""")
         await db.commit()
 
-# ======================
-# LIFESPAN & APP INIT
-# ======================
 tg_app = None
 
 @asynccontextmanager
@@ -232,13 +234,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ======================
-# API ENDPOINTS
-# ======================
-
 @app.get("/api/profile")
 async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
-    """Получить профиль пользователя"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
@@ -266,12 +263,10 @@ async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
 
 @app.get("/api/cases")
 async def get_cases():
-    """Получить все кейсы"""
     return CASES_CONFIG
 
 @app.post("/api/case/open")
 async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
-    """Открыть кейс"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
@@ -325,13 +320,8 @@ async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
         
         return {"reward": reward, "balance": new_balance}
 
-# ======================
-# КРАШ ENDPOINTS
-# ======================
-
 @app.post("/api/crash/start")
 async def crash_start(bet: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Начать игру краша"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -360,22 +350,16 @@ async def crash_start(bet: int, auth_header: str = Security(API_KEY_HEADER)):
         "status": "active"
     }
     
-    return {
-        "game_id": game_id,
-        "bet": bet,
-        "balance_after_bet": new_balance
-    }
+    return {"game_id": game_id, "bet": bet, "balance_after_bet": new_balance}
 
 @app.get("/api/crash/update/{game_id}")
 async def crash_update(game_id: str):
-    """Получить обновление множителя краша"""
     if game_id not in crash_games:
         raise HTTPException(status_code=404, detail="Game not found")
     
     game = crash_games[game_id]
     elapsed = time.time() - game["start_time"]
     
-    # Формула: медленный рост, потом ускорение
     multiplier = 1.0 + (elapsed * 0.5) + (elapsed ** 1.5 * 0.1)
     multiplier = round(multiplier, 2)
     
@@ -388,8 +372,7 @@ async def crash_update(game_id: str):
     }
 
 @app.post("/api/crash/cashout")
-async def crash_cashout(game_id: str, auth_header: str = Security(API_KEY_HEADER)):
-    """Забрать выигрыш из краша"""
+async def crash_cashout(game_id: str, multiplier: float, auth_header: str = Security(API_KEY_HEADER)):
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
@@ -404,10 +387,6 @@ async def crash_cashout(game_id: str, auth_header: str = Security(API_KEY_HEADER
     
     if game["status"] != "active":
         raise HTTPException(status_code=400, detail="Game already finished")
-    
-    elapsed = time.time() - game["start_time"]
-    multiplier = 1.0 + (elapsed * 0.5) + (elapsed ** 1.5 * 0.1)
-    multiplier = round(multiplier, 2)
     
     crashed = multiplier >= game["crash_point"]
     
@@ -455,13 +434,8 @@ async def crash_cashout(game_id: str, auth_header: str = Security(API_KEY_HEADER
         "balance": new_balance
     }
 
-# ======================
-# МИНЫ ENDPOINTS
-# ======================
-
 @app.post("/api/mines/play")
 async def mines_play(bet: int, multiplier: float, auth_header: str = Security(API_KEY_HEADER)):
-    """Играть в мины"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
@@ -506,20 +480,10 @@ async def mines_play(bet: int, multiplier: float, auth_header: str = Security(AP
             recent_wins.append(win_data)
             await broadcast_multiplayer()
         
-        return {
-            "hit_mine": hit_mine,
-            "multiplier": multiplier,
-            "winnings": winnings,
-            "balance": new_balance
-        }
-
-# ======================
-# АПГРЕЙД ENDPOINTS
-# ======================
+        return {"hit_mine": hit_mine, "multiplier": multiplier, "winnings": winnings, "balance": new_balance}
 
 @app.post("/api/upgrade/nft")
 async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Апгрейдить NFT"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -557,20 +521,10 @@ async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER
         await db.execute("UPDATE users SET balance=?, nft_inventory=? WHERE user_id=?", (new_balance, json.dumps(nft_inv), uid))
         await db.commit()
         
-        return {
-            "success": success,
-            "nft": nft,
-            "cost": upgrade_cost,
-            "balance": new_balance
-        }
-
-# ======================
-# ИНВЕНТАРЬ ENDPOINTS
-# ======================
+        return {"success": success, "nft": nft, "cost": upgrade_cost, "balance": new_balance}
 
 @app.post("/api/inventory/sell")
 async def sell_item(item_index: int, item_type: str, auth_header: str = Security(API_KEY_HEADER)):
-    """Продать предмет"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -606,13 +560,8 @@ async def sell_item(item_index: int, item_type: str, auth_header: str = Security
         
         return {"balance": new_balance, "sold_for": sell_price}
 
-# ======================
-# ПОПОЛНЕНИЕ & ВЫВОД
-# ======================
-
 @app.post("/api/stars/buy")
 async def create_stars_invoice(stars_amount: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Пополнить баланс Telegram Stars (комиссия 5%)"""
     tg_user = verify_telegram_data(auth_header)
     uid = tg_user["id"]
     
@@ -637,7 +586,6 @@ async def create_stars_invoice(stars_amount: int, auth_header: str = Security(AP
 
 @app.post("/api/withdraw")
 async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Вывести звёзды (комиссия 5%, баланс сохраняется)"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
@@ -655,7 +603,6 @@ async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
         if last_withdraw and time.time() - last_withdraw < 86400:
             raise HTTPException(status_code=400, detail="Cooldown 24h")
         
-        # Комиссия 5%
         commission = int(amount * 0.05)
         amount_after_commission = amount - commission
         new_balance = balance - amount
@@ -665,26 +612,14 @@ async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
                          (uid, amount_after_commission, "pending", int(time.time())))
         await db.commit()
         
-        return {
-            "status": "pending",
-            "amount": amount,
-            "commission": commission,
-            "amount_after_commission": amount_after_commission,
-            "new_balance": new_balance
-        }
-
-# ======================
-# МУЛЬТИПЛЕЕР
-# ======================
+        return {"status": "pending", "amount": amount, "commission": commission, "amount_after_commission": amount_after_commission, "new_balance": new_balance}
 
 @app.get("/api/multiplayer/recent")
 async def get_recent_wins():
-    """Получить последние выигрыши"""
     return list(recent_wins)
 
 @app.websocket("/ws/multiplayer")
 async def websocket_multiplayer(websocket: WebSocket):
-    """WebSocket для мультиплеера"""
     await websocket.accept()
     active_connections.append(websocket)
     try:
@@ -695,16 +630,12 @@ async def websocket_multiplayer(websocket: WebSocket):
         active_connections.remove(websocket)
 
 async def broadcast_multiplayer():
-    """Отправить обновление мультиплеера всем"""
     for connection in active_connections:
         try:
             await connection.send_json({"recent_wins": list(recent_wins)})
         except:
             pass
 
-# ======================
-# BOT HANDLERS
-# ======================
 async def setup_bot_handlers(application: Application):
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👋 Открой Mini App!")
@@ -724,7 +655,6 @@ async def setup_bot_handlers(application: Application):
         await update.message.reply_text(f"✅ Пополнено +{coins_to_add} ⭐")
 
     async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Админ панель для вывода денег"""
         if str(update.effective_user.id) not in ADMIN_IDS:
             return
         
@@ -742,13 +672,9 @@ async def setup_bot_handlers(application: Application):
                 InlineKeyboardButton("✔️ Дать", callback_data=f"ap_{wid}"),
                 InlineKeyboardButton("❌ Отказать", callback_data=f"re_{wid}")
             ]])
-            await update.message.reply_text(
-                f"💰 Заявка #{wid}\nЮзер: {uid}\nСумма: {amount} ⭐\nКомиссия учтена",
-                reply_markup=kb
-            )
+            await update.message.reply_text(f"💰 Заявка #{wid}\nЮзер: {uid}\nСумма: {amount} ⭐", reply_markup=kb)
 
     async def cb_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка админ кнопок"""
         q = update.callback_query
         await q.answer()
         if str(q.from_user.id) not in ADMIN_IDS:
@@ -770,11 +696,10 @@ async def setup_bot_handlers(application: Application):
                 await db.execute("UPDATE withdrawals SET status='paid' WHERE id=?", (wid,))
                 msg = f"✅ Выплачено {amount} ⭐"
             else:
-                # Возврат денег + комиссия
                 refund = int(amount / 0.95)
                 await db.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (refund, uid))
                 await db.execute("UPDATE withdrawals SET status='rejected' WHERE id=?", (wid,))
-                msg = f"❌ Отклонено, деньги возвращены"
+                msg = f"❌ Отклонено"
             
             await db.commit()
             await q.edit_message_text(msg)
