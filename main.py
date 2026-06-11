@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 import json
 import os
 import random
@@ -125,8 +124,13 @@ def verify_telegram_data(init_data: str) -> dict:
 # FASTAPI APP
 # ======================
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 tg_app = None
 
@@ -214,7 +218,7 @@ async def case_open(price: int, auth_header: str = Security(API_KEY_HEADER)):
         items = CASES[price]
         weights = [item["chance"] for item in items]
         reward = random.choices(items, weights=weights, k=1)[0].copy()
-        reward["image"] = reward.get("image", "https://i.imgur.com/star.png")
+        reward["image"] = "https://i.imgur.com/star.png"
         new_balance = balance - price + reward["value"]
         inv.append(reward)
         await db.execute("UPDATE users SET balance=?, inventory=? WHERE user_id=?", (new_balance, json.dumps(inv), uid))
@@ -398,7 +402,7 @@ async def admin_panel(request: Request):
             html += f'<button onclick="action({wid},\'approve\')">✅</button> <button onclick="action({wid},\'reject\')">❌</button>'
         else:
             html += status
-        html += "</td></tr>"
+        html += "<tr><tr>"
     html += """</table>
     <script>
     async function action(id, act) {
@@ -469,9 +473,13 @@ async def telegram_webhook(req: Request):
     return {"ok": True}
 
 # ======================
-# ROOT - отдаём HTML файл из папки static
+# HEALTH CHECK
 # ======================
-@app.get("/")
-async def root():
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
