@@ -15,9 +15,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_ID = 7092015279
-WEBSITE_URL = "https://ТУТ-ТВОЙ-САЙТ.netlify.app"
+WEBSITE_URL = "https://jocular-blancmange-9267e3.netlify.app"
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
