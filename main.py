@@ -25,9 +25,9 @@ ADMIN_IDS = ["7092015279"]
 
 API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=True)
 
-# Глобальные переменные для мультиплеера
 recent_wins = deque(maxlen=50)
 active_connections = []
+crash_games = {}
 
 def verify_telegram_data(init_data: str) -> dict:
     try:
@@ -45,136 +45,123 @@ def verify_telegram_data(init_data: str) -> dict:
     except Exception:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+def get_weighted_item(items):
+    """Выбрать предмет по вероятности"""
+    total = sum(item["chance"] for item in items)
+    r = random.uniform(0, total)
+    current = 0
+    for item in items:
+        current += item["chance"]
+        if r <= current:
+            return item
+    return items[-1]
+
 # ======================
-# GAME CONFIGS - 8 КЕЙСОВ
+# GAME CONFIGS - 8 КЕЙСОВ (50, 200, 500, 5000)
 # ======================
 CASES_CONFIG = {
-    "stars_1": {
-        "cost": 100,
+    "stars_cheap": {
+        "cost": 50,
         "type": "stars",
-        "name": "Обычный ⭐",
-        "image": "https://example.com/case1.png",
+        "name": "Стартовый ⭐",
         "items": [
-            {"name": "10 звёзд", "value": 10, "rarity": "common"},
-            {"name": "25 звёзд", "value": 25, "rarity": "uncommon"},
-            {"name": "50 звёзд", "value": 50, "rarity": "rare"},
-            {"name": "100 звёзд", "value": 100, "rarity": "epic"},
-            {"name": "150 звёзд", "value": 150, "rarity": "legendary"},
-            {"name": "200 звёзд", "value": 200, "rarity": "mythic"},
-            {"name": "5 звёзд", "value": 5, "rarity": "trash"},
-            {"name": "75 звёзд", "value": 75, "rarity": "rare"}
+            {"name": "10 звёзд", "value": 10, "rarity": "common", "chance": 0.35},
+            {"name": "15 звёзд", "value": 15, "rarity": "common", "chance": 0.25},
+            {"name": "30 звёзд", "value": 30, "rarity": "uncommon", "chance": 0.20},
+            {"name": "50 звёзд", "value": 50, "rarity": "rare", "chance": 0.12},
+            {"name": "100 звёзд", "value": 100, "rarity": "epic", "chance": 0.05},
+            {"name": "5 звёзд", "value": 5, "rarity": "trash", "chance": 0.03},
         ]
     },
-    "stars_2": {
+    "stars_medium": {
+        "cost": 200,
+        "type": "stars",
+        "name": "Стандартный ⭐⭐",
+        "items": [
+            {"name": "50 звёзд", "value": 50, "rarity": "common", "chance": 0.25},
+            {"name": "100 звёзд", "value": 100, "rarity": "uncommon", "chance": 0.30},
+            {"name": "200 звёзд", "value": 200, "rarity": "rare", "chance": 0.20},
+            {"name": "300 звёзд", "value": 300, "rarity": "epic", "chance": 0.15},
+            {"name": "500 звёзд", "value": 500, "rarity": "legendary", "chance": 0.08},
+            {"name": "30 звёзд", "value": 30, "rarity": "trash", "chance": 0.02},
+        ]
+    },
+    "stars_premium": {
         "cost": 500,
         "type": "stars",
-        "name": "Премиум ⭐⭐",
-        "image": "https://example.com/case2.png",
+        "name": "Премиум ⭐⭐⭐",
         "items": [
-            {"name": "500 звёзд", "value": 500, "rarity": "legendary"},
-            {"name": "750 звёзд", "value": 750, "rarity": "epic"},
-            {"name": "250 звёзд", "value": 250, "rarity": "rare"},
-            {"name": "100 звёзд", "value": 100, "rarity": "uncommon"},
-            {"name": "1000 звёзд", "value": 1000, "rarity": "mythic"},
-            {"name": "400 звёзд", "value": 400, "rarity": "epic"},
-            {"name": "50 звёзд", "value": 50, "rarity": "common"},
-            {"name": "600 звёзд", "value": 600, "rarity": "legendary"}
+            {"name": "200 звёзд", "value": 200, "rarity": "common", "chance": 0.15},
+            {"name": "400 звёзд", "value": 400, "rarity": "uncommon", "chance": 0.25},
+            {"name": "750 звёзд", "value": 750, "rarity": "rare", "chance": 0.25},
+            {"name": "1000 звёзд", "value": 1000, "rarity": "epic", "chance": 0.20},
+            {"name": "1500 звёзд", "value": 1500, "rarity": "legendary", "chance": 0.12},
+            {"name": "2000 звёзд", "value": 2000, "rarity": "mythic", "chance": 0.03},
         ]
     },
-    "stars_3": {
-        "cost": 1000,
+    "stars_legendary": {
+        "cost": 5000,
         "type": "stars",
-        "name": "Элитный ⭐⭐⭐",
-        "image": "https://example.com/case3.png",
+        "name": "Легендарный ⭐⭐⭐⭐",
         "items": [
-            {"name": "2000 звёзд", "value": 2000, "rarity": "mythic"},
-            {"name": "1500 звёзд", "value": 1500, "rarity": "legendary"},
-            {"name": "1000 звёзд", "value": 1000, "rarity": "epic"},
-            {"name": "500 звёзд", "value": 500, "rarity": "rare"},
-            {"name": "2500 звёзд", "value": 2500, "rarity": "mythic"},
-            {"name": "800 звёзд", "value": 800, "rarity": "epic"},
-            {"name": "200 звёзд", "value": 200, "rarity": "uncommon"},
-            {"name": "1200 звёзд", "value": 1200, "rarity": "legendary"}
+            {"name": "2000 звёзд", "value": 2000, "rarity": "common", "chance": 0.10},
+            {"name": "4000 звёзд", "value": 4000, "rarity": "uncommon", "chance": 0.15},
+            {"name": "7500 звёзд", "value": 7500, "rarity": "rare", "chance": 0.25},
+            {"name": "10000 звёзд", "value": 10000, "rarity": "epic", "chance": 0.25},
+            {"name": "15000 звёзд", "value": 15000, "rarity": "legendary", "chance": 0.15},
+            {"name": "25000 звёзд", "value": 25000, "rarity": "mythic", "chance": 0.10},
         ]
     },
-    "stars_4": {
-        "cost": 2000,
-        "type": "stars",
-        "name": "Божественный ⭐⭐⭐⭐",
-        "image": "https://example.com/case4.png",
-        "items": [
-            {"name": "5000 звёзд", "value": 5000, "rarity": "mythic"},
-            {"name": "3000 звёзд", "value": 3000, "rarity": "legendary"},
-            {"name": "2000 звёзд", "value": 2000, "rarity": "epic"},
-            {"name": "1000 звёзд", "value": 1000, "rarity": "rare"},
-            {"name": "7500 звёзд", "value": 7500, "rarity": "mythic"},
-            {"name": "2500 звёзд", "value": 2500, "rarity": "epic"},
-            {"name": "500 звёзд", "value": 500, "rarity": "uncommon"},
-            {"name": "4000 звёзд", "value": 4000, "rarity": "legendary"}
-        ]
-    },
-    "nft_1": {
+    "nft_starter": {
         "cost": 500,
         "type": "nft",
-        "name": "NFT Кейс 1 🎨",
-        "image": "https://example.com/nft1.png",
+        "name": "NFT Стартер 🎨",
         "items": [
-            {"name": "Bored Ape", "rarity": "rare", "nft_id": "nft_ape_1"},
-            {"name": "Cryptopunk", "rarity": "epic", "nft_id": "nft_punk_1"},
-            {"name": "Pudgy Penguin", "rarity": "uncommon", "nft_id": "nft_penguin_1"},
-            {"name": "Cool Cat", "rarity": "rare", "nft_id": "nft_cat_1"},
-            {"name": "Art Blocks", "rarity": "legendary", "nft_id": "nft_artblocks_1"},
-            {"name": "Doodle", "rarity": "uncommon", "nft_id": "nft_doodle_1"},
-            {"name": "Loot", "rarity": "epic", "nft_id": "nft_loot_1"},
-            {"name": "Goblin Town", "rarity": "common", "nft_id": "nft_goblin_1"}
+            {"name": "Doodles", "value": 500, "rarity": "common", "chance": 0.30},
+            {"name": "Pudgy Penguin", "value": 800, "rarity": "uncommon", "chance": 0.25},
+            {"name": "Cool Cats NFT", "value": 600, "rarity": "rare", "chance": 0.20},
+            {"name": "Goblin Town", "value": 300, "rarity": "common", "chance": 0.15},
+            {"name": "Loot", "value": 1000, "rarity": "epic", "chance": 0.08},
+            {"name": "DigiDaigaku", "value": 250, "rarity": "trash", "chance": 0.02},
         ]
     },
-    "nft_2": {
+    "nft_premium": {
         "cost": 1000,
         "type": "nft",
-        "name": "NFT Кейс 2 💎",
-        "image": "https://example.com/nft2.png",
+        "name": "NFT Премиум 💎",
         "items": [
-            {"name": "Azuki", "rarity": "epic", "nft_id": "nft_azuki_1"},
-            {"name": "CloneX", "rarity": "legendary", "nft_id": "nft_clonex_1"},
-            {"name": "World of Women", "rarity": "rare", "nft_id": "nft_wow_1"},
-            {"name": "Pudgy Penguin Rare", "rarity": "epic", "nft_id": "nft_penguin_rare"},
-            {"name": "Moonbirds", "rarity": "legendary", "nft_id": "nft_moonbirds_1"},
-            {"name": "Murakami Flower", "rarity": "rare", "nft_id": "nft_murakami_1"},
-            {"name": "Chromie Squiggle", "rarity": "epic", "nft_id": "nft_chromie_1"},
-            {"name": "Invisible Friends", "rarity": "uncommon", "nft_id": "nft_inv_friends_1"}
+            {"name": "Azuki", "value": 1500, "rarity": "rare", "chance": 0.25},
+            {"name": "CloneX", "value": 2000, "rarity": "epic", "chance": 0.20},
+            {"name": "World of Women", "value": 1200, "rarity": "rare", "chance": 0.20},
+            {"name": "Moonbirds", "value": 2500, "rarity": "legendary", "chance": 0.15},
+            {"name": "Invisible Friends", "value": 800, "rarity": "uncommon", "chance": 0.15},
+            {"name": "Blur Blur", "value": 600, "rarity": "common", "chance": 0.05},
         ]
     },
-    "nft_3": {
+    "nft_elite": {
         "cost": 2000,
         "type": "nft",
-        "name": "NFT Кейс 3 👑",
-        "image": "https://example.com/nft3.png",
+        "name": "NFT Элит 👑",
         "items": [
-            {"name": "Bored Ape Gold", "rarity": "mythic", "nft_id": "nft_ape_gold"},
-            {"name": "Cryptopunk Alien", "rarity": "mythic", "nft_id": "nft_punk_alien"},
-            {"name": "Doge NFT", "rarity": "legendary", "nft_id": "nft_doge_1"},
-            {"name": "ENS Name", "rarity": "epic", "nft_id": "nft_ens_1"},
-            {"name": "Bitcoin Ordinal", "rarity": "legendary", "nft_id": "nft_ordinal_1"},
-            {"name": "Phantom", "rarity": "rare", "nft_id": "nft_phantom_1"},
-            {"name": "Pudgy Penguin Ultra", "rarity": "mythic", "nft_id": "nft_penguin_ultra"},
-            {"name": "Blur Beta", "rarity": "epic", "nft_id": "nft_blur_1"}
+            {"name": "Bored Ape Yacht Club", "value": 5000, "rarity": "legendary", "chance": 0.20},
+            {"name": "Cryptopunks", "value": 4500, "rarity": "epic", "chance": 0.20},
+            {"name": "Art Blocks", "value": 3000, "rarity": "epic", "chance": 0.20},
+            {"name": "Pudgy Penguin Rare", "value": 2500, "rarity": "rare", "chance": 0.20},
+            {"name": "ENS Names", "value": 1500, "rarity": "uncommon", "chance": 0.15},
+            {"name": "Murakami Flower", "value": 1000, "rarity": "common", "chance": 0.05},
         ]
     },
-    "nft_4": {
+    "nft_mythic": {
         "cost": 5000,
         "type": "nft",
-        "name": "NFT Кейс 4 🌟",
-        "image": "https://example.com/nft4.png",
+        "name": "NFT Мифик 🌟",
         "items": [
-            {"name": "Bored Ape Genesis", "rarity": "mythic", "nft_id": "nft_ape_genesis"},
-            {"name": "Cryptopunk #1", "rarity": "mythic", "nft_id": "nft_punk_1_rare"},
-            {"name": "Nakamigos", "rarity": "legendary", "nft_id": "nft_nakamigos_1"},
-            {"name": "VeeFriends", "rarity": "epic", "nft_id": "nft_veefriends_1"},
-            {"name": "Yuga Labs Metaverse", "rarity": "mythic", "nft_id": "nft_yuga_meta"},
-            {"name": "Autoglyphs", "rarity": "legendary", "nft_id": "nft_autoglyphs_1"},
-            {"name": "Larva Lads", "rarity": "rare", "nft_id": "nft_larva_1"},
-            {"name": "Hashmasks", "rarity": "legendary", "nft_id": "nft_hashmask_1"}
+            {"name": "Bored Ape Genesis", "value": 8000, "rarity": "mythic", "chance": 0.15},
+            {"name": "Cryptopunk Alien", "value": 7500, "rarity": "mythic", "chance": 0.15},
+            {"name": "Doge NFT", "value": 6000, "rarity": "legendary", "chance": 0.15},
+            {"name": "Autoglyphs", "value": 5000, "rarity": "legendary", "chance": 0.15},
+            {"name": "VeeFriends", "value": 3000, "rarity": "epic", "chance": 0.20},
+            {"name": "Bitcoin Ordinals", "value": 4000, "rarity": "epic", "chance": 0.20},
         ]
     }
 }
@@ -202,7 +189,7 @@ async def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
             amount INTEGER,
-            status TEXT,
+            status TEXT DEFAULT 'pending',
             time INTEGER
         )""")
         await db.execute("""
@@ -251,30 +238,30 @@ app.add_middleware(
 
 @app.get("/api/profile")
 async def get_profile(auth_header: str = Security(API_KEY_HEADER)):
+    """Получить профиль пользователя"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
     
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT balance, inventory, nft_inventory, profile_photo FROM users WHERE user_id=?", (uid,)) as cursor:
+        async with db.execute("SELECT balance, inventory, nft_inventory FROM users WHERE user_id=?", (uid,)) as cursor:
             row = await cursor.fetchone()
             
         if not row:
             await db.execute(
                 "INSERT INTO users (user_id, username, balance, created_at) VALUES (?, ?, ?, ?)",
-                (uid, username, 1000, int(time.time()))
+                (uid, username, 0, int(time.time()))
             )
             await db.commit()
-            return {"user_id": uid, "username": username, "balance": 1000, "inventory": [], "nft_inventory": [], "profile_photo": None}
+            return {"user_id": uid, "username": username, "balance": 0, "inventory": [], "nft_inventory": []}
             
-        balance, inv, nft_inv, photo = row
+        balance, inv, nft_inv = row
         return {
             "user_id": uid,
             "username": username,
             "balance": balance,
             "inventory": json.loads(inv) if inv else [],
-            "nft_inventory": json.loads(nft_inv) if nft_inv else [],
-            "profile_photo": photo
+            "nft_inventory": json.loads(nft_inv) if nft_inv else []
         }
 
 @app.get("/api/cases")
@@ -306,9 +293,7 @@ async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
         inv = json.loads(inv_raw) if inv_raw else []
         nft_inv = json.loads(nft_inv_raw) if nft_inv_raw else []
         
-        # Выбираем предмет
-        reward = random.choice(case["items"])
-        
+        reward = get_weighted_item(case["items"])
         new_balance = balance - cost
         
         if case["type"] == "stars":
@@ -322,7 +307,6 @@ async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
             (new_balance, json.dumps(inv), json.dumps(nft_inv), uid)
         )
         
-        # Добавляем в историю
         await db.execute(
             "INSERT INTO game_history (user_id, username, game_type, result, amount, time) VALUES (?,?,?,?,?,?)",
             (uid, username, "case", json.dumps(reward), cost, int(time.time()))
@@ -330,7 +314,6 @@ async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
         
         await db.commit()
         
-        # Добавляем в мультиплеер
         win_data = {
             "username": username,
             "item": reward.get("name", "Предмет"),
@@ -342,15 +325,18 @@ async def case_open(case_id: str, auth_header: str = Security(API_KEY_HEADER)):
         
         return {"reward": reward, "balance": new_balance}
 
-@app.post("/api/crash/play")
-async def crash_play(bet: int, multiplier: float, auth_header: str = Security(API_KEY_HEADER)):
-    """Играть в Краш"""
+# ======================
+# КРАШ ENDPOINTS
+# ======================
+
+@app.post("/api/crash/start")
+async def crash_start(bet: int, auth_header: str = Security(API_KEY_HEADER)):
+    """Начать игру краша"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
-    username = tg_user.get("username", f"User{uid[-4:]}")
     
-    if bet <= 0 or multiplier < 1.0:
-        raise HTTPException(status_code=400, detail="Invalid parameters")
+    if bet <= 0:
+        raise HTTPException(status_code=400, detail="Invalid bet")
     
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id=?", (uid,)) as cursor:
@@ -359,47 +345,123 @@ async def crash_play(bet: int, multiplier: float, auth_header: str = Security(AP
         if not row or row[0] < bet:
             raise HTTPException(status_code=400, detail="Insufficient balance")
         
-        # Симуляция краша - случайная точка краша
-        crash_point = round(random.uniform(1.05, 5.5), 2)
-        win = multiplier <= crash_point
+        new_balance = row[0] - bet
+        await db.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, uid))
+        await db.commit()
+    
+    game_id = f"{uid}_{int(time.time() * 1000)}"
+    crash_point = round(random.uniform(1.05, 5.5), 2)
+    
+    crash_games[game_id] = {
+        "user_id": uid,
+        "bet": bet,
+        "crash_point": crash_point,
+        "start_time": time.time(),
+        "status": "active"
+    }
+    
+    return {
+        "game_id": game_id,
+        "bet": bet,
+        "balance_after_bet": new_balance
+    }
+
+@app.get("/api/crash/update/{game_id}")
+async def crash_update(game_id: str):
+    """Получить обновление множителя краша"""
+    if game_id not in crash_games:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    game = crash_games[game_id]
+    elapsed = time.time() - game["start_time"]
+    
+    # Формула: медленный рост, потом ускорение
+    multiplier = 1.0 + (elapsed * 0.5) + (elapsed ** 1.5 * 0.1)
+    multiplier = round(multiplier, 2)
+    
+    crashed = multiplier >= game["crash_point"]
+    
+    return {
+        "multiplier": multiplier,
+        "crashed": crashed,
+        "crash_point": game["crash_point"] if crashed else None
+    }
+
+@app.post("/api/crash/cashout")
+async def crash_cashout(game_id: str, auth_header: str = Security(API_KEY_HEADER)):
+    """Забрать выигрыш из краша"""
+    tg_user = verify_telegram_data(auth_header)
+    uid = str(tg_user["id"])
+    username = tg_user.get("username", f"User{uid[-4:]}")
+    
+    if game_id not in crash_games:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    game = crash_games[game_id]
+    
+    if game["user_id"] != uid:
+        raise HTTPException(status_code=403, detail="Not your game")
+    
+    if game["status"] != "active":
+        raise HTTPException(status_code=400, detail="Game already finished")
+    
+    elapsed = time.time() - game["start_time"]
+    multiplier = 1.0 + (elapsed * 0.5) + (elapsed ** 1.5 * 0.1)
+    multiplier = round(multiplier, 2)
+    
+    crashed = multiplier >= game["crash_point"]
+    
+    if crashed:
+        winnings = 0
+        result = "LOSE"
+    else:
+        winnings = int(game["bet"] * multiplier)
+        result = "WIN"
+    
+    game["status"] = "finished"
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id=?", (uid,)) as cursor:
+            row = await cursor.fetchone()
         
-        if win:
-            winnings = int(bet * multiplier)
-            new_balance = row[0] - bet + winnings
-        else:
-            winnings = 0
-            new_balance = row[0] - bet
-        
+        new_balance = row[0] + winnings
         await db.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, uid))
         
         await db.execute(
             "INSERT INTO game_history (user_id, username, game_type, result, amount, time) VALUES (?,?,?,?,?,?)",
-            (uid, username, "crash", "WIN" if win else "LOSE", bet, int(time.time()))
+            (uid, username, "crash", result, game["bet"], int(time.time()))
         )
         
         await db.commit()
-        
-        if win:
-            win_data = {
-                "username": username,
-                "item": f"Краш x{multiplier:.2f}",
-                "case": "🚀 Краш",
-                "time": datetime.now().strftime("%H:%M:%S")
-            }
-            recent_wins.append(win_data)
-            await broadcast_multiplayer()
-        
-        return {
-            "win": win,
-            "crash_point": crash_point,
-            "multiplier": multiplier,
-            "winnings": winnings,
-            "balance": new_balance
+    
+    if result == "WIN":
+        win_data = {
+            "username": username,
+            "item": f"Краш x{multiplier:.2f}",
+            "case": "🚀 Краш",
+            "time": datetime.now().strftime("%H:%M:%S")
         }
+        recent_wins.append(win_data)
+        await broadcast_multiplayer()
+    
+    del crash_games[game_id]
+    
+    return {
+        "result": result,
+        "multiplier": multiplier,
+        "crash_point": game["crash_point"],
+        "bet": game["bet"],
+        "winnings": winnings,
+        "balance": new_balance
+    }
+
+# ======================
+# МИНЫ ENDPOINTS
+# ======================
 
 @app.post("/api/mines/play")
 async def mines_play(bet: int, multiplier: float, auth_header: str = Security(API_KEY_HEADER)):
-    """Играть в Мины"""
+    """Играть в мины"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     username = tg_user.get("username", f"User{uid[-4:]}")
@@ -414,7 +476,6 @@ async def mines_play(bet: int, multiplier: float, auth_header: str = Security(AP
         if not row or row[0] < bet:
             raise HTTPException(status_code=400, detail="Insufficient balance")
         
-        # 30% шанс попасть на мину
         hit_mine = random.random() < 0.30
         
         if not hit_mine:
@@ -452,6 +513,10 @@ async def mines_play(bet: int, multiplier: float, auth_header: str = Security(AP
             "balance": new_balance
         }
 
+# ======================
+# АПГРЕЙД ENDPOINTS
+# ======================
+
 @app.post("/api/upgrade/nft")
 async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER)):
     """Апгрейдить NFT"""
@@ -474,7 +539,6 @@ async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER
         nft = nft_inv[nft_index]
         current_level = nft.get("level", 1)
         
-        # Стоимость и шанс зависят от уровня
         upgrade_costs = {1: 200, 2: 400, 3: 800, 4: 1600, 5: 3200}
         upgrade_chances = {1: 0.9, 2: 0.8, 3: 0.7, 4: 0.5, 5: 0.3}
         
@@ -489,9 +553,6 @@ async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER
         
         if success:
             nft["level"] = current_level + 1
-            result = "SUCCESS"
-        else:
-            result = "FAILED"
         
         await db.execute("UPDATE users SET balance=?, nft_inventory=? WHERE user_id=?", (new_balance, json.dumps(nft_inv), uid))
         await db.commit()
@@ -500,9 +561,12 @@ async def upgrade_nft(nft_index: int, auth_header: str = Security(API_KEY_HEADER
             "success": success,
             "nft": nft,
             "cost": upgrade_cost,
-            "balance": new_balance,
-            "result": result
+            "balance": new_balance
         }
+
+# ======================
+# ИНВЕНТАРЬ ENDPOINTS
+# ======================
 
 @app.post("/api/inventory/sell")
 async def sell_item(item_index: int, item_type: str, auth_header: str = Security(API_KEY_HEADER)):
@@ -521,16 +585,16 @@ async def sell_item(item_index: int, item_type: str, auth_header: str = Security
         inv = json.loads(inv_raw) if inv_raw else []
         nft_inv = json.loads(nft_inv_raw) if nft_inv_raw else []
         
-        sell_price = 50
-        
         if item_type == "nft":
             if item_index < 0 or item_index >= len(nft_inv):
                 raise HTTPException(status_code=400, detail="Invalid item index")
-            nft_inv.pop(item_index)
+            item = nft_inv.pop(item_index)
+            sell_price = int(item.get("value", 500) * 0.7)
         else:
             if item_index < 0 or item_index >= len(inv):
                 raise HTTPException(status_code=400, detail="Invalid item index")
             inv.pop(item_index)
+            sell_price = 25
         
         new_balance = balance + sell_price
         
@@ -542,14 +606,43 @@ async def sell_item(item_index: int, item_type: str, auth_header: str = Security
         
         return {"balance": new_balance, "sold_for": sell_price}
 
+# ======================
+# ПОПОЛНЕНИЕ & ВЫВОД
+# ======================
+
+@app.post("/api/stars/buy")
+async def create_stars_invoice(stars_amount: int, auth_header: str = Security(API_KEY_HEADER)):
+    """Пополнить баланс Telegram Stars (комиссия 5%)"""
+    tg_user = verify_telegram_data(auth_header)
+    uid = tg_user["id"]
+    
+    if stars_amount < 50 or stars_amount > 5000:
+        raise HTTPException(status_code=400, detail="Amount 50-5000")
+
+    commission = int(stars_amount * 0.05)
+    game_coins = (stars_amount - commission) * 10
+    
+    try:
+        invoice_link = await tg_app.bot.create_invoice_link(
+            title="Пополнение Case Fight",
+            description=f"Покупка {game_coins} звёзд (комиссия 5%)",
+            payload=json.dumps({"uid": str(uid), "coins": game_coins}),
+            provider_token="",
+            currency="XTR",
+            prices=[LabeledPrice(label="Telegram Stars", amount=stars_amount)]
+        )
+        return {"invoice_url": invoice_link, "game_coins": game_coins}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/withdraw")
 async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
-    """Вывести звёзды"""
+    """Вывести звёзды (комиссия 5%, баланс сохраняется)"""
     tg_user = verify_telegram_data(auth_header)
     uid = str(tg_user["id"])
     
-    if amount < 100 or amount > 5000:
-        raise HTTPException(status_code=400, detail="Limit 100-5000")
+    if amount < 100 or amount > 50000:
+        raise HTTPException(status_code=400, detail="Limit 100-50000")
         
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT balance, withdraw_time FROM users WHERE user_id=?", (uid,)) as cursor:
@@ -560,16 +653,29 @@ async def withdraw(amount: int, auth_header: str = Security(API_KEY_HEADER)):
             
         balance, last_withdraw = row
         if last_withdraw and time.time() - last_withdraw < 86400:
-            raise HTTPException(status_code=400, detail="Cooldown 24h active")
-            
+            raise HTTPException(status_code=400, detail="Cooldown 24h")
+        
+        # Комиссия 5%
+        commission = int(amount * 0.05)
+        amount_after_commission = amount - commission
         new_balance = balance - amount
         
         await db.execute("UPDATE users SET balance=?, withdraw_time=? WHERE user_id=?", (new_balance, int(time.time()), uid))
         await db.execute("INSERT INTO withdrawals (user_id, amount, status, time) VALUES (?,?,?,?)",
-                         (uid, amount, "pending", int(time.time())))
+                         (uid, amount_after_commission, "pending", int(time.time())))
         await db.commit()
         
-        return {"status": "pending", "amount": amount, "new_balance": new_balance}
+        return {
+            "status": "pending",
+            "amount": amount,
+            "commission": commission,
+            "amount_after_commission": amount_after_commission,
+            "new_balance": new_balance
+        }
+
+# ======================
+# МУЛЬТИПЛЕЕР
+# ======================
 
 @app.get("/api/multiplayer/recent")
 async def get_recent_wins():
@@ -601,7 +707,7 @@ async def broadcast_multiplayer():
 # ======================
 async def setup_bot_handlers(application: Application):
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("👋 Открой Mini App через меню бота!")
+        await update.message.reply_text("👋 Открой Mini App!")
 
     async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.pre_checkout_query.answer(ok=True)
@@ -614,26 +720,35 @@ async def setup_bot_handlers(application: Application):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (coins_to_add, uid))
             await db.commit()
-        await update.message.reply_text(f"🌟 Начислено {coins_to_add} звёзд.")
+        
+        await update.message.reply_text(f"✅ Пополнено +{coins_to_add} ⭐")
 
     async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админ панель для вывода денег"""
         if str(update.effective_user.id) not in ADMIN_IDS:
             return
+        
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT * FROM withdrawals WHERE status='pending'") as cursor:
                 rows = await cursor.fetchall()
+        
         if not rows:
-            await update.message.reply_text("Нет активных заявок.")
+            await update.message.reply_text("📭 Нет заявок")
             return
+        
         for w in rows:
             wid, uid, amount, status, t = w
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("✔ Одобрить", callback_data=f"ap_{wid}"),
-                InlineKeyboardButton("✖ Отклонить", callback_data=f"re_{wid}")
+                InlineKeyboardButton("✔️ Дать", callback_data=f"ap_{wid}"),
+                InlineKeyboardButton("❌ Отказать", callback_data=f"re_{wid}")
             ]])
-            await update.message.reply_text(f"📥 Заявка #{wid}\nЮзер: {uid}\nСумма: {amount} ⭐", reply_markup=kb)
+            await update.message.reply_text(
+                f"💰 Заявка #{wid}\nЮзер: {uid}\nСумма: {amount} ⭐\nКомиссия учтена",
+                reply_markup=kb
+            )
 
     async def cb_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка админ кнопок"""
         q = update.callback_query
         await q.answer()
         if str(q.from_user.id) not in ADMIN_IDS:
@@ -645,16 +760,24 @@ async def setup_bot_handlers(application: Application):
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT user_id, amount FROM withdrawals WHERE id=?", (wid,)) as cursor:
                 row = await cursor.fetchone()
+            
             if not row:
                 return
+            
             uid, amount = row
+            
             if action == "ap":
                 await db.execute("UPDATE withdrawals SET status='paid' WHERE id=?", (wid,))
+                msg = f"✅ Выплачено {amount} ⭐"
             else:
-                await db.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, uid))
+                # Возврат денег + комиссия
+                refund = int(amount / 0.95)
+                await db.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (refund, uid))
                 await db.execute("UPDATE withdrawals SET status='rejected' WHERE id=?", (wid,))
+                msg = f"❌ Отклонено, деньги возвращены"
+            
             await db.commit()
-            await q.edit_message_text(f"✅ Выполнено для заявки #{wid}")
+            await q.edit_message_text(msg)
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_panel))
