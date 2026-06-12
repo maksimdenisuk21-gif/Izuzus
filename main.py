@@ -26,11 +26,14 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 
 DB_NAME = "database.db"
 
+# Цены для 12 кейсов
 CASE_PRICES = {
     "star_micro": 50, "star_common": 150, "star_rare": 500, "star_epic": 2000,
-    "ton_frogs": 80, "digital_resistance": 200, "pudgy_penguins": 600, "bored_apes": 2500
+    "ton_frogs": 80, "digital_resistance": 200, "pudgy_penguins": 600, "bored_apes": 2500,
+    "ton_gems": 100, "memecoins": 300, "crypto_punks": 1200, "bitcoin_whales": 5000
 }
 
+# 12 кейсов по 6 предметов = 72 уникальных предмета
 CASE_DROPS = {
     "star_micro": {
         "m1": ("🥉 Бронзовая Звезда", 10), "m2": ("🌀 Telegram Спиннер", 25), "m3": ("👍 Пиксельный Лайк", 45),
@@ -63,6 +66,22 @@ CASE_DROPS = {
     "bored_apes": {
         "a1": ("🎽 Striped Bored Ape NFT", 500), "a2": ("🧟 Zombie Bored Ape NFT", 1100), "a3": ("🎧 Music Bored Ape NFT", 2200),
         "a4": ("👁️ Laser Eyes Bored Ape NFT", 4500), "a5": ("👑 Crown King Bored Ape NFT", 9500), "a6": ("🔱 Solid Gold Bored Ape NFT", 22000)
+    },
+    "ton_gems": {
+        "g1": ("💎 Кварцевый Самоцвет", 20), "g2": ("🔮 Аметистовый Кристалл", 50), "g3": ("🟢 Изумруд TON", 95),
+        "g4": ("🔷 Сапфировый Токен", 190), "g5": ("❤️ Рубин Валидатора", 400), "g6": ("👑 Королевский Алмаз", 900)
+    },
+    "memecoins": {
+        "mem1": ("🐕 Пиксельный Doge", 60), "mem2": ("🐸 Грустный Pepe токен", 140), "mem3": ("🐱 Коин Наруто-Кэт", 280),
+        "mem4": ("🐹 Монета Хомяка", 550), "mem5": ("🐐 Золотой GOAT коин", 1200), "mem6": ("🚀 Мем-Ракета на Марс", 2600)
+    },
+    "crypto_punks": {
+        "punk1": ("🧢 Punk с банданой NFT", 240), "punk2": ("🕶️ Punk в очках NFT", 500), "punk3": ("🚬 Punk с сигаретой NFT", 1000),
+        "punk4": ("🧟 Зомби-Панк NFT", 2100), "punk5": ("👽 Инопланетный Панк NFT", 4600), "punk6": ("👑 Элитный Король Панков", 11000)
+    },
+    "bitcoin_whales": {
+        "wh1": ("🐋 Железный Кит", 1000), "wh2": ("🐋 Бронзовый Кит", 2200), "wh3": ("🐋 Серебряный Кит", 4500),
+        "wh4": ("🐋 Золотой Мега-Кит", 9000), "wh5": ("🐋 Платиновый Альфа-Кит", 19000), "wh6": ("👑 Сатоши Накамото Кит", 45000)
     }
 }
 
@@ -146,6 +165,16 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
     user_info["is_admin"] = (ADMIN_TG_ID and tg_id == ADMIN_TG_ID)
     return user_info
 
+@app.post("/api/admin/give_stars")
+async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = balance + 10000 WHERE tg_id = ?", (tg_id,))
+        await db.commit()
+    return {"success": True}
+
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
     case_type = req.case_type
@@ -177,7 +206,6 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
         
     return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
 
-# ПРОДАЖА ОДНОГО ПРЕДМЕТА ПО ИНДЕКСУ
 @app.post("/api/inventory/sell_item")
 async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -206,7 +234,6 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
 async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
-    
     inventory = user_info["inventory"]
     if not inventory:
         raise HTTPException(status_code=400, detail="Инвентарь пуст")
@@ -236,7 +263,6 @@ async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
         raise HTTPException(status_code=400, detail="Минимальное пополнение — 50 Stars")
-    
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/createInvoiceLink"
     payload = {
         "title": "Пополнение баланса",
@@ -246,7 +272,6 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
         "currency": "XTR",
         "prices": [{"label": "Stars", "amount": stars_amount}]
     }
-    
     async with httpx.AsyncClient() as client:
         res = await client.post(url, json=payload)
         res_data = res.json()
@@ -263,7 +288,6 @@ async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < amount:
         raise HTTPException(status_code=400, detail="Недостаточно монет")
-        
     new_balance = user_info["balance"] - amount
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
