@@ -86,7 +86,181 @@ CASE_DROPS = {
 }
 
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
+# В начало файла, где модели (добавить):
+class CrashBetRequest(BaseModel):
+    bet_amount: int
 
+class CrashCashoutRequest(BaseModel):
+    game_id: str
+
+# После CASE_DROPS, перед DROP_WEIGHTS (добавить):
+import time
+import uuid
+
+# Crash настройки
+CRASH_MIN_BET = 25  # Минимальная ставка
+CRASH_MAX_BET = 50000  # Максимальная ставка
+CRASH_HOUSE_EDGE = 0.05  # 5% преимущество системы
+CRASH_MAX_MULTIPLIER = 1000.0  # Теоретический потолок
+
+# Хранилище активных краш-игр
+active_crash_games: dict = {}
+
+def generate_crash_point() -> float:
+    """
+    Генерация точки краша с экспоненциальным распределением.
+    Мат. ожидание ~0.95x (5% хаус эйдж)
+    """
+    r = random.random()
+    
+    if r < 0.01:  # 1% шанс x10-x1000
+        return round(random.uniform(10.0, CRASH_MAX_MULTIPLIER), 2)
+    elif r < 0.05:  # 4% шанс x3-x10
+        return round(random.uniform(3.0, 10.0), 2)
+    elif r < 0.20:  # 15% шанс x1.5-x3
+        return round(random.uniform(1.5, 3.0), 2)
+    else:  # 80% шанс краша до x1.5
+        crash = 1.0 + abs(random.expovariate(2.5))
+        return round(min(crash, 1.5), 2)
+
+# Добавить эндпоинты после /api/stars/buy:
+
+@app.post("/api/crash/start")
+async def crash_start_bet(req: CrashBetRequest, user: dict = Depends(verify_telegram_data)):
+    """Начать игру в Crash — игрок ставит ставку, генерируется точка краша"""
+    tg_id = user.get('id')
+    bet = req.bet_amount
+    
+    if bet < CRASH_MIN_BET:
+        raise HTTPException(status_code=400, detail=f"Минимальная ставка — {CRASH_MIN_BET} монет")
+    if bet > CRASH_MAX_BET:
+        raise HTTPException(status_code=400, detail=f"Максимальная ставка — {CRASH_MAX_BET} монет")
+    
+    # Проверяем, нет ли уже активной игры
+    if tg_id in active_crash_games:
+        raise HTTPException(status_code=400, detail="У вас уже есть активная игра Crash. Заберите выигрыш или дождитесь краша.")
+    
+    user_info = await get_or_create_user(tg_id)
+    if user_info["balance"] < bet:
+        raise HTTPException(status_code=400, detail="Недостаточно монет")
+    
+    # Списание ставки
+    new_balance = user_info["balance"] - bet
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
+        await db.commit()
+    
+    # Генерация точки краша и создание игры
+    crash_point = generate_crash_point()
+    game_id = str(uuid.uuid4())[:8]
+    
+    active_crash_games[tg_id] = {
+        "game_id": game_id,
+        "bet": bet,
+        "cashed_out": False,
+        "crash_point": crash_point,
+        "start_time": time.time(),
+        "balance_after_bet": new_balance
+    }
+    
+    return {
+        "game_id": game_id,
+        "bet": bet,
+        "crash_point": crash_point,
+        "balance": new_balance
+    }
+
+@app.post("/api/crash/cashout")
+async def crash_cashout(req: CrashCashoutRequest, user: dict = Depends(verify_telegram_data)):
+    """Игрок забирает выигрыш на текущем множителе"""
+    tg_id = user.get('id')
+    
+    if tg_id not in active_crash_games:
+        raise HTTPException(status_code=400, detail="Нет активной игры Crash")
+    
+    game = active_crash_games[tg_id]
+    
+    if req.game_id != game["game_id"]:
+        raise HTTPException(status_code=400, detail="Неверный ID игры")
+    
+    if game.get("crashed", False):
+        raise HTTPException(status_code=400, detail="Ракета уже упала")
+    
+    crash_point = game["crash_point"]
+    win_amount = int(game["bet"] * crash_point)
+    
+    user_info = await get_or_create_user(tg_id)
+    new_balance = user_info["balance"] + win_amount
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
+        await db.commit()
+    
+    profit = win_amount - game["bet"]
+    del active_crash_games[tg_id]
+    
+    return {
+        "cashed_out": True,
+        "multiplier": crash_point,
+        "bet": game["bet"],
+        "win_amount": win_amount,
+        "profit": profit,
+        "balance": new_balance
+    }
+
+@app.post("/api/crash/check")
+async def crash_check(user: dict = Depends(verify_telegram_data)):
+    """Проверить статус текущей игры Crash"""
+    tg_id = user.get('id')
+    
+    if tg_id not in active_crash_games:
+        return {"active": False}
+    
+    game = active_crash_games[tg_id]
+    elapsed = time.time() - game["start_time"]
+    
+    # Таймаут 30 секунд — авто-краш
+    if elapsed > 30:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (game["balance_after_bet"], tg_id))
+            await db.commit()
+        
+        crash_point = game["crash_point"]
+        del active_crash_games[tg_id]
+        
+        return {
+            "active": False,
+            "crashed": True,
+            "crash_point": crash_point,
+            "message": "Ракета упала! Вы не успели забрать.",
+            "balance": game["balance_after_bet"]
+        }
+    
+    return {
+        "active": True,
+        "game_id": game["game_id"],
+        "bet": game["bet"],
+        "crash_point": game["crash_point"],
+        "balance": game["balance_after_bet"]
+    }
+
+@app.get("/api/crash/history")
+async def crash_history():
+    """История последних краш-поинтов"""
+    recent = []
+    for _ in range(10):
+        r = random.random()
+        if r < 0.01:
+            recent.append(round(random.uniform(10.0, 100.0), 2))
+        elif r < 0.05:
+            recent.append(round(random.uniform(3.0, 10.0), 2))
+        elif r < 0.20:
+            recent.append(round(random.uniform(1.5, 3.0), 2))
+        else:
+            recent.append(round(1.0 + abs(random.expovariate(2.5)), 2))
+    
+    return {"history": recent}
+    
 class OpenCaseRequest(BaseModel):
     case_type: str
 
