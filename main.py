@@ -8,10 +8,10 @@ from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import aiosqlite
+import httpx
 
 app = FastAPI()
 
-# Разрешаем CORS для работы Mini App с Netlify
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,14 +26,13 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 
 DB_NAME = "database.db"
 
-# Цены покупки всех 8 кейсов
+# Цены покупки кейсов
 CASE_PRICES = {
     "star_micro": 50, "star_common": 150, "star_rare": 500, "star_epic": 2000,
     "ton_frogs": 80, "digital_resistance": 200, "pudgy_penguins": 600, "bored_apes": 2500
 }
 
-# Полная база из 48 уникальных предметов (6 штук на каждый из 8 кейсов)
-# Формат: "ид_предмета": ("Название предмета", Стоимость_Продажи_на_Баланс)
+# 48 предметов (6 на каждый кейс)
 CASE_DROPS = {
     "star_micro": {
         "m1": ("🥉 Бронзовая Звезда", 10), "m2": ("🌀 Telegram Спиннер", 25), "m3": ("👍 Пиксельный Лайк", 45),
@@ -69,7 +68,6 @@ CASE_DROPS = {
     }
 }
 
-# Процентные шансы выпадения предметов от 1-го до 6-го (от обычного к супер-мифическому)
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
 class OpenCaseRequest(BaseModel):
@@ -102,12 +100,11 @@ async def startup():
         """)
         await db.commit()
 
-# Валидация данных сессии Telegram Mini Apps
 def verify_telegram_data(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
     if not BOT_TOKEN:
-        raise HTTPException(status_code=500, detail="BOT_TOKEN configuration missing")
+        raise HTTPException(status_code=500, detail="BOT_TOKEN missing")
     try:
         init_data = urllib.parse.parse_qs(authorization)
         hash_value = init_data.get('hash', [None])[0]
@@ -168,8 +165,6 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
     reward_name = case_pool[reward_id][0]
     
     new_balance = user_info["balance"] - price
-    
-    # Сохраняем предмет с указанием кейса, из которого он выпал
     user_info["inventory"].append({"id": reward_id, "name": reward_name, "case": case_type})
     
     async with aiosqlite.connect(DB_NAME) as db:
@@ -211,16 +206,29 @@ async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
             return [{"username": r[0], "balance": r[1]} for r in rows]
 
+# РЕАЛЬНОЕ СОЗДАНИЕ ИНВОЙСА ЧЕРЕЗ TELEGRAM BOT API
 @app.post("/api/stars/buy")
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
         raise HTTPException(status_code=400, detail="Минимальное пополнение — 50 Stars")
-    dummy_invoice_url = f"https://t.me/invoice/stars_deposit_{stars_amount}"
-    tg_id = user.get('id')
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (stars_amount, tg_id))
-        await db.commit()
-    return {"invoice_url": dummy_invoice_url}
+    
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/createInvoiceLink"
+    payload = {
+        "title": "Пополнение баланса",
+        "description": f"Покупка {stars_amount} монет Stars для открытия кейсов",
+        "payload": f"deposit_{user.get('id')}_{stars_amount}",
+        "provider_token": "", 
+        "currency": "XTR",
+        "prices": [{"label": "Stars", "amount": stars_amount}]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        res = await client.post(url, json=payload)
+        res_data = res.json()
+        if res_data.get("ok"):
+            return {"invoice_url": res_data["result"]}
+        else:
+            raise HTTPException(status_code=500, detail="Ошибка генерации Telegram Invoice")
 
 @app.post("/api/withdraw")
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
