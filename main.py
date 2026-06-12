@@ -103,7 +103,7 @@ CASE_DROPS = {
 
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
-# ========== PROVABLY FAIR CRASH (НАСТОЯЩИЙ) ==========
+# ========== PROVABLY FAIR CRASH ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
@@ -111,11 +111,10 @@ CRASH_COOLDOWN = 3
 CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
 
-# SEED НЕ МЕНЯЕТСЯ КАЖДЫЙ РАУНД (commit-reveal)
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
 crash_nonce = 0
-ROUNDS_BEFORE_SEED_CHANGE = 100  # Меняем seed каждые 100 раундов
+ROUNDS_BEFORE_SEED_CHANGE = 100
 rounds_since_seed_change = 0
 
 crash_state = {
@@ -128,22 +127,21 @@ crash_state = {
     "history": [],
     "timer_ends": 0,
     "connected_users": set(),
-    "current_multiplier": 1.0  # Серверный источник истины
+    "current_multiplier": 1.0,  # float без round для логики
+    "crashed": False  # ФЛАГ КРАША
 }
 
+def bet_key(tg_id: int, round_id: str) -> str:
+    """Единый ключ ставки: tg_id:round_id"""
+    return f"{tg_id}:{round_id}"
+
 def generate_crash_point() -> tuple:
-    """
-    НАСТОЯЩИЙ Provably Fair crash
-    - Стандартная crash-модель
-    - Хаус эйдж 5%
-    - Защита от экстремальных значений
-    """
+    """Provably Fair генерация краша"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     
     crash_nonce += 1
     rounds_since_seed_change += 1
     
-    # Меняем seed каждые 100 раундов (для безопасности)
     if rounds_since_seed_change >= ROUNDS_BEFORE_SEED_CHANGE:
         SERVER_SEED = str(uuid.uuid4())
         SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -153,30 +151,27 @@ def generate_crash_point() -> tuple:
     message = f"{SERVER_SEED}:{crash_nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
     
-    # Используем первые 16 символов хэша (64 бита)
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
     
-    # Стандартная crash-модель: crash_point = (1 - house_edge) / (1 - r)
     crash_point = (1 - CRASH_HOUSE_EDGE) / max(1e-9, (1 - r))
-    
-    # Защита от экстремальных значений
     crash_point = max(1.01, min(crash_point, 1000.0))
     
     return round(crash_point, 2), hash_hex
 
 async def crash_game_loop():
-    """Главный цикл — настоящий Provably Fair Crash"""
+    """Главный цикл краш-игры"""
     global crash_state
     
     while True:
-        # Фаза ставок (6 секунд)
+        # Сброс состояния раунда
         crash_state["status"] = "betting"
         crash_state["round_id"] = str(uuid.uuid4())[:8]
         crash_state["bets"] = {}
         crash_state["crash_point"], crash_state["hash"] = generate_crash_point()
         crash_state["start_time"] = 0
         crash_state["current_multiplier"] = 1.0
+        crash_state["crashed"] = False
         crash_state["timer_ends"] = time.time() + CRASH_BETTING_TIME
         
         await sio.emit('crash_state', {
@@ -190,7 +185,6 @@ async def crash_game_loop():
         
         await asyncio.sleep(CRASH_BETTING_TIME)
         
-        # Если никто не поставил — пропускаем
         if len(crash_state["bets"]) == 0:
             crash_state["status"] = "cooldown"
             await sio.emit('crash_state', {
@@ -201,7 +195,6 @@ async def crash_game_loop():
             await asyncio.sleep(CRASH_COOLDOWN)
             continue
         
-        # Фаза полёта
         crash_state["status"] = "flying"
         crash_state["start_time"] = time.time()
         
@@ -214,16 +207,17 @@ async def crash_game_loop():
             'total_amount': total_amount
         })
         
-        # Ракета летит с постоянной скоростью
         last_sent_mult = 1.0
         
         while True:
             elapsed = time.time() - crash_state["start_time"]
-            current_mult = round(1.00 * math.exp(CRASH_SPEED * elapsed), 2)
-            crash_state["current_multiplier"] = current_mult  # Серверный источник истины
+            # Храним как float без round
+            current_mult = 1.00 * math.exp(CRASH_SPEED * elapsed)
+            crash_state["current_multiplier"] = current_mult
             
-            # Проверка на краш
             if current_mult >= crash_state["crash_point"]:
+                # УСТАНАВЛИВАЕМ ФЛАГ КРАША
+                crash_state["crashed"] = True
                 crash_state["status"] = "crashed"
                 final_point = crash_state["crash_point"]
                 
@@ -232,7 +226,7 @@ async def crash_game_loop():
                     crash_state["history"] = crash_state["history"][:20]
                 
                 results = []
-                for uid, b in crash_state["bets"].items():
+                for key, b in crash_state["bets"].items():
                     cashed = b.get("cashed_out", False)
                     results.append({
                         'username': b['username'],
@@ -251,17 +245,16 @@ async def crash_game_loop():
                 })
                 break
             
-            # Эмитим только если множитель изменился >0.01 (оптимизация)
+            # round только для отправки
             if abs(current_mult - last_sent_mult) >= 0.01:
                 await sio.emit('crash_multiplier', {
-                    'multiplier': current_mult,
+                    'multiplier': round(current_mult, 2),
                     'elapsed': elapsed
                 })
                 last_sent_mult = current_mult
             
-            await asyncio.sleep(0.1)  # 10 FPS (меньше нагрузка)
+            await asyncio.sleep(0.1)
         
-        # Кулдаун
         crash_state["status"] = "cooldown"
         await sio.emit('crash_state', {
             'status': 'cooldown',
@@ -299,24 +292,40 @@ async def disconnect(sid):
 
 @sio.event
 async def place_bet(sid, data):
-    """Ставка через WebSocket (АТОМАРНАЯ ТРАНЗАКЦИЯ)"""
-    tg_id = data.get('tg_id')
-    bet = data.get('bet_amount', 0)
+    """Ставка: bet_amount всегда int, ключ через bet_key"""
+    try:
+        tg_id = int(data.get('tg_id', 0))
+    except (TypeError, ValueError):
+        await sio.emit('error', {'message': 'Неверный ID пользователя'}, to=sid)
+        return
+    
+    if tg_id <= 0:
+        await sio.emit('error', {'message': 'Неверный ID пользователя'}, to=sid)
+        return
+    
+    # bet_amount ВСЕГДА int
+    try:
+        bet = int(data.get('bet_amount', 0))
+    except (TypeError, ValueError):
+        await sio.emit('error', {'message': 'Неверная сумма ставки'}, to=sid)
+        return
+    
     username = data.get('username', 'Игрок')
+    round_id = crash_state["round_id"]
     
     if crash_state["status"] != "betting":
         await sio.emit('error', {'message': 'Ставки закрыты!'}, to=sid)
         return
     
     if bet < CRASH_MIN_BET or bet > CRASH_MAX_BET:
-        await sio.emit('error', {'message': f'Ставка от {CRASH_MIN_BET} до {CRASH_MAX_BET}'}, to=sid)
+        await sio.emit('error', {'message': f'Ставка от {CRASH_MIN_BET} до {CRASH_MAX_BET} ⭐️'}, to=sid)
         return
     
-    if str(tg_id) in crash_state["bets"]:
-        await sio.emit('error', {'message': 'Уже есть ставка'}, to=sid)
+    key = bet_key(tg_id, round_id)
+    if key in crash_state["bets"]:
+        await sio.emit('error', {'message': 'Уже есть ставка в этом раунде'}, to=sid)
         return
     
-    # АТОМАРНАЯ транзакция — защита от гонки
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
             UPDATE users 
@@ -333,9 +342,11 @@ async def place_bet(sid, data):
             row = await cursor.fetchone()
             new_balance = row[0] if row else 0
     
-    crash_state["bets"][str(tg_id)] = {
+    crash_state["bets"][key] = {
+        "tg_id": tg_id,
         "bet": bet,
         "username": username,
+        "round_id": round_id,
         "cashed_out": False,
         "cashed_at": 0,
         "sid": sid
@@ -345,7 +356,8 @@ async def place_bet(sid, data):
         'tg_id': tg_id,
         'username': username,
         'amount': bet,
-        'balance': new_balance
+        'balance': new_balance,
+        'round_id': round_id
     }, to=sid)
     
     await sio.emit('bets_update', {
@@ -355,29 +367,55 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    """Кешаут — использует СЕРВЕРНЫЙ множитель"""
-    tg_id = data.get('tg_id')
+    """
+    Кешаут — использует ТОЛЬКО crash_state["current_multiplier"]
+    НЕ пересчитывает через elapsed
+    Проверяет crash_state["crashed"]
+    """
+    try:
+        tg_id = int(data.get('tg_id', 0))
+    except (TypeError, ValueError):
+        await sio.emit('error', {'message': 'Неверный ID пользователя'}, to=sid)
+        return
     
+    if tg_id <= 0:
+        await sio.emit('error', {'message': 'Неверный ID пользователя'}, to=sid)
+        return
+    
+    round_id = crash_state["round_id"]
+    
+    # Проверка флага краша (вместо status)
+    if crash_state["crashed"]:
+        await sio.emit('error', {'message': 'Ракета уже упала! Слишком поздно.'}, to=sid)
+        return
+    
+    # Проверка что раунд идёт
     if crash_state["status"] != "flying":
-        await sio.emit('error', {'message': 'Не время для кешаута'}, to=sid)
+        await sio.emit('error', {'message': f'Не время для кешаута. Статус: {crash_state["status"]}'}, to=sid)
         return
     
-    str_id = str(tg_id)
-    if str_id not in crash_state["bets"]:
-        await sio.emit('error', {'message': 'Нет активной ставки'}, to=sid)
+    key = bet_key(tg_id, round_id)
+    bet_data = crash_state["bets"].get(key)
+    
+    if not bet_data:
+        await sio.emit('error', {'message': 'Нет активной ставки в этом раунде'}, to=sid)
         return
     
-    bet_data = crash_state["bets"][str_id]
-    if bet_data.get("cashed_out"):
-        await sio.emit('error', {'message': 'Уже забрали'}, to=sid)
+    if bet_data.get("round_id") != round_id:
+        await sio.emit('error', {'message': 'Ставка из прошлого раунда'}, to=sid)
         return
     
-    # ИСПОЛЬЗУЕМ СЕРВЕРНЫЙ МНОЖИТЕЛЬ (не вычисляем заново)
+    if bet_data["cashed_out"]:
+        await sio.emit('error', {'message': 'Вы уже забрали выигрыш'}, to=sid)
+        return
+    
+    # ИСПОЛЬЗУЕМ ТОЛЬКО СЕРВЕРНЫЙ МНОЖИТЕЛЬ (не пересчитываем)
     current_mult = crash_state["current_multiplier"]
+    crash_point = crash_state["crash_point"]
     
-    # Проверка: не крашнула ли ракета
-    if current_mult >= crash_state["crash_point"]:
-        await sio.emit('error', {'message': 'Слишком поздно! Ракета упала.'}, to=sid)
+    # Дополнительная проверка (на всякий случай)
+    if current_mult >= crash_point:
+        await sio.emit('error', {'message': 'Слишком поздно! Ракета уже упала.'}, to=sid)
         return
     
     win_amount = int(bet_data["bet"] * current_mult)
@@ -393,16 +431,17 @@ async def cashout(sid, data):
             new_balance = row[0] if row else 0
     
     await sio.emit('cashout_success', {
-        'multiplier': current_mult,
+        'multiplier': round(current_mult, 2),
         'win_amount': win_amount,
         'profit': win_amount - bet_data["bet"],
-        'balance': new_balance
+        'balance': new_balance,
+        'round_id': round_id
     }, to=sid)
     
     await sio.emit('player_cashout', {
         'username': bet_data["username"],
         'amount': bet_data["bet"],
-        'multiplier': current_mult,
+        'multiplier': round(current_mult, 2),
         'win': win_amount
     })
 
@@ -660,4 +699,4 @@ async def verify_crash(server_seed: str, nonce: int):
         "verified": True,
         "crash_point": round(crash_point, 2),
         "hash": hash_hex
-}
+                }
