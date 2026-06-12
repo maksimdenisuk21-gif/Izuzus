@@ -106,10 +106,10 @@ DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 # ========== PROVABLY FAIR CRASH ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
-CRASH_BETTING_TIME = 8
-CRASH_FLIGHT_SPEED = 0.06
+CRASH_BETTING_TIME = 5
+CRASH_FLIGHT_SPEED = 0.15
 CRASH_HOUSE_EDGE = 0.06
-CRASH_COOLDOWN = 3
+CRASH_COOLDOWN = 2
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -128,6 +128,7 @@ crash_state = {
 }
 
 def generate_crash_point(client_seed: str = "") -> tuple:
+    """Быстрые раунды, редко большие иксы"""
     global crash_nonce
     crash_nonce += 1
     
@@ -137,21 +138,22 @@ def generate_crash_point(client_seed: str = "") -> tuple:
     
     r = hash_int / (2**32 - 1)
     
-    if r < 0.70:
-        crash_point = round(1.01 + (r / 0.70) * 0.99, 2)
+    if r < 0.85:
+        crash_point = round(1.01 + (r / 0.85) * 0.49, 2)
     elif r < 0.95:
-        crash_point = round(2.0 + ((r - 0.70) / 0.25) * 8.0, 2)
+        crash_point = round(1.5 + ((r - 0.85) / 0.10) * 1.5, 2)
     elif r < 0.99:
-        crash_point = round(10.0 + ((r - 0.95) / 0.04) * 40.0, 2)
+        crash_point = round(3.0 + ((r - 0.95) / 0.04) * 7.0, 2)
     else:
-        crash_point = round(50.0 + ((r - 0.99) / 0.01) * 50.0, 2)
+        crash_point = round(10.0 + ((r - 0.99) / 0.01) * 40.0, 2)
     
     if random.random() < CRASH_HOUSE_EDGE * 0.5:
-        crash_point = round(random.uniform(1.01, 1.15), 2)
+        crash_point = round(random.uniform(1.01, 1.10), 2)
     
-    return min(crash_point, 100.0), hash_hex
+    return min(crash_point, 50.0), hash_hex
 
 async def crash_game_loop():
+    """Главный цикл краш-игры"""
     global crash_state, SERVER_SEED
     
     while True:
@@ -197,13 +199,14 @@ async def crash_game_loop():
         
         while True:
             elapsed = time.time() - crash_state["start_time"]
-            current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * 
-                               (1 - math.exp(-CRASH_FLIGHT_SPEED * elapsed)), 2)
+            progress = min(elapsed / 3.0, 1.0)
+            current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * progress, 2)
             
-            if current_mult >= crash_state["crash_point"]:
+            if current_mult >= crash_state["crash_point"] or elapsed > 5.0:
                 crash_state["status"] = "crashed"
+                final_point = min(current_mult, crash_state["crash_point"])
                 
-                crash_state["history"].insert(0, crash_state["crash_point"])
+                crash_state["history"].insert(0, final_point)
                 if len(crash_state["history"]) > 20:
                     crash_state["history"] = crash_state["history"][:20]
                 
@@ -219,7 +222,7 @@ async def crash_game_loop():
                     })
                 
                 await sio.emit('crash_end', {
-                    'crash_point': crash_state["crash_point"],
+                    'crash_point': final_point,
                     'hash': crash_state["hash"],
                     'server_seed': SERVER_SEED,
                     'nonce': crash_nonce,
@@ -275,8 +278,7 @@ async def disconnect(sid):
 
 @sio.event
 async def place_bet(sid, data):
-    print(f"\n🎯 PLACE_BET | SID: {sid} | Data: {data}")
-    
+    """Ставка через WebSocket"""
     tg_id = data.get('tg_id')
     bet = data.get('bet_amount', 0)
     username = data.get('username', 'Игрок')
@@ -311,8 +313,6 @@ async def place_bet(sid, data):
         "sid": sid
     }
     
-    print(f"✅ Ставка принята! TG_ID: {tg_id}, Сумма: {bet}, Всего ставок: {len(crash_state['bets'])}")
-    
     await sio.emit('bet_placed', {
         'tg_id': tg_id,
         'username': username,
@@ -327,47 +327,33 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    print(f"\n💰 CASHAUT | SID: {sid} | Data: {data}")
-    print(f"📊 Статус игры: {crash_state['status']}")
-    print(f"👥 Активные ставки: {list(crash_state['bets'].keys())}")
-    
+    """Кешаут через WebSocket (исправлено)"""
     tg_id = data.get('tg_id')
     
-    if not tg_id:
-        print(f"❌ Нет tg_id!")
-        await sio.emit('error', {'message': 'Ошибка: нет ID'}, to=sid)
-        return
-    
     if crash_state["status"] != "flying":
-        print(f"❌ Статус не flying: {crash_state['status']}")
-        await sio.emit('error', {'message': f'Не время! Статус: {crash_state["status"]}'}, to=sid)
+        await sio.emit('error', {'message': 'Не время для кешаута'}, to=sid)
         return
     
     str_id = str(tg_id)
-    print(f"🔍 Ищем ставку для: {str_id}")
-    
     if str_id not in crash_state["bets"]:
-        print(f"❌ Ставка не найдена! Доступные: {list(crash_state['bets'].keys())}")
-        await sio.emit('error', {'message': 'Нет активной ставки!'}, to=sid)
+        await sio.emit('error', {'message': 'Нет активной ставки'}, to=sid)
         return
     
     bet_data = crash_state["bets"][str_id]
-    print(f"✅ Ставка найдена: {bet_data['bet']}⭐️, cashed_out: {bet_data.get('cashed_out')}")
-    
     if bet_data.get("cashed_out"):
-        print(f"❌ Уже кешаутнули!")
-        await sio.emit('error', {'message': 'Уже забрали!'}, to=sid)
+        await sio.emit('error', {'message': 'Уже забрали'}, to=sid)
         return
     
     elapsed = time.time() - crash_state["start_time"]
-    current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * 
-                        (1 - math.exp(-CRASH_FLIGHT_SPEED * elapsed)), 2)
-    
-    print(f"📈 Множитель: {current_mult}, Краш: {crash_state['crash_point']}")
+    progress = min(elapsed / 3.0, 1.0)
+    current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * progress, 2)
     
     if current_mult >= crash_state["crash_point"]:
-        print(f"❌ Слишком поздно!")
-        await sio.emit('error', {'message': 'Слишком поздно! Ракета упала.'}, to=sid)
+        await sio.emit('error', {'message': 'Слишком поздно! Ракета уже упала.'}, to=sid)
+        return
+    
+    if elapsed > 5.0:
+        await sio.emit('error', {'message': 'Слишком поздно! Время вышло.'}, to=sid)
         return
     
     effective_mult = current_mult
@@ -377,10 +363,9 @@ async def cashout(sid, data):
         fee_applied = True
     
     win_amount = int(bet_data["bet"] * effective_mult)
+    
     bet_data["cashed_out"] = True
     bet_data["cashed_at"] = current_mult
-    
-    print(f"💰 Выигрыш: {win_amount}⭐️ (x{current_mult}, комиссия: {fee_applied})")
     
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (win_amount, tg_id))
@@ -388,9 +373,6 @@ async def cashout(sid, data):
         async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
             row = await cursor.fetchone()
             new_balance = row[0] if row else 0
-    
-    print(f"💳 Новый баланс: {new_balance}")
-    print(f"✅ CASHAUT SUCCESS!")
     
     await sio.emit('cashout_success', {
         'multiplier': current_mult,
@@ -650,24 +632,25 @@ async def crash_history():
 
 @app.get("/api/crash/verify")
 async def verify_crash(server_seed: str, client_seed: str, nonce: int):
+    """Проверка честности раунда"""
     message = f"{server_seed}:{client_seed}:{nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
     hash_int = int(hash_hex[:8], 16)
     r = hash_int / (2**32 - 1)
     
-    if r < 0.70:
-        crash_point = round(1.01 + (r / 0.70) * 0.99, 2)
+    if r < 0.85:
+        crash_point = round(1.01 + (r / 0.85) * 0.49, 2)
     elif r < 0.95:
-        crash_point = round(2.0 + ((r - 0.70) / 0.25) * 8.0, 2)
+        crash_point = round(1.5 + ((r - 0.85) / 0.10) * 1.5, 2)
     elif r < 0.99:
-        crash_point = round(10.0 + ((r - 0.95) / 0.04) * 40.0, 2)
+        crash_point = round(3.0 + ((r - 0.95) / 0.04) * 7.0, 2)
     else:
-        crash_point = round(50.0 + ((r - 0.99) / 0.01) * 50.0, 2)
+        crash_point = round(10.0 + ((r - 0.99) / 0.01) * 40.0, 2)
     
-    crash_point = min(crash_point, 100.0)
+    crash_point = min(crash_point, 50.0)
     
     return {
         "verified": True,
         "crash_point": round(crash_point, 2),
         "hash": hash_hex
-}
+    }
