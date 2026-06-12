@@ -1,4 +1,6 @@
 fastapi
 uvicorn
-python-telegram-bot==21.10
 aiosqlite
+httpx
+pydantic
+python-socketio
