@@ -103,17 +103,20 @@ CASE_DROPS = {
 
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
-# ========== PROVABLY FAIR CRASH ==========
+# ========== PROVABLY FAIR CRASH (НАСТОЯЩИЙ) ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
-CRASH_BETTING_TIME = 5
-CRASH_FLIGHT_SPEED = 0.15
-CRASH_HOUSE_EDGE = 0.06
-CRASH_COOLDOWN = 2
+CRASH_BETTING_TIME = 6
+CRASH_COOLDOWN = 3
+CRASH_HOUSE_EDGE = 0.05
+CRASH_SPEED = 0.08
 
+# SEED НЕ МЕНЯЕТСЯ КАЖДЫЙ РАУНД (commit-reveal)
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
 crash_nonce = 0
+ROUNDS_BEFORE_SEED_CHANGE = 100  # Меняем seed каждые 100 раундов
+rounds_since_seed_change = 0
 
 crash_state = {
     "status": "waiting",
@@ -124,44 +127,56 @@ crash_state = {
     "bets": {},
     "history": [],
     "timer_ends": 0,
-    "connected_users": set()
+    "connected_users": set(),
+    "current_multiplier": 1.0  # Серверный источник истины
 }
 
-def generate_crash_point(client_seed: str = "") -> tuple:
-    """Быстрые раунды, редко большие иксы"""
-    global crash_nonce
+def generate_crash_point() -> tuple:
+    """
+    НАСТОЯЩИЙ Provably Fair crash
+    - Стандартная crash-модель
+    - Хаус эйдж 5%
+    - Защита от экстремальных значений
+    """
+    global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
+    
     crash_nonce += 1
+    rounds_since_seed_change += 1
     
-    message = f"{SERVER_SEED}:{client_seed}:{crash_nonce}"
+    # Меняем seed каждые 100 раундов (для безопасности)
+    if rounds_since_seed_change >= ROUNDS_BEFORE_SEED_CHANGE:
+        SERVER_SEED = str(uuid.uuid4())
+        SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
+        crash_nonce = 0
+        rounds_since_seed_change = 0
+    
+    message = f"{SERVER_SEED}:{crash_nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
-    hash_int = int(hash_hex[:8], 16)
     
-    r = hash_int / (2**32 - 1)
+    # Используем первые 16 символов хэша (64 бита)
+    h = int(hash_hex[:16], 16)
+    r = h / (2**64)
     
-    if r < 0.85:
-        crash_point = round(1.01 + (r / 0.85) * 0.49, 2)
-    elif r < 0.95:
-        crash_point = round(1.5 + ((r - 0.85) / 0.10) * 1.5, 2)
-    elif r < 0.99:
-        crash_point = round(3.0 + ((r - 0.95) / 0.04) * 7.0, 2)
-    else:
-        crash_point = round(10.0 + ((r - 0.99) / 0.01) * 40.0, 2)
+    # Стандартная crash-модель: crash_point = (1 - house_edge) / (1 - r)
+    crash_point = (1 - CRASH_HOUSE_EDGE) / max(1e-9, (1 - r))
     
-    if random.random() < CRASH_HOUSE_EDGE * 0.5:
-        crash_point = round(random.uniform(1.01, 1.10), 2)
+    # Защита от экстремальных значений
+    crash_point = max(1.01, min(crash_point, 1000.0))
     
-    return min(crash_point, 50.0), hash_hex
+    return round(crash_point, 2), hash_hex
 
 async def crash_game_loop():
-    """Главный цикл краш-игры"""
-    global crash_state, SERVER_SEED
+    """Главный цикл — настоящий Provably Fair Crash"""
+    global crash_state
     
     while True:
+        # Фаза ставок (6 секунд)
         crash_state["status"] = "betting"
         crash_state["round_id"] = str(uuid.uuid4())[:8]
         crash_state["bets"] = {}
         crash_state["crash_point"], crash_state["hash"] = generate_crash_point()
         crash_state["start_time"] = 0
+        crash_state["current_multiplier"] = 1.0
         crash_state["timer_ends"] = time.time() + CRASH_BETTING_TIME
         
         await sio.emit('crash_state', {
@@ -175,6 +190,7 @@ async def crash_game_loop():
         
         await asyncio.sleep(CRASH_BETTING_TIME)
         
+        # Если никто не поставил — пропускаем
         if len(crash_state["bets"]) == 0:
             crash_state["status"] = "cooldown"
             await sio.emit('crash_state', {
@@ -185,6 +201,7 @@ async def crash_game_loop():
             await asyncio.sleep(CRASH_COOLDOWN)
             continue
         
+        # Фаза полёта
         crash_state["status"] = "flying"
         crash_state["start_time"] = time.time()
         
@@ -197,14 +214,18 @@ async def crash_game_loop():
             'total_amount': total_amount
         })
         
+        # Ракета летит с постоянной скоростью
+        last_sent_mult = 1.0
+        
         while True:
             elapsed = time.time() - crash_state["start_time"]
-            progress = min(elapsed / 3.0, 1.0)
-            current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * progress, 2)
+            current_mult = round(1.00 * math.exp(CRASH_SPEED * elapsed), 2)
+            crash_state["current_multiplier"] = current_mult  # Серверный источник истины
             
-            if current_mult >= crash_state["crash_point"] or elapsed > 5.0:
+            # Проверка на краш
+            if current_mult >= crash_state["crash_point"]:
                 crash_state["status"] = "crashed"
-                final_point = min(current_mult, crash_state["crash_point"])
+                final_point = crash_state["crash_point"]
                 
                 crash_state["history"].insert(0, final_point)
                 if len(crash_state["history"]) > 20:
@@ -230,15 +251,17 @@ async def crash_game_loop():
                 })
                 break
             
-            await sio.emit('crash_multiplier', {
-                'multiplier': current_mult,
-                'elapsed': elapsed
-            })
+            # Эмитим только если множитель изменился >0.01 (оптимизация)
+            if abs(current_mult - last_sent_mult) >= 0.01:
+                await sio.emit('crash_multiplier', {
+                    'multiplier': current_mult,
+                    'elapsed': elapsed
+                })
+                last_sent_mult = current_mult
             
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)  # 10 FPS (меньше нагрузка)
         
-        SERVER_SEED = str(uuid.uuid4())
-        
+        # Кулдаун
         crash_state["status"] = "cooldown"
         await sio.emit('crash_state', {
             'status': 'cooldown',
@@ -261,7 +284,6 @@ class UpdateWithdrawStatusRequest(BaseModel):
 # ========== SOCKET.IO EVENTS ==========
 @sio.event
 async def connect(sid, environ):
-    print(f"✅ CONNECT: {sid}")
     crash_state["connected_users"].add(sid)
     await sio.emit('crash_state', {
         'status': crash_state["status"],
@@ -273,12 +295,11 @@ async def connect(sid, environ):
 
 @sio.event
 async def disconnect(sid):
-    print(f"❌ DISCONNECT: {sid}")
     crash_state["connected_users"].discard(sid)
 
 @sio.event
 async def place_bet(sid, data):
-    """Ставка через WebSocket"""
+    """Ставка через WebSocket (АТОМАРНАЯ ТРАНЗАКЦИЯ)"""
     tg_id = data.get('tg_id')
     bet = data.get('bet_amount', 0)
     username = data.get('username', 'Игрок')
@@ -295,15 +316,22 @@ async def place_bet(sid, data):
         await sio.emit('error', {'message': 'Уже есть ставка'}, to=sid)
         return
     
+    # АТОМАРНАЯ транзакция — защита от гонки
     async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            UPDATE users 
+            SET balance = balance - ? 
+            WHERE tg_id = ? AND balance >= ?
+        """, (bet, tg_id, bet))
+        await db.commit()
+        
+        if cursor.rowcount == 0:
+            await sio.emit('error', {'message': 'Недостаточно монет'}, to=sid)
+            return
+        
         async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
             row = await cursor.fetchone()
-            if not row or row[0] < bet:
-                await sio.emit('error', {'message': 'Недостаточно монет'}, to=sid)
-                return
-            new_balance = row[0] - bet
-            await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
-            await db.commit()
+            new_balance = row[0] if row else 0
     
     crash_state["bets"][str(tg_id)] = {
         "bet": bet,
@@ -327,7 +355,7 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    """Кешаут через WebSocket (исправлено)"""
+    """Кешаут — использует СЕРВЕРНЫЙ множитель"""
     tg_id = data.get('tg_id')
     
     if crash_state["status"] != "flying":
@@ -344,25 +372,15 @@ async def cashout(sid, data):
         await sio.emit('error', {'message': 'Уже забрали'}, to=sid)
         return
     
-    elapsed = time.time() - crash_state["start_time"]
-    progress = min(elapsed / 3.0, 1.0)
-    current_mult = round(1.0 + (crash_state["crash_point"] - 1.0) * progress, 2)
+    # ИСПОЛЬЗУЕМ СЕРВЕРНЫЙ МНОЖИТЕЛЬ (не вычисляем заново)
+    current_mult = crash_state["current_multiplier"]
     
+    # Проверка: не крашнула ли ракета
     if current_mult >= crash_state["crash_point"]:
-        await sio.emit('error', {'message': 'Слишком поздно! Ракета уже упала.'}, to=sid)
+        await sio.emit('error', {'message': 'Слишком поздно! Ракета упала.'}, to=sid)
         return
     
-    if elapsed > 5.0:
-        await sio.emit('error', {'message': 'Слишком поздно! Время вышло.'}, to=sid)
-        return
-    
-    effective_mult = current_mult
-    fee_applied = False
-    if current_mult < 1.5:
-        effective_mult = round(current_mult * 0.85, 2)
-        fee_applied = True
-    
-    win_amount = int(bet_data["bet"] * effective_mult)
+    win_amount = int(bet_data["bet"] * current_mult)
     
     bet_data["cashed_out"] = True
     bet_data["cashed_at"] = current_mult
@@ -376,11 +394,9 @@ async def cashout(sid, data):
     
     await sio.emit('cashout_success', {
         'multiplier': current_mult,
-        'effective_multiplier': effective_mult,
         'win_amount': win_amount,
         'profit': win_amount - bet_data["bet"],
-        'balance': new_balance,
-        'fee_applied': fee_applied
+        'balance': new_balance
     }, to=sid)
     
     await sio.emit('player_cashout', {
@@ -631,26 +647,17 @@ async def crash_history():
     }
 
 @app.get("/api/crash/verify")
-async def verify_crash(server_seed: str, client_seed: str, nonce: int):
+async def verify_crash(server_seed: str, nonce: int):
     """Проверка честности раунда"""
-    message = f"{server_seed}:{client_seed}:{nonce}"
+    message = f"{server_seed}:{nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
-    hash_int = int(hash_hex[:8], 16)
-    r = hash_int / (2**32 - 1)
-    
-    if r < 0.85:
-        crash_point = round(1.01 + (r / 0.85) * 0.49, 2)
-    elif r < 0.95:
-        crash_point = round(1.5 + ((r - 0.85) / 0.10) * 1.5, 2)
-    elif r < 0.99:
-        crash_point = round(3.0 + ((r - 0.95) / 0.04) * 7.0, 2)
-    else:
-        crash_point = round(10.0 + ((r - 0.99) / 0.01) * 40.0, 2)
-    
-    crash_point = min(crash_point, 50.0)
+    h = int(hash_hex[:16], 16)
+    r = h / (2**64)
+    crash_point = (1 - CRASH_HOUSE_EDGE) / max(1e-9, (1 - r))
+    crash_point = max(1.01, min(crash_point, 1000.0))
     
     return {
         "verified": True,
         "crash_point": round(crash_point, 2),
         "hash": hash_hex
-    }
+}
