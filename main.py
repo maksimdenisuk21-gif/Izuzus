@@ -26,13 +26,11 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 
 DB_NAME = "database.db"
 
-# Цены покупки кейсов
 CASE_PRICES = {
     "star_micro": 50, "star_common": 150, "star_rare": 500, "star_epic": 2000,
     "ton_frogs": 80, "digital_resistance": 200, "pudgy_penguins": 600, "bored_apes": 2500
 }
 
-# 48 предметов (6 на каждый кейс)
 CASE_DROPS = {
     "star_micro": {
         "m1": ("🥉 Бронзовая Звезда", 10), "m2": ("🌀 Telegram Спиннер", 25), "m3": ("👍 Пиксельный Лайк", 45),
@@ -72,6 +70,9 @@ DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
 class OpenCaseRequest(BaseModel):
     case_type: str
+
+class SellItemRequest(BaseModel):
+    item_index: int
 
 class UpdateWithdrawStatusRequest(BaseModel):
     ticket_id: int
@@ -176,6 +177,31 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
         
     return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
 
+# ПРОДАЖА ОДНОГО ПРЕДМЕТА ПО ИНДЕКСУ
+@app.post("/api/inventory/sell_item")
+async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    user_info = await get_or_create_user(tg_id)
+    inventory = user_info["inventory"]
+    
+    if req.item_index < 0 or req.item_index >= len(inventory):
+        raise HTTPException(status_code=400, detail="Предмет не найден")
+        
+    item = inventory.pop(req.item_index)
+    c_type = item.get("case")
+    i_id = item.get("id")
+    
+    gain = 0
+    if c_type in CASE_DROPS and i_id in CASE_DROPS[c_type]:
+        gain = CASE_DROPS[c_type][i_id][1]
+        
+    new_balance = user_info["balance"] + gain
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = ?, inventory = ? WHERE tg_id = ?", (new_balance, json.dumps(inventory), tg_id))
+        await db.commit()
+        
+    return {"gain": gain, "balance": new_balance}
+
 @app.post("/api/inventory/sell_all")
 async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -206,7 +232,6 @@ async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
             return [{"username": r[0], "balance": r[1]} for r in rows]
 
-# РЕАЛЬНОЕ СОЗДАНИЕ ИНВОЙСА ЧЕРЕЗ TELEGRAM BOT API
 @app.post("/api/stars/buy")
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
