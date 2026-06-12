@@ -24,7 +24,9 @@ sio = socketio.AsyncServer(
     ping_timeout=10,
     ping_interval=5
 )
-socket_app = socketio.ASGIApp(sio, other_app=app)
+
+# Монтируем socket.io
+socket_app = socketio.ASGIApp(sio, app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,27 +128,20 @@ crash_state = {
 }
 
 def generate_crash_point(client_seed: str = "") -> tuple:
-    """Provably Fair генерация точки краша"""
     global crash_nonce
     crash_nonce += 1
-    
     message = f"{SERVER_SEED}:{client_seed}:{crash_nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
-    
     hash_int = int(hash_hex[:8], 16)
     e = 2.718281828459045
     crash_point = max(1.01, math.floor((100 * e ** (hash_int / (2**32 - 1) * 7))) / 100)
     crash_point = min(crash_point, 1000.0)
-    
     if random.random() < CRASH_HOUSE_EDGE * 0.3:
         crash_point = round(random.uniform(1.01, 1.10), 2)
-    
     return round(crash_point, 2), hash_hex
 
 async def crash_game_loop():
-    """Главный цикл с WebSocket уведомлениями"""
     global crash_state, SERVER_SEED
-    
     while True:
         crash_state["status"] = "betting"
         crash_state["round_id"] = str(uuid.uuid4())[:8]
@@ -156,13 +151,9 @@ async def crash_game_loop():
         crash_state["timer_ends"] = time.time() + CRASH_BETTING_TIME
         
         await sio.emit('crash_state', {
-            'status': 'betting',
-            'round_id': crash_state["round_id"],
-            'hash': crash_state["hash"],
-            'timer': CRASH_BETTING_TIME,
-            'bets_count': 0
+            'status': 'betting', 'round_id': crash_state["round_id"],
+            'hash': crash_state["hash"], 'timer': CRASH_BETTING_TIME, 'bets_count': 0
         })
-        
         await asyncio.sleep(CRASH_BETTING_TIME)
         
         if len(crash_state["bets"]) == 0:
@@ -175,8 +166,7 @@ async def crash_game_loop():
         crash_state["start_time"] = time.time()
         
         await sio.emit('crash_start', {
-            'round_id': crash_state["round_id"],
-            'hash': crash_state["hash"],
+            'round_id': crash_state["round_id"], 'hash': crash_state["hash"],
             'total_bets': len(crash_state["bets"]),
             'total_amount': sum(b["bet"] for b in crash_state["bets"].values())
         })
@@ -188,43 +178,29 @@ async def crash_game_loop():
             
             if current_mult >= crash_state["crash_point"]:
                 crash_state["status"] = "crashed"
-                
                 crash_state["history"].insert(0, crash_state["crash_point"])
                 if len(crash_state["history"]) > 20:
                     crash_state["history"] = crash_state["history"][:20]
                 
                 await sio.emit('crash_end', {
-                    'crash_point': crash_state["crash_point"],
-                    'hash': crash_state["hash"],
-                    'server_seed': SERVER_SEED,
-                    'nonce': crash_nonce,
-                    'bets': [
-                        {
-                            'username': b['username'],
-                            'amount': b['bet'],
-                            'cashed_out': b.get('cashed_out', False),
-                            'cashed_at': b.get('cashed_at', 0),
-                            'win': int(b['bet'] * b.get('cashed_at', 0)) if b.get('cashed_out') else 0
-                        }
-                        for b in crash_state["bets"].values()
-                    ]
+                    'crash_point': crash_state["crash_point"], 'hash': crash_state["hash"],
+                    'server_seed': SERVER_SEED, 'nonce': crash_nonce,
+                    'bets': [{
+                        'username': b['username'], 'amount': b['bet'],
+                        'cashed_out': b.get('cashed_out', False),
+                        'cashed_at': b.get('cashed_at', 0),
+                        'win': int(b['bet'] * b.get('cashed_at', 0)) if b.get('cashed_out') else 0
+                    } for b in crash_state["bets"].values()]
                 })
                 break
             
-            await sio.emit('crash_multiplier', {
-                'multiplier': current_mult,
-                'elapsed': elapsed
-            })
-            
+            await sio.emit('crash_multiplier', {'multiplier': current_mult, 'elapsed': elapsed})
             await asyncio.sleep(0.033)
         
         SERVER_SEED = str(uuid.uuid4())
-        
         crash_state["status"] = "cooldown"
         await sio.emit('crash_state', {
-            'status': 'cooldown',
-            'timer': CRASH_COOLDOWN,
-            'history': crash_state["history"][:10]
+            'status': 'cooldown', 'timer': CRASH_COOLDOWN, 'history': crash_state["history"][:10]
         })
         await asyncio.sleep(CRASH_COOLDOWN)
 
@@ -239,20 +215,14 @@ class UpdateWithdrawStatusRequest(BaseModel):
     ticket_id: int
     status: str
 
-class CrashBetMultiRequest(BaseModel):
-    bet_amount: int
-
 # ========== SOCKET.IO EVENTS ==========
 @sio.event
 async def connect(sid, environ):
-    print(f"Client connected: {sid}")
     crash_state["connected_users"].add(sid)
     await sio.emit('crash_state', {
-        'status': crash_state["status"],
-        'round_id': crash_state["round_id"],
+        'status': crash_state["status"], 'round_id': crash_state["round_id"],
         'timer': max(0, int(crash_state["timer_ends"] - time.time())),
-        'history': crash_state["history"][:10],
-        'bets_count': len(crash_state["bets"])
+        'history': crash_state["history"][:10], 'bets_count': len(crash_state["bets"])
     }, to=sid)
 
 @sio.event
@@ -261,7 +231,6 @@ async def disconnect(sid):
 
 @sio.event
 async def place_bet(sid, data):
-    """Ставка через WebSocket"""
     tg_id = data.get('tg_id')
     bet = data.get('bet_amount', 0)
     username = data.get('username', 'Игрок')
@@ -269,11 +238,9 @@ async def place_bet(sid, data):
     if crash_state["status"] != "betting":
         await sio.emit('error', {'message': 'Ставки закрыты!'}, to=sid)
         return
-    
     if bet < CRASH_MIN_BET or bet > CRASH_MAX_BET:
         await sio.emit('error', {'message': f'Ставка от {CRASH_MIN_BET} до {CRASH_MAX_BET}'}, to=sid)
         return
-    
     if str(tg_id) in crash_state["bets"]:
         await sio.emit('error', {'message': 'Уже есть ставка'}, to=sid)
         return
@@ -289,18 +256,11 @@ async def place_bet(sid, data):
             await db.commit()
     
     crash_state["bets"][str(tg_id)] = {
-        "bet": bet,
-        "username": username,
-        "cashed_out": False,
-        "cashed_at": 0,
-        "sid": sid
+        "bet": bet, "username": username, "cashed_out": False, "cashed_at": 0, "sid": sid
     }
     
     await sio.emit('bet_placed', {
-        'tg_id': tg_id,
-        'username': username,
-        'amount': bet,
-        'balance': new_balance
+        'tg_id': tg_id, 'username': username, 'amount': bet, 'balance': new_balance
     }, to=sid)
     
     await sio.emit('bets_update', {
@@ -310,7 +270,6 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    """Кешаут через WebSocket"""
     tg_id = data.get('tg_id')
     
     if crash_state["status"] != "flying":
@@ -339,7 +298,6 @@ async def cashout(sid, data):
         effective_mult = round(current_mult * 0.85, 2)
     
     win_amount = int(bet_data["bet"] * effective_mult)
-    
     bet_data["cashed_out"] = True
     bet_data["cashed_at"] = current_mult
     
@@ -350,19 +308,14 @@ async def cashout(sid, data):
             new_balance = (await cursor.fetchone())[0]
     
     await sio.emit('cashout_success', {
-        'multiplier': current_mult,
-        'effective_multiplier': effective_mult,
-        'win_amount': win_amount,
-        'profit': win_amount - bet_data["bet"],
-        'balance': new_balance,
-        'fee_applied': current_mult < 1.5
+        'multiplier': current_mult, 'effective_multiplier': effective_mult,
+        'win_amount': win_amount, 'profit': win_amount - bet_data["bet"],
+        'balance': new_balance, 'fee_applied': current_mult < 1.5
     }, to=sid)
     
     await sio.emit('player_cashout', {
-        'username': bet_data["username"],
-        'amount': bet_data["bet"],
-        'multiplier': current_mult,
-        'win': win_amount
+        'username': bet_data["username"], 'amount': bet_data["bet"],
+        'multiplier': current_mult, 'win': win_amount
     })
 
 # ========== STARTUP ==========
@@ -388,7 +341,6 @@ async def startup():
             )
         """)
         await db.commit()
-    
     asyncio.create_task(crash_game_loop())
 
 # ========== AUTH ==========
@@ -455,30 +407,23 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
     case_type = req.case_type
     if case_type not in CASE_PRICES:
         raise HTTPException(status_code=400, detail="Неизвестный тип кейса")
-        
     price = CASE_PRICES[case_type]
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
-    
     if user_info["balance"] < price:
         raise HTTPException(status_code=400, detail="Недостаточно монет")
-    
     case_pool = CASE_DROPS[case_type]
     item_ids = list(case_pool.keys())
-    
     reward_id = random.choices(item_ids, weights=DROP_WEIGHTS, k=1)[0]
     reward_name = case_pool[reward_id][0]
-    
     new_balance = user_info["balance"] - price
     user_info["inventory"].append({"id": reward_id, "name": reward_name, "case": case_type})
-    
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             "UPDATE users SET balance = ?, inventory = ? WHERE tg_id = ?",
             (new_balance, json.dumps(user_info["inventory"]), tg_id)
         )
         await db.commit()
-        
     return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
 
 # ========== INVENTORY ==========
@@ -487,23 +432,18 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
     inventory = user_info["inventory"]
-    
     if req.item_index < 0 or req.item_index >= len(inventory):
         raise HTTPException(status_code=400, detail="Предмет не найден")
-        
     item = inventory.pop(req.item_index)
     c_type = item.get("case")
     i_id = item.get("id")
-    
     gain = 0
     if c_type in CASE_DROPS and i_id in CASE_DROPS[c_type]:
         gain = CASE_DROPS[c_type][i_id][1]
-        
     new_balance = user_info["balance"] + gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = ?, inventory = ? WHERE tg_id = ?", (new_balance, json.dumps(inventory), tg_id))
         await db.commit()
-        
     return {"gain": gain, "balance": new_balance}
 
 @app.post("/api/inventory/sell_all")
@@ -513,19 +453,16 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     inventory = user_info["inventory"]
     if not inventory:
         raise HTTPException(status_code=400, detail="Инвентарь пуст")
-        
     total_gain = 0
     for item in inventory:
         c_type = item.get("case")
         i_id = item.get("id")
         if c_type in CASE_DROPS and i_id in CASE_DROPS[c_type]:
             total_gain += CASE_DROPS[c_type][i_id][1]
-            
     new_balance = user_info["balance"] + total_gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = ?, inventory = '[]' WHERE tg_id = ?", (new_balance, tg_id))
         await db.commit()
-        
     return {"gain": total_gain, "balance": new_balance}
 
 # ========== LEADERBOARD ==========
@@ -618,4 +555,4 @@ async def verify_crash(server_seed: str, client_seed: str, nonce: int):
         "verified": True,
         "crash_point": round(crash_point, 2),
         "hash": hash_hex
-    }
+                }
