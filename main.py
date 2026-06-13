@@ -111,6 +111,13 @@ CRASH_COOLDOWN = 3
 CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
 
+# ========== REFERRAL SYSTEM ==========
+REFERRAL_PERCENT = 7
+MAX_WITHDRAW_AMOUNT = 50000
+WITHDRAW_FEE = 0.05
+WITHDRAW_COOLDOWN_HOURS = 24
+MIN_DEPOSIT_FOR_REFERRAL = 50
+
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
 crash_nonce = 0
@@ -127,8 +134,8 @@ crash_state = {
     "history": [],
     "timer_ends": 0,
     "connected_users": set(),
-    "current_multiplier": 1.0,  # float без round для логики
-    "crashed": False  # ФЛАГ КРАША
+    "current_multiplier": 1.0,
+    "crashed": False
 }
 
 def bet_key(tg_id: int, round_id: str) -> str:
@@ -164,7 +171,6 @@ async def crash_game_loop():
     global crash_state
     
     while True:
-        # Сброс состояния раунда
         crash_state["status"] = "betting"
         crash_state["round_id"] = str(uuid.uuid4())[:8]
         crash_state["bets"] = {}
@@ -211,12 +217,10 @@ async def crash_game_loop():
         
         while True:
             elapsed = time.time() - crash_state["start_time"]
-            # Храним как float без round
             current_mult = 1.00 * math.exp(CRASH_SPEED * elapsed)
             crash_state["current_multiplier"] = current_mult
             
             if current_mult >= crash_state["crash_point"]:
-                # УСТАНАВЛИВАЕМ ФЛАГ КРАША
                 crash_state["crashed"] = True
                 crash_state["status"] = "crashed"
                 final_point = crash_state["crash_point"]
@@ -245,7 +249,6 @@ async def crash_game_loop():
                 })
                 break
             
-            # round только для отправки
             if abs(current_mult - last_sent_mult) >= 0.01:
                 await sio.emit('crash_multiplier', {
                     'multiplier': round(current_mult, 2),
@@ -273,6 +276,13 @@ class SellItemRequest(BaseModel):
 class UpdateWithdrawStatusRequest(BaseModel):
     ticket_id: int
     status: str
+
+class ReferralActivateRequest(BaseModel):
+    referrer_id: int
+
+class AdminGiveStarsRequest(BaseModel):
+    target_tg_id: int
+    amount: int
 
 # ========== SOCKET.IO EVENTS ==========
 @sio.event
@@ -303,7 +313,6 @@ async def place_bet(sid, data):
         await sio.emit('error', {'message': 'Неверный ID пользователя'}, to=sid)
         return
     
-    # bet_amount ВСЕГДА int
     try:
         bet = int(data.get('bet_amount', 0))
     except (TypeError, ValueError):
@@ -367,11 +376,7 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    """
-    Кешаут — использует ТОЛЬКО crash_state["current_multiplier"]
-    НЕ пересчитывает через elapsed
-    Проверяет crash_state["crashed"]
-    """
+    """Кешаут — использует ТОЛЬКО crash_state["current_multiplier"]"""
     try:
         tg_id = int(data.get('tg_id', 0))
     except (TypeError, ValueError):
@@ -384,12 +389,10 @@ async def cashout(sid, data):
     
     round_id = crash_state["round_id"]
     
-    # Проверка флага краша (вместо status)
     if crash_state["crashed"]:
         await sio.emit('error', {'message': 'Ракета уже упала! Слишком поздно.'}, to=sid)
         return
     
-    # Проверка что раунд идёт
     if crash_state["status"] != "flying":
         await sio.emit('error', {'message': f'Не время для кешаута. Статус: {crash_state["status"]}'}, to=sid)
         return
@@ -409,11 +412,9 @@ async def cashout(sid, data):
         await sio.emit('error', {'message': 'Вы уже забрали выигрыш'}, to=sid)
         return
     
-    # ИСПОЛЬЗУЕМ ТОЛЬКО СЕРВЕРНЫЙ МНОЖИТЕЛЬ (не пересчитываем)
     current_mult = crash_state["current_multiplier"]
     crash_point = crash_state["crash_point"]
     
-    # Дополнительная проверка (на всякий случай)
     if current_mult >= crash_point:
         await sio.emit('error', {'message': 'Слишком поздно! Ракета уже упала.'}, to=sid)
         return
@@ -465,6 +466,30 @@ async def startup():
                 requisites TEXT,
                 status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                user_id INTEGER PRIMARY KEY,
+                referrer_id INTEGER NOT NULL,
+                activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                total_earned INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS referral_earnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_id INTEGER NOT NULL,
+                referral_id INTEGER NOT NULL,
+                deposit_amount INTEGER NOT NULL,
+                earned INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS withdraw_cooldowns (
+                user_id INTEGER PRIMARY KEY,
+                last_withdraw_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         await db.commit()
@@ -521,13 +546,55 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
 # ========== ADMIN ==========
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
+    """Админ получает 10000 звёзд себе"""
     tg_id = user.get('id')
     if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = balance + 10000 WHERE tg_id = ?", (tg_id,))
         await db.commit()
-    return {"success": True}
+    return {"success": True, "message": "✅ +10,000 Stars на ваш баланс"}
+
+@app.post("/api/admin/give_stars_to_user")
+async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
+    """Админ выдаёт звёзды любому игроку по TG ID"""
+    tg_id = user.get('id')
+    
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    target_id = req.target_tg_id
+    amount = req.amount
+    
+    if target_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID пользователя")
+    if amount < 1:
+        raise HTTPException(status_code=400, detail="Сумма должна быть больше 0")
+    if amount > 1000000:
+        raise HTTPException(status_code=400, detail="Максимальная сумма: 1,000,000 ⭐️")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO users (tg_id, username, balance, inventory) VALUES (?, ?, 20, '[]')",
+            (target_id, f"Player_{target_id}")
+        )
+        
+        await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (amount, target_id))
+        await db.commit()
+        
+        async with db.execute("SELECT username, balance FROM users WHERE tg_id = ?", (target_id,)) as cursor:
+            row = await cursor.fetchone()
+            target_username = row[0] if row else f"Player_{target_id}"
+            target_balance = row[1] if row else amount
+    
+    return {
+        "success": True,
+        "message": f"✅ Выдано {amount} ⭐️ игроку {target_username} (ID: {target_id})",
+        "target_tg_id": target_id,
+        "target_username": target_username,
+        "amount": amount,
+        "new_balance": target_balance
+    }
 
 # ========== CASES ==========
 @app.post("/api/case/open")
@@ -621,11 +688,13 @@ async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
         raise HTTPException(status_code=400, detail="Минимальное пополнение — 50 Stars")
+    
+    tg_id = user.get('id')
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/createInvoiceLink"
     payload = {
         "title": "Пополнение баланса",
         "description": f"Покупка {stars_amount} монет Stars для открытия кейсов",
-        "payload": f"deposit_{user.get('id')}_{stars_amount}",
+        "payload": f"deposit_{tg_id}_{stars_amount}",
         "provider_token": "", 
         "currency": "XTR",
         "prices": [{"label": "Stars", "amount": stars_amount}]
@@ -634,25 +703,95 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
         res = await client.post(url, json=payload)
         res_data = res.json()
         if res_data.get("ok"):
+            # Начисляем реферальное вознаграждение
+            if stars_amount >= MIN_DEPOSIT_FOR_REFERRAL:
+                async with aiosqlite.connect(DB_NAME) as db:
+                    async with db.execute("SELECT referrer_id FROM referrals WHERE user_id = ?", (tg_id,)) as cursor:
+                        ref = await cursor.fetchone()
+                        if ref:
+                            referrer_id = ref[0]
+                            earned = int(stars_amount * REFERRAL_PERCENT / 100)
+                            await db.execute(
+                                "UPDATE users SET balance = balance + ? WHERE tg_id = ?",
+                                (earned, referrer_id)
+                            )
+                            await db.execute(
+                                "UPDATE referrals SET total_earned = total_earned + ? WHERE user_id = ?",
+                                (earned, tg_id)
+                            )
+                            await db.execute(
+                                "INSERT INTO referral_earnings (referrer_id, referral_id, deposit_amount, earned) VALUES (?, ?, ?, ?)",
+                                (referrer_id, tg_id, stars_amount, earned)
+                            )
+                            await db.commit()
+                            
+                            await sio.emit('referral_update', {
+                                'user_id': referrer_id,
+                                'earned': earned,
+                                'total_earned': earned
+                            })
+            
             return {"invoice_url": res_data["result"]}
         else:
             raise HTTPException(status_code=500, detail="Ошибка генерации Telegram Invoice")
 
-# ========== WITHDRAW ==========
+# ========== WITHDRAW (с защитами) ==========
 @app.post("/api/withdraw")
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    
     if amount < 100:
         raise HTTPException(status_code=400, detail="Минимальный вывод — 100 Stars")
-    tg_id = user.get('id')
+    if amount > MAX_WITHDRAW_AMOUNT:
+        raise HTTPException(status_code=400, detail=f"Максимальный вывод — {MAX_WITHDRAW_AMOUNT} Stars")
+    
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < amount:
         raise HTTPException(status_code=400, detail="Недостаточно монет")
-    new_balance = user_info["balance"] - amount
+    
     async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT last_withdraw_at FROM withdraw_cooldowns WHERE user_id = ?", (tg_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                last_withdraw = row[0]
+                try:
+                    last_ts = time.mktime(time.strptime(last_withdraw, "%Y-%m-%d %H:%M:%S"))
+                except:
+                    last_ts = 0
+                
+                if time.time() - last_ts < WITHDRAW_COOLDOWN_HOURS * 3600:
+                    hours_left = int((WITHDRAW_COOLDOWN_HOURS * 3600 - (time.time() - last_ts)) / 3600)
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Следующий вывод через {hours_left} ч. (кулдаун {WITHDRAW_COOLDOWN_HOURS} ч.)"
+                    )
+        
+        fee = int(amount * WITHDRAW_FEE)
+        payout = amount - fee
+        
+        new_balance = user_info["balance"] - amount
+        
         await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
-        await db.execute("INSERT INTO withdraws (tg_id, amount, requisites, status) VALUES (?, ?, ?, 'pending')", (tg_id, amount, wallet))
+        await db.execute(
+            "INSERT INTO withdraws (tg_id, amount, requisites, status) VALUES (?, ?, ?, 'pending')",
+            (tg_id, amount, wallet)
+        )
+        
+        await db.execute(
+            "INSERT OR REPLACE INTO withdraw_cooldowns (user_id, last_withdraw_at) VALUES (?, CURRENT_TIMESTAMP)",
+            (tg_id,)
+        )
+        
         await db.commit()
-    return {"status": "pending", "payout": amount, "new_balance": new_balance}
+    
+    return {
+        "status": "pending", 
+        "payout": payout, 
+        "fee": fee,
+        "new_balance": new_balance
+    }
 
 @app.get("/api/admin/withdraws")
 async def get_admin_withdraws(user: dict = Depends(verify_telegram_data)):
@@ -677,6 +816,69 @@ async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = 
         await db.commit()
     return {"success": True, "new_status": req.status}
 
+# ========== REFERRAL ENDPOINTS ==========
+@app.post("/api/referral/activate")
+async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(verify_telegram_data)):
+    """Активация реферальной связи"""
+    user_id = user.get('id')
+    referrer_id = req.referrer_id
+    
+    if user_id == referrer_id:
+        raise HTTPException(status_code=400, detail="Нельзя быть своим реферером")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT tg_id FROM users WHERE tg_id = ?", (referrer_id,)) as cursor:
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Реферер не найден")
+        
+        async with db.execute("SELECT referrer_id FROM referrals WHERE user_id = ?", (user_id,)) as cursor:
+            if await cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Реферал уже активирован")
+        
+        await db.execute(
+            "INSERT INTO referrals (user_id, referrer_id) VALUES (?, ?)",
+            (user_id, referrer_id)
+        )
+        await db.commit()
+    
+    return {"success": True, "referrer_id": referrer_id}
+
+@app.get("/api/referral/stats")
+async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
+    """Статистика реферальной системы"""
+    tg_id = user.get('id')
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT total_earned FROM referrals WHERE user_id = ?", (tg_id,)) as cursor:
+            earned = await cursor.fetchone()
+            total_earned = earned[0] if earned else 0
+        
+        async with db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (tg_id,)) as cursor:
+            count = await cursor.fetchone()
+            referrals_count = count[0] if count else 0
+        
+        async with db.execute(
+            "SELECT referral_id, deposit_amount, earned, created_at FROM referral_earnings WHERE referrer_id = ? ORDER BY created_at DESC LIMIT 20",
+            (tg_id,)
+        ) as cursor:
+            history = await cursor.fetchall()
+            earnings_history = [
+                {
+                    "referral_id": r[0],
+                    "deposit": r[1],
+                    "earned": r[2],
+                    "date": r[3]
+                }
+                for r in history
+            ]
+    
+    return {
+        "total_earned": total_earned,
+        "referrals_count": referrals_count,
+        "percent": REFERRAL_PERCENT,
+        "history": earnings_history
+    }
+
 # ========== CRASH HTTP ENDPOINTS ==========
 @app.get("/api/crash/history")
 async def crash_history():
@@ -699,4 +901,4 @@ async def verify_crash(server_seed: str, nonce: int):
         "verified": True,
         "crash_point": round(crash_point, 2),
         "hash": hash_hex
-                }
+        }
