@@ -111,6 +111,36 @@ CRASH_COOLDOWN = 3
 CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
 
+# ========== MINES GAME ==========
+MINES_GRID_SIZE = 5
+MINES_MIN_COUNT = 3
+MINES_MAX_COUNT = 20
+MINES_HOUSE_EDGE = 0.03
+
+active_mines_games: dict = {}
+
+def generate_mines_grid(mines_count: int) -> list:
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    grid = [0] * total_cells
+    mine_positions = random.sample(range(total_cells), mines_count)
+    for pos in mine_positions:
+        grid[pos] = 1
+    return grid
+
+def calculate_mines_multiplier(mines_count: int, opened: int) -> float:
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    safe_cells = total_cells - mines_count
+    
+    if opened >= safe_cells:
+        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
+    
+    probability = 1.0
+    for i in range(opened):
+        probability *= (safe_cells - i) / (total_cells - i)
+    
+    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
+    return round(multiplier, 2)
+
 # ========== REFERRAL SYSTEM ==========
 REFERRAL_PERCENT = 7
 MAX_WITHDRAW_AMOUNT = 50000
@@ -139,11 +169,9 @@ crash_state = {
 }
 
 def bet_key(tg_id: int, round_id: str) -> str:
-    """Единый ключ ставки: tg_id:round_id"""
     return f"{tg_id}:{round_id}"
 
 def generate_crash_point() -> tuple:
-    """Provably Fair генерация краша — ХАУС ЭЙДЖ 5%"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     
     crash_nonce += 1
@@ -179,7 +207,6 @@ def generate_crash_point() -> tuple:
     return min(crash_point, 50.0), hash_hex
 
 async def crash_game_loop():
-    """Главный цикл краш-игры"""
     global crash_state
     
     while True:
@@ -295,6 +322,17 @@ class ReferralActivateRequest(BaseModel):
 class AdminGiveStarsRequest(BaseModel):
     target_tg_id: int
     amount: int
+
+class MinesStartRequest(BaseModel):
+    bet_amount: int
+    mines_count: int
+
+class MinesOpenRequest(BaseModel):
+    game_id: str
+    cell_index: int
+
+class MinesCashoutRequest(BaseModel):
+    game_id: str
 
 # ========== SOCKET.IO EVENTS ==========
 @sio.event
@@ -878,6 +916,173 @@ async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
         "history": earnings_history
     }
 
+# ========== MINES ENDPOINTS ==========
+@app.post("/api/mines/start")
+async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegram_data)):
+    """Начать игру в мины"""
+    tg_id = user.get('id')
+    bet = req.bet_amount
+    mines_count = req.mines_count
+    
+    if bet < 10:
+        raise HTTPException(status_code=400, detail="Минимальная ставка — 10 ⭐️")
+    if bet > 50000:
+        raise HTTPException(status_code=400, detail="Максимальная ставка — 50,000 ⭐️")
+    if mines_count < MINES_MIN_COUNT or mines_count > MINES_MAX_COUNT:
+        raise HTTPException(status_code=400, detail=f"Количество мин от {MINES_MIN_COUNT} до {MINES_MAX_COUNT}")
+    
+    if tg_id in active_mines_games:
+        raise HTTPException(status_code=400, detail="У вас уже есть активная игра. Завершите её.")
+    
+    user_info = await get_or_create_user(tg_id)
+    if user_info["balance"] < bet:
+        raise HTTPException(status_code=400, detail="Недостаточно монет")
+    
+    new_balance = user_info["balance"] - bet
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
+        await db.commit()
+    
+    grid = generate_mines_grid(mines_count)
+    game_id = str(uuid.uuid4())[:8]
+    
+    active_mines_games[tg_id] = {
+        "game_id": game_id,
+        "bet": bet,
+        "mines_count": mines_count,
+        "grid": grid,
+        "opened": [],
+        "cashed_out": False,
+        "current_multiplier": 1.0
+    }
+    
+    return {
+        "game_id": game_id,
+        "bet": bet,
+        "mines_count": mines_count,
+        "balance": new_balance,
+        "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE,
+        "safe_cells": (MINES_GRID_SIZE * MINES_GRID_SIZE) - mines_count
+    }
+
+@app.post("/api/mines/open")
+async def mines_open_cell(req: MinesOpenRequest, user: dict = Depends(verify_telegram_data)):
+    """Открыть клетку"""
+    tg_id = user.get('id')
+    
+    if tg_id not in active_mines_games:
+        raise HTTPException(status_code=400, detail="Нет активной игры")
+    
+    game = active_mines_games[tg_id]
+    
+    if game["game_id"] != req.game_id:
+        raise HTTPException(status_code=400, detail="Неверный ID игры")
+    
+    if game["cashed_out"]:
+        raise HTTPException(status_code=400, detail="Игра уже завершена")
+    
+    cell_index = req.cell_index
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    
+    if cell_index < 0 or cell_index >= total_cells:
+        raise HTTPException(status_code=400, detail="Неверный номер клетки")
+    
+    if cell_index in game["opened"]:
+        raise HTTPException(status_code=400, detail="Клетка уже открыта")
+    
+    if game["grid"][cell_index] == 1:
+        game["cashed_out"] = True
+        mines_positions = [i for i, v in enumerate(game["grid"]) if v == 1]
+        del active_mines_games[tg_id]
+        
+        return {
+            "status": "bomb",
+            "cell_index": cell_index,
+            "opened": game["opened"],
+            "mines": mines_positions,
+            "win_amount": 0,
+            "balance": (await get_or_create_user(tg_id))["balance"]
+        }
+    
+    game["opened"].append(cell_index)
+    opened_count = len(game["opened"])
+    multiplier = calculate_mines_multiplier(game["mines_count"], opened_count)
+    game["current_multiplier"] = multiplier
+    
+    return {
+        "status": "safe",
+        "cell_index": cell_index,
+        "opened": game["opened"],
+        "opened_count": opened_count,
+        "current_multiplier": multiplier
+    }
+
+@app.post("/api/mines/cashout")
+async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_telegram_data)):
+    """Забрать выигрыш в минах"""
+    tg_id = user.get('id')
+    
+    if tg_id not in active_mines_games:
+        raise HTTPException(status_code=400, detail="Нет активной игры")
+    
+    game = active_mines_games[tg_id]
+    
+    if game["game_id"] != req.game_id:
+        raise HTTPException(status_code=400, detail="Неверный ID игры")
+    
+    if game["cashed_out"]:
+        raise HTTPException(status_code=400, detail="Игра уже завершена")
+    
+    if len(game["opened"]) == 0:
+        raise HTTPException(status_code=400, detail="Откройте хотя бы 1 клетку")
+    
+    multiplier = game["current_multiplier"]
+    win_amount = int(game["bet"] * multiplier)
+    
+    game["cashed_out"] = True
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (win_amount, tg_id))
+        await db.commit()
+        async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
+            row = await cursor.fetchone()
+            new_balance = row[0] if row else 0
+    
+    mines_positions = [i for i, v in enumerate(game["grid"]) if v == 1]
+    
+    del active_mines_games[tg_id]
+    
+    return {
+        "status": "cashed_out",
+        "multiplier": multiplier,
+        "win_amount": win_amount,
+        "profit": win_amount - game["bet"],
+        "balance": new_balance,
+        "opened": game["opened"],
+        "mines": mines_positions
+    }
+
+@app.get("/api/mines/state")
+async def mines_get_state(user: dict = Depends(verify_telegram_data)):
+    """Получить состояние текущей игры в мины"""
+    tg_id = user.get('id')
+    
+    if tg_id not in active_mines_games:
+        return {"active": False}
+    
+    game = active_mines_games[tg_id]
+    
+    return {
+        "active": True,
+        "game_id": game["game_id"],
+        "bet": game["bet"],
+        "mines_count": game["mines_count"],
+        "opened": game["opened"],
+        "current_multiplier": game["current_multiplier"],
+        "cashed_out": game["cashed_out"],
+        "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE
+    }
+
 # ========== CRASH HTTP ENDPOINTS ==========
 @app.get("/api/crash/history")
 async def crash_history():
@@ -914,4 +1119,4 @@ async def verify_crash(server_seed: str, nonce: int):
         "verified": True,
         "crash_point": crash_point,
         "hash": hash_hex
-    }
+        }
