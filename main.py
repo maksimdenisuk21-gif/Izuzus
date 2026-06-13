@@ -103,12 +103,12 @@ CASE_DROPS = {
 
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
-# ========== PROVABLY FAIR CRASH ==========
+# ========== PROVABLY FAIR CRASH (ХАУС ЭЙДЖ 6%) ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.05
+CRASH_HOUSE_EDGE = 0.06
 CRASH_SPEED = 0.08
 
 # ========== REFERRAL SYSTEM ==========
@@ -143,7 +143,7 @@ def bet_key(tg_id: int, round_id: str) -> str:
     return f"{tg_id}:{round_id}"
 
 def generate_crash_point() -> tuple:
-    """Provably Fair генерация краша"""
+    """Provably Fair генерация краша — ХАУС ЭЙДЖ 6%"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     
     crash_nonce += 1
@@ -161,10 +161,23 @@ def generate_crash_point() -> tuple:
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
     
-    crash_point = (1 - CRASH_HOUSE_EDGE) / max(1e-9, (1 - r))
-    crash_point = max(1.01, min(crash_point, 1000.0))
+    # ХАУС ЭЙДЖ 6% — реалистичные шансы
+    if r < 0.30:  # 30% шанс x1.01-x1.10 (инстант-краш)
+        crash_point = round(1.01 + (r / 0.30) * 0.09, 2)
+    elif r < 0.60:  # 30% шанс x1.10-x1.30
+        crash_point = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
+    elif r < 0.82:  # 22% шанс x1.30-x1.80
+        crash_point = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
+    elif r < 0.94:  # 12% шанс x1.80-x3.00
+        crash_point = round(1.80 + ((r - 0.82) / 0.12) * 1.20, 2)
+    elif r < 0.98:  # 4% шанс x3.00-x8.00
+        crash_point = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
+    elif r < 0.995:  # 1.5% шанс x8.00-x20.00
+        crash_point = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
+    else:  # 0.5% шанс x20.00-x50.00
+        crash_point = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
     
-    return round(crash_point, 2), hash_hex
+    return min(crash_point, 50.0), hash_hex
 
 async def crash_game_loop():
     """Главный цикл краш-игры"""
@@ -703,7 +716,6 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
         res = await client.post(url, json=payload)
         res_data = res.json()
         if res_data.get("ok"):
-            # Начисляем реферальное вознаграждение
             if stars_amount >= MIN_DEPOSIT_FOR_REFERRAL:
                 async with aiosqlite.connect(DB_NAME) as db:
                     async with db.execute("SELECT referrer_id FROM referrals WHERE user_id = ?", (tg_id,)) as cursor:
@@ -724,18 +736,12 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
                                 (referrer_id, tg_id, stars_amount, earned)
                             )
                             await db.commit()
-                            
-                            await sio.emit('referral_update', {
-                                'user_id': referrer_id,
-                                'earned': earned,
-                                'total_earned': earned
-                            })
             
             return {"invoice_url": res_data["result"]}
         else:
             raise HTTPException(status_code=500, detail="Ошибка генерации Telegram Invoice")
 
-# ========== WITHDRAW (с защитами) ==========
+# ========== WITHDRAW ==========
 @app.post("/api/withdraw")
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -765,7 +771,7 @@ async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_
                     hours_left = int((WITHDRAW_COOLDOWN_HOURS * 3600 - (time.time() - last_ts)) / 3600)
                     raise HTTPException(
                         status_code=400, 
-                        detail=f"Следующий вывод через {hours_left} ч. (кулдаун {WITHDRAW_COOLDOWN_HOURS} ч.)"
+                        detail=f"Следующий вывод через {hours_left} ч."
                     )
         
         fee = int(amount * WITHDRAW_FEE)
@@ -819,7 +825,6 @@ async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = 
 # ========== REFERRAL ENDPOINTS ==========
 @app.post("/api/referral/activate")
 async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(verify_telegram_data)):
-    """Активация реферальной связи"""
     user_id = user.get('id')
     referrer_id = req.referrer_id
     
@@ -845,7 +850,6 @@ async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(v
 
 @app.get("/api/referral/stats")
 async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
-    """Статистика реферальной системы"""
     tg_id = user.get('id')
     
     async with aiosqlite.connect(DB_NAME) as db:
@@ -889,16 +893,30 @@ async def crash_history():
 
 @app.get("/api/crash/verify")
 async def verify_crash(server_seed: str, nonce: int):
-    """Проверка честности раунда"""
     message = f"{server_seed}:{nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
-    crash_point = (1 - CRASH_HOUSE_EDGE) / max(1e-9, (1 - r))
-    crash_point = max(1.01, min(crash_point, 1000.0))
+    
+    if r < 0.30:
+        crash_point = round(1.01 + (r / 0.30) * 0.09, 2)
+    elif r < 0.60:
+        crash_point = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
+    elif r < 0.82:
+        crash_point = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
+    elif r < 0.94:
+        crash_point = round(1.80 + ((r - 0.82) / 0.12) * 1.20, 2)
+    elif r < 0.98:
+        crash_point = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
+    elif r < 0.995:
+        crash_point = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
+    else:
+        crash_point = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
+    
+    crash_point = min(crash_point, 50.0)
     
     return {
         "verified": True,
-        "crash_point": round(crash_point, 2),
+        "crash_point": crash_point,
         "hash": hash_hex
-        }
+                }
