@@ -103,12 +103,12 @@ CASE_DROPS = {
 
 DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 
-# ========== PROVABLY FAIR CRASH (ХАУС ЭЙДЖ 6%) ==========
+# ========== PROVABLY FAIR CRASH (ХАУС ЭЙДЖ 5%) ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.06
+CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
 
 # ========== REFERRAL SYSTEM ==========
@@ -143,7 +143,7 @@ def bet_key(tg_id: int, round_id: str) -> str:
     return f"{tg_id}:{round_id}"
 
 def generate_crash_point() -> tuple:
-    """Provably Fair генерация краша — ХАУС ЭЙДЖ 6%"""
+    """Provably Fair генерация краша — ХАУС ЭЙДЖ 5%"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     
     crash_nonce += 1
@@ -161,20 +161,19 @@ def generate_crash_point() -> tuple:
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
     
-    # ХАУС ЭЙДЖ 6% — реалистичные шансы
-    if r < 0.30:  # 30% шанс x1.01-x1.10 (инстант-краш)
+    if r < 0.30:
         crash_point = round(1.01 + (r / 0.30) * 0.09, 2)
-    elif r < 0.60:  # 30% шанс x1.10-x1.30
+    elif r < 0.60:
         crash_point = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
-    elif r < 0.82:  # 22% шанс x1.30-x1.80
+    elif r < 0.82:
         crash_point = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
-    elif r < 0.94:  # 12% шанс x1.80-x3.00
+    elif r < 0.94:
         crash_point = round(1.80 + ((r - 0.82) / 0.12) * 1.20, 2)
-    elif r < 0.98:  # 4% шанс x3.00-x8.00
+    elif r < 0.98:
         crash_point = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
-    elif r < 0.995:  # 1.5% шанс x8.00-x20.00
+    elif r < 0.995:
         crash_point = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
-    else:  # 0.5% шанс x20.00-x50.00
+    else:
         crash_point = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
     
     return min(crash_point, 50.0), hash_hex
@@ -315,7 +314,6 @@ async def disconnect(sid):
 
 @sio.event
 async def place_bet(sid, data):
-    """Ставка: bet_amount всегда int, ключ через bet_key"""
     try:
         tg_id = int(data.get('tg_id', 0))
     except (TypeError, ValueError):
@@ -389,7 +387,6 @@ async def place_bet(sid, data):
 
 @sio.event
 async def cashout(sid, data):
-    """Кешаут — использует ТОЛЬКО crash_state["current_multiplier"]"""
     try:
         tg_id = int(data.get('tg_id', 0))
     except (TypeError, ValueError):
@@ -559,7 +556,6 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
 # ========== ADMIN ==========
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
-    """Админ получает 10000 звёзд себе"""
     tg_id = user.get('id')
     if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
@@ -570,7 +566,6 @@ async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
 
 @app.post("/api/admin/give_stars_to_user")
 async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
-    """Админ выдаёт звёзды любому игроку по TG ID"""
     tg_id = user.get('id')
     
     if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
@@ -919,4 +914,4 @@ async def verify_crash(server_seed: str, nonce: int):
         "verified": True,
         "crash_point": crash_point,
         "hash": hash_hex
-                }
+    }
