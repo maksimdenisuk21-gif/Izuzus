@@ -83,28 +83,28 @@ NFT_CASE_PRICES = {
 
 NFT_CASE_DROPS = {
     "nft_case_1": {
-        "n1_1": ("🔮 Crystal Ball", 20), "n1_2": ("🍀 Lucky Clover", 35), "n1_3": ("💝 Heart Pendant", 55),
-        "n1_4": ("🎄 Candy Cane", 80), "n1_5": ("🦉 Cyber Owl", 130), "n1_6": ("👑 Golden Crown", 250)
+        "n1_1": ("💎 Blood Gem", 20), "n1_2": ("💜 Amethyst", 35), "n1_3": ("💙 Sapphire", 55),
+        "n1_4": ("💍 Princess Cut", 80), "n1_5": ("👑 King Midas", 130), "n1_6": ("💚 Kryptonite", 250)
     },
     "nft_case_2": {
-        "n2_1": ("💎 Diamond Dog", 45), "n2_2": ("🌟 Astral Shard", 75), "n2_3": ("🗝️ Golden Key", 120),
-        "n2_4": ("🐉 Baby Dragon", 190), "n2_5": ("📜 Ancient Scroll", 300), "n2_6": ("💍 Sapphire Star", 500)
+        "n2_1": ("🐱 Scared Cat", 45), "n2_2": ("👻 Spooky Cat", 75), "n2_3": ("🐟 Fish Skeleton Cat", 120),
+        "n2_4": ("🦇 Bat Cat", 190), "n2_5": ("🦠 Virus Cat", 300), "n2_6": ("👾 Glitch Cat", 500)
     },
     "nft_case_3": {
-        "n3_1": ("🎭 Shadow Mask", 90), "n3_2": ("🌙 Moon Pendant", 150), "n3_3": ("⚡ Thunder Sphere", 240),
-        "n3_4": ("🔥 Phoenix Feather", 380), "n3_5": ("🧊 Frost Crystal", 600), "n3_6": ("🏆 Golden Ticket", 1000)
+        "n3_1": ("🔵 Evil Eye Blue", 90), "n3_2": ("🟢 Evil Eye Green", 150), "n3_3": ("🔴 Evil Eye Red", 240),
+        "n3_4": ("🟡 Evil Eye Gold", 380), "n3_5": ("⚫ Evil Eye Black", 600), "n3_6": ("💎 Evil Eye Crystal", 1000)
     },
     "nft_case_4": {
-        "n4_1": ("🤖 Neon Skull", 180), "n4_2": ("🛡️ Royal Shield", 300), "n4_3": ("🗺️ Treasure Map", 480),
-        "n4_4": ("🚀 Jetpack", 750), "n4_5": ("🌌 Galactic Sphere", 1200), "n4_6": ("💰 Gold Bar", 2000)
+        "n4_1": ("🐸 Kissed Frog", 180), "n4_2": ("🟤 Swamp Frog", 300), "n4_3": ("🌸 Lily Frog", 480),
+        "n4_4": ("✨ Golden Frog", 750), "n4_5": ("☠️ Poison Frog", 1200), "n4_6": ("🤴 Frog Prince", 2000)
     },
     "nft_case_5": {
-        "n5_1": ("🐲 Dragon Egg", 320), "n5_2": ("👁️ Dream Catcher", 530), "n5_3": ("💖 Ruby Heart", 850),
-        "n5_4": ("❄️ Winter Orb", 1350), "n5_5": ("⚱️ Treasure Chest", 2100), "n5_6": ("👑 Royal Crown", 3500)
+        "n5_1": ("🧢 Durov's Cap", 320), "n5_2": ("⚪ Cap Silver", 530), "n5_3": ("⚫ Cap Black", 850),
+        "n5_4": ("🟡 Cap Gold Trim", 1350), "n5_5": ("⭐ Founder Edition Cap", 2100), "n5_6": ("👑 Durov's Crown Cap", 3500)
     },
     "nft_case_6": {
-        "n6_1": ("🕶️ Cyber Mask", 600), "n6_2": ("🔱 Mystic Trident", 1000), "n6_3": ("💎 Diamond Heart", 1600),
-        "n6_4": ("🎪 Magic Lamp", 2500), "n6_5": ("🏴‍☠️ Pirate Chest", 4000), "n6_6": ("👑 Legendary Crown", 7000)
+        "n6_1": ("🐸 Plush Pepe", 600), "n6_2": ("😊 Pepe Smile", 1000), "n6_3": ("😎 Pepe Chill", 1600),
+        "n6_4": ("🤨 Pepe Rare", 2500), "n6_5": ("✨ Golden Plush Pepe", 4000), "n6_6": ("👑 Mythic Plush Pepe", 7000)
     }
 }
 
@@ -112,12 +112,12 @@ NFT_CASE_DROPS = {
 STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
 
-# ========== PROVABLY FAIR CRASH ==========
+# ========== PROVABLY FAIR CRASH (ХАУС ЭЙДЖ 4%) ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.05
+CRASH_HOUSE_EDGE = 0.04  # 4% хаус эйдж
 CRASH_SPEED = 0.08
 
 # ========== MINES GAME ==========
@@ -168,13 +168,8 @@ MIN_DEPOSIT_FOR_REFERRAL = 50
 
 # ========== ITEM UPGRADE SYSTEM ==========
 UPGRADE_CHANCES = {
-    50: 0.60,    # 60% шанс улучшить предмет за 50⭐️
-    100: 0.50,   # 50% шанс
-    200: 0.40,   # 40% шанс
-    500: 0.30,   # 30% шанс
-    1000: 0.20,  # 20% шанс
-    2000: 0.10,  # 10% шанс
-    5000: 0.05   # 5% шанс
+    50: 0.60, 100: 0.50, 200: 0.40, 500: 0.30,
+    1000: 0.20, 2000: 0.10, 5000: 0.05
 }
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
@@ -553,31 +548,24 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
     target_id = req.target_tg_id
     amount = req.amount
     
-    if target_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if amount < 1:
-        raise HTTPException(status_code=400, detail="Сумма > 0")
-    if amount > 1000000:
-        raise HTTPException(status_code=400, detail="Макс 1,000,000 ⭐️")
+    if target_id <= 0: raise HTTPException(status_code=400, detail="Неверный ID")
+    if amount < 1: raise HTTPException(status_code=400, detail="Сумма > 0")
+    if amount > 1000000: raise HTTPException(status_code=400, detail="Макс 1M ⭐️")
     
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("INSERT OR IGNORE INTO users (tg_id, username, balance, inventory) VALUES (?, ?, 20, '[]')", (target_id, f"Player_{target_id}"))
         await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (amount, target_id))
         await db.commit()
-        
         async with db.execute("SELECT username, balance FROM users WHERE tg_id = ?", (target_id,)) as cursor:
             row = await cursor.fetchone()
-            target_username = row[0] if row else f"Player_{target_id}"
-            target_balance = row[1] if row else amount
     
-    return {"success": True, "message": f"✅ Выдано {amount} ⭐️ игроку {target_username} (ID: {target_id})", "target_tg_id": target_id, "target_username": target_username, "amount": amount, "new_balance": target_balance}
+    return {"success": True, "message": f"✅ Выдано {amount} ⭐️", "target_tg_id": target_id}
 
-# ========== CASES (ЗВЁЗДНЫЕ) ==========
+# ========== CASES ==========
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
     case_type = req.case_type
     
-    # Проверяем тип кейса
     if case_type in STAR_CASE_PRICES:
         price = STAR_CASE_PRICES[case_type]
         case_pool = STAR_CASE_DROPS[case_type]
@@ -587,7 +575,7 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
         case_pool = NFT_CASE_DROPS[case_type]
         weights = NFT_DROP_WEIGHTS
     else:
-        raise HTTPException(status_code=400, detail="Неизвестный тип кейса")
+        raise HTTPException(status_code=400, detail="Неизвестный кейс")
     
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
@@ -640,8 +628,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
     inventory = user_info["inventory"]
-    if not inventory:
-        raise HTTPException(status_code=400, detail="Инвентарь пуст")
+    if not inventory: raise HTTPException(status_code=400, detail="Инвентарь пуст")
     
     total_gain = 0
     for item in inventory:
@@ -662,7 +649,6 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
 # ========== ITEM UPGRADE ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
-    """Апгрейд предмета с риском"""
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
     inventory = user_info["inventory"]
@@ -674,7 +660,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     c_type = item.get("case")
     i_id = item.get("id")
     
-    # Текущая цена предмета
     current_price = 0
     if c_type in STAR_CASE_DROPS and i_id in STAR_CASE_DROPS[c_type]:
         current_price = STAR_CASE_DROPS[c_type][i_id][1]
@@ -682,71 +667,47 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         current_price = NFT_CASE_DROPS[c_type][i_id][1]
     
     if current_price == 0:
-        raise HTTPException(status_code=400, detail="Нельзя улучшить этот предмет")
+        raise HTTPException(status_code=400, detail="Нельзя улучшить")
     
-    # Цель апгрейда
     target_price = req.target_price
-    
     if target_price <= current_price:
-        raise HTTPException(status_code=400, detail="Цель должна быть дороже текущего предмета")
+        raise HTTPException(status_code=400, detail="Цель дороже")
     
-    # Шанс апгрейда
     upgrade_chance = UPGRADE_CHANCES.get(target_price, 0.10)
-    
-    # Списываем стоимость апгрейда (10% от целевой цены)
     upgrade_cost = int(target_price * 0.1)
     
     if user_info["balance"] < upgrade_cost:
-        raise HTTPException(status_code=400, detail=f"Недостаточно звёзд для апгрейда. Нужно: {upgrade_cost} ⭐️")
+        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
     
-    # Списание
     new_balance = user_info["balance"] - upgrade_cost
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
         await db.commit()
     
-    # Ролл
     if random.random() < upgrade_chance:
-        # УСПЕХ — находим предмет с целевой ценой
         new_item = None
-        for case_type, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
+        for ct, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
             for did, (dname, dprice) in drops.items():
                 if dprice == target_price:
-                    new_item = {"id": did, "name": dname, "case": case_type}
+                    new_item = {"id": did, "name": dname, "case": ct}
                     break
-            if new_item:
-                break
+            if new_item: break
         
         if new_item:
             inventory[req.item_index] = new_item
-        else:
-            # Если не нашли точную цену — удваиваем текущую
-            inventory[req.item_index]["name"] = f"⭐ {target_price} Stars"
         
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
         
-        return {
-            "success": True,
-            "message": f"✅ Успешный апгрейд! Предмет улучшен до {target_price} ⭐️",
-            "new_balance": new_balance,
-            "upgrade_cost": upgrade_cost
-        }
+        return {"success": True, "message": f"✅ Успех! Предмет улучшен до {target_price}⭐️", "new_balance": new_balance, "upgrade_cost": upgrade_cost}
     else:
-        # ПРОВАЛ — предмет удаляется
         inventory.pop(req.item_index)
-        
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
         
-        return {
-            "success": False,
-            "message": f"💥 Предмет сгорел! Вы потеряли предмет за {current_price} ⭐️ и {upgrade_cost} ⭐️ за попытку.",
-            "new_balance": new_balance,
-            "upgrade_cost": upgrade_cost
-        }
+        return {"success": False, "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️", "new_balance": new_balance, "upgrade_cost": upgrade_cost}
 
 # ========== LEADERBOARD ==========
 @app.get("/api/leaderboard")
@@ -766,7 +727,7 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/createInvoiceLink"
     payload = {
         "title": "Пополнение баланса",
-        "description": f"Покупка {stars_amount} монет Stars",
+        "description": f"Покупка {stars_amount} Stars",
         "payload": f"deposit_{tg_id}_{stars_amount}",
         "provider_token": "", 
         "currency": "XTR",
@@ -796,23 +757,18 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     
-    if amount < 100:
-        raise HTTPException(status_code=400, detail="Минимум 100 Stars")
-    if amount > MAX_WITHDRAW_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Максимум {MAX_WITHDRAW_AMOUNT} Stars")
+    if amount < 100: raise HTTPException(status_code=400, detail="Минимум 100 Stars")
+    if amount > MAX_WITHDRAW_AMOUNT: raise HTTPException(status_code=400, detail=f"Максимум {MAX_WITHDRAW_AMOUNT} Stars")
     
     user_info = await get_or_create_user(tg_id)
-    if user_info["balance"] < amount:
-        raise HTTPException(status_code=400, detail="Недостаточно монет")
+    if user_info["balance"] < amount: raise HTTPException(status_code=400, detail="Недостаточно монет")
     
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT last_withdraw_at FROM withdraw_cooldowns WHERE user_id = ?", (tg_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
-                try:
-                    last_ts = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
-                except:
-                    last_ts = 0
+                try: last_ts = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
+                except: last_ts = 0
                 if time.time() - last_ts < WITHDRAW_COOLDOWN_HOURS * 3600:
                     hours_left = int((WITHDRAW_COOLDOWN_HOURS * 3600 - (time.time() - last_ts)) / 3600)
                     raise HTTPException(status_code=400, detail=f"Следующий вывод через {hours_left} ч.")
@@ -830,8 +786,7 @@ async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_
 
 @app.get("/api/admin/withdraws")
 async def get_admin_withdraws(user: dict = Depends(verify_telegram_data)):
-    if not ADMIN_TG_ID or user.get('id') != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if not ADMIN_TG_ID or user.get('id') != ADMIN_TG_ID: raise HTTPException(status_code=403, detail="Доступ запрещен")
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT id, tg_id, amount, requisites, status, created_at FROM withdraws ORDER BY id DESC") as cursor:
             rows = await cursor.fetchall()
@@ -839,14 +794,12 @@ async def get_admin_withdraws(user: dict = Depends(verify_telegram_data)):
 
 @app.post("/api/admin/withdraw/status")
 async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = Depends(verify_telegram_data)):
-    if not ADMIN_TG_ID or user.get('id') != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if not ADMIN_TG_ID or user.get('id') != ADMIN_TG_ID: raise HTTPException(status_code=403, detail="Доступ запрещен")
     async with aiosqlite.connect(DB_NAME) as db:
         if req.status == "rejected":
             async with db.execute("SELECT tg_id, amount FROM withdraws WHERE id = ?", (req.ticket_id,)) as cursor:
                 ticket = await cursor.fetchone()
-                if ticket:
-                    await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (ticket[1], ticket[0]))
+                if ticket: await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (ticket[1], ticket[0]))
         await db.execute("UPDATE withdraws SET status = ? WHERE id = ?", (req.status, req.ticket_id))
         await db.commit()
     return {"success": True, "new_status": req.status}
@@ -856,37 +809,22 @@ async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = 
 async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(verify_telegram_data)):
     user_id = user.get('id')
     referrer_id = req.referrer_id
-    
-    if user_id == referrer_id:
-        raise HTTPException(status_code=400, detail="Нельзя быть своим реферером")
-    
+    if user_id == referrer_id: raise HTTPException(status_code=400, detail="Нельзя себе")
     async with aiosqlite.connect(DB_NAME) as db:
-        if not await (await db.execute("SELECT tg_id FROM users WHERE tg_id = ?", (referrer_id,))).fetchone():
-            raise HTTPException(status_code=400, detail="Реферер не найден")
-        if await (await db.execute("SELECT referrer_id FROM referrals WHERE user_id = ?", (user_id,))).fetchone():
-            raise HTTPException(status_code=400, detail="Реферал уже активирован")
+        if not await (await db.execute("SELECT tg_id FROM users WHERE tg_id = ?", (referrer_id,))).fetchone(): raise HTTPException(status_code=400, detail="Не найден")
+        if await (await db.execute("SELECT referrer_id FROM referrals WHERE user_id = ?", (user_id,))).fetchone(): raise HTTPException(status_code=400, detail="Уже есть")
         await db.execute("INSERT INTO referrals (user_id, referrer_id) VALUES (?, ?)", (user_id, referrer_id))
         await db.commit()
-    
     return {"success": True, "referrer_id": referrer_id}
 
 @app.get("/api/referral/stats")
 async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT total_earned FROM referrals WHERE user_id = ?", (tg_id,)) as cursor:
-            earned = await cursor.fetchone()
-        async with db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (tg_id,)) as cursor:
-            count = await cursor.fetchone()
-        async with db.execute("SELECT referral_id, deposit_amount, earned, created_at FROM referral_earnings WHERE referrer_id = ? ORDER BY created_at DESC LIMIT 20", (tg_id,)) as cursor:
-            history = await cursor.fetchall()
-    
-    return {
-        "total_earned": earned[0] if earned else 0,
-        "referrals_count": count[0] if count else 0,
-        "percent": REFERRAL_PERCENT,
-        "history": [{"referral_id": r[0], "deposit": r[1], "earned": r[2], "date": r[3]} for r in history]
-    }
+        async with db.execute("SELECT total_earned FROM referrals WHERE user_id = ?", (tg_id,)) as cursor: earned = await cursor.fetchone()
+        async with db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (tg_id,)) as cursor: count = await cursor.fetchone()
+        async with db.execute("SELECT referral_id, deposit_amount, earned, created_at FROM referral_earnings WHERE referrer_id = ? ORDER BY created_at DESC LIMIT 20", (tg_id,)) as cursor: history = await cursor.fetchall()
+    return {"total_earned": earned[0] if earned else 0, "referrals_count": count[0] if count else 0, "percent": REFERRAL_PERCENT, "history": [{"referral_id": r[0], "deposit": r[1], "earned": r[2], "date": r[3]} for r in history]}
 
 # ========== MINES ==========
 @app.post("/api/mines/start")
@@ -895,19 +833,13 @@ async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegr
     bet = req.bet_amount
     mines_count = req.mines_count
     
-    if bet < 10:
-        raise HTTPException(status_code=400, detail="Мин. ставка 10 ⭐️")
-    if bet > 50000:
-        raise HTTPException(status_code=400, detail="Макс. ставка 50,000 ⭐️")
-    if mines_count < MINES_MIN_COUNT or mines_count > MINES_MAX_COUNT:
-        raise HTTPException(status_code=400, detail=f"Мин от {MINES_MIN_COUNT} до {MINES_MAX_COUNT}")
-    
-    if tg_id in active_mines_games:
-        raise HTTPException(status_code=400, detail="Завершите текущую игру")
+    if bet < 10: raise HTTPException(status_code=400, detail="Мин. 10 ⭐️")
+    if bet > 50000: raise HTTPException(status_code=400, detail="Макс. 50k ⭐️")
+    if mines_count < MINES_MIN_COUNT or mines_count > MINES_MAX_COUNT: raise HTTPException(status_code=400, detail=f"Мины {MINES_MIN_COUNT}-{MINES_MAX_COUNT}")
+    if tg_id in active_mines_games: raise HTTPException(status_code=400, detail="Завершите игру")
     
     user_info = await get_or_create_user(tg_id)
-    if user_info["balance"] < bet:
-        raise HTTPException(status_code=400, detail="Недостаточно монет")
+    if user_info["balance"] < bet: raise HTTPException(status_code=400, detail="Недостаточно монет")
     
     new_balance = user_info["balance"] - bet
     async with aiosqlite.connect(DB_NAME) as db:
@@ -917,76 +849,44 @@ async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegr
     grid = generate_mines_grid(mines_count)
     game_id = str(uuid.uuid4())[:8]
     
-    active_mines_games[tg_id] = {
-        "game_id": game_id, "bet": bet, "mines_count": mines_count,
-        "grid": grid, "opened": [], "cashed_out": False, "current_multiplier": 1.0
-    }
+    active_mines_games[tg_id] = {"game_id": game_id, "bet": bet, "mines_count": mines_count, "grid": grid, "opened": [], "cashed_out": False, "current_multiplier": 1.0}
     
-    return {
-        "game_id": game_id, "bet": bet, "mines_count": mines_count,
-        "balance": new_balance, "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE,
-        "safe_cells": (MINES_GRID_SIZE * MINES_GRID_SIZE) - mines_count
-    }
+    return {"game_id": game_id, "bet": bet, "mines_count": mines_count, "balance": new_balance, "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE, "safe_cells": (MINES_GRID_SIZE * MINES_GRID_SIZE) - mines_count}
 
 @app.post("/api/mines/open")
 async def mines_open_cell(req: MinesOpenRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
-    
-    if tg_id not in active_mines_games:
-        raise HTTPException(status_code=400, detail="Нет активной игры")
-    
+    if tg_id not in active_mines_games: raise HTTPException(status_code=400, detail="Нет игры")
     game = active_mines_games[tg_id]
-    
-    if game["game_id"] != req.game_id:
-        raise HTTPException(status_code=400, detail="Неверный ID игры")
-    if game["cashed_out"]:
-        raise HTTPException(status_code=400, detail="Игра завершена")
+    if game["game_id"] != req.game_id: raise HTTPException(status_code=400, detail="Неверный ID")
+    if game["cashed_out"]: raise HTTPException(status_code=400, detail="Завершена")
     
     cell_index = req.cell_index
     total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    
-    if cell_index < 0 or cell_index >= total_cells:
-        raise HTTPException(status_code=400, detail="Неверная клетка")
-    if cell_index in game["opened"]:
-        raise HTTPException(status_code=400, detail="Клетка уже открыта")
+    if cell_index < 0 or cell_index >= total_cells: raise HTTPException(status_code=400, detail="Неверная клетка")
+    if cell_index in game["opened"]: raise HTTPException(status_code=400, detail="Открыта")
     
     if game["grid"][cell_index] == 1:
         game["cashed_out"] = True
         mines_positions = [i for i, v in enumerate(game["grid"]) if v == 1]
         del active_mines_games[tg_id]
-        
-        return {
-            "status": "bomb", "cell_index": cell_index,
-            "opened": game["opened"], "mines": mines_positions,
-            "win_amount": 0, "balance": (await get_or_create_user(tg_id))["balance"]
-        }
+        return {"status": "bomb", "cell_index": cell_index, "opened": game["opened"], "mines": mines_positions, "win_amount": 0, "balance": (await get_or_create_user(tg_id))["balance"]}
     
     game["opened"].append(cell_index)
     opened_count = len(game["opened"])
     multiplier = calculate_mines_multiplier(game["mines_count"], opened_count)
     game["current_multiplier"] = multiplier
     
-    return {
-        "status": "safe", "cell_index": cell_index,
-        "opened": game["opened"], "opened_count": opened_count,
-        "current_multiplier": multiplier
-    }
+    return {"status": "safe", "cell_index": cell_index, "opened": game["opened"], "opened_count": opened_count, "current_multiplier": multiplier}
 
 @app.post("/api/mines/cashout")
 async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
-    
-    if tg_id not in active_mines_games:
-        raise HTTPException(status_code=400, detail="Нет активной игры")
-    
+    if tg_id not in active_mines_games: raise HTTPException(status_code=400, detail="Нет игры")
     game = active_mines_games[tg_id]
-    
-    if game["game_id"] != req.game_id:
-        raise HTTPException(status_code=400, detail="Неверный ID игры")
-    if game["cashed_out"]:
-        raise HTTPException(status_code=400, detail="Игра завершена")
-    if len(game["opened"]) == 0:
-        raise HTTPException(status_code=400, detail="Откройте хотя бы 1 клетку")
+    if game["game_id"] != req.game_id: raise HTTPException(status_code=400, detail="Неверный ID")
+    if game["cashed_out"]: raise HTTPException(status_code=400, detail="Завершена")
+    if len(game["opened"]) == 0: raise HTTPException(status_code=400, detail="Откройте клетку")
     
     multiplier = game["current_multiplier"]
     win_amount = int(game["bet"] * multiplier)
@@ -995,33 +895,19 @@ async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_te
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (win_amount, tg_id))
         await db.commit()
-        async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
-            new_balance = (await cursor.fetchone())[0]
+        async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor: new_balance = (await cursor.fetchone())[0]
     
     mines_positions = [i for i, v in enumerate(game["grid"]) if v == 1]
     del active_mines_games[tg_id]
     
-    return {
-        "status": "cashed_out", "multiplier": multiplier,
-        "win_amount": win_amount, "profit": win_amount - game["bet"],
-        "balance": new_balance, "opened": game["opened"], "mines": mines_positions
-    }
+    return {"status": "cashed_out", "multiplier": multiplier, "win_amount": win_amount, "profit": win_amount - game["bet"], "balance": new_balance, "opened": game["opened"], "mines": mines_positions}
 
 @app.get("/api/mines/state")
 async def mines_get_state(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
-    
-    if tg_id not in active_mines_games:
-        return {"active": False}
-    
+    if tg_id not in active_mines_games: return {"active": False}
     game = active_mines_games[tg_id]
-    
-    return {
-        "active": True, "game_id": game["game_id"],
-        "bet": game["bet"], "mines_count": game["mines_count"],
-        "opened": game["opened"], "current_multiplier": game["current_multiplier"],
-        "cashed_out": game["cashed_out"], "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE
-    }
+    return {"active": True, "game_id": game["game_id"], "bet": game["bet"], "mines_count": game["mines_count"], "opened": game["opened"], "current_multiplier": game["current_multiplier"], "cashed_out": game["cashed_out"], "total_cells": MINES_GRID_SIZE * MINES_GRID_SIZE}
 
 # ========== CRASH HTTP ==========
 @app.get("/api/crash/history")
@@ -1034,7 +920,6 @@ async def verify_crash(server_seed: str, nonce: int):
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
-    
     if r < 0.30: crash_point = round(1.01 + (r / 0.30) * 0.09, 2)
     elif r < 0.60: crash_point = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
     elif r < 0.82: crash_point = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
@@ -1042,5 +927,4 @@ async def verify_crash(server_seed: str, nonce: int):
     elif r < 0.98: crash_point = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
     elif r < 0.995: crash_point = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
     else: crash_point = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
-    
     return {"verified": True, "crash_point": min(crash_point, 50.0), "hash": hash_hex}
