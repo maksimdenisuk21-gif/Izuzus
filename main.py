@@ -117,7 +117,7 @@ CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.04  # 4% хаус эйдж
+CRASH_HOUSE_EDGE = 0.04
 CRASH_SPEED = 0.08
 
 # ========== MINES GAME ==========
@@ -480,6 +480,7 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, total_earned INTEGER DEFAULT 0)")
         await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS withdraw_cooldowns (user_id INTEGER PRIMARY KEY, last_withdraw_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS promo_uses (user_id INTEGER, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, promo_code))")
         await db.commit()
     
     asyncio.create_task(crash_game_loop())
@@ -708,6 +709,55 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             await db.commit()
         
         return {"success": False, "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️", "new_balance": new_balance, "upgrade_cost": upgrade_cost}
+
+# ========== PROMO ==========
+@app.post("/api/promo/activate")
+async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
+    """Активация промокода (одноразовый на аккаунт)"""
+    tg_id = user.get('id')
+    code = code.strip().upper()
+    
+    promos = {
+        "RELEASE": {"reward_type": "case", "case_type": "star_case_3", "message": "🎉 RELEASE! Бесплатный кейс #3!"},
+    }
+    
+    if code not in promos:
+        raise HTTPException(status_code=400, detail="Неверный промокод")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT used_at FROM promo_uses WHERE user_id = ? AND promo_code = ?", (tg_id, code)) as cursor:
+            if await cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Вы уже использовали этот промокод!")
+        
+        promo = promos[code]
+        reward_name = None
+        
+        if promo["reward_type"] == "case":
+            case_type = promo["case_type"]
+            if case_type in STAR_CASE_PRICES:
+                case_pool = STAR_CASE_DROPS[case_type]
+                weights = STAR_DROP_WEIGHTS
+            elif case_type in NFT_CASE_PRICES:
+                case_pool = NFT_CASE_DROPS[case_type]
+                weights = NFT_DROP_WEIGHTS
+            else:
+                raise HTTPException(status_code=500, detail="Ошибка кейса")
+            
+            item_ids = list(case_pool.keys())
+            reward_id = random.choices(item_ids, weights=weights, k=1)[0]
+            reward_name = case_pool[reward_id][0]
+            
+            async with db.execute("SELECT inventory FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
+                row = await cursor.fetchone()
+                inventory = json.loads(row[0]) if row else []
+            
+            inventory.append({"id": reward_id, "name": reward_name, "case": case_type})
+            await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
+        
+        await db.execute("INSERT INTO promo_uses (user_id, promo_code) VALUES (?, ?)", (tg_id, code))
+        await db.commit()
+    
+    return {"success": True, "message": promo["message"], "reward": reward_name}
 
 # ========== LEADERBOARD ==========
 @app.get("/api/leaderboard")
