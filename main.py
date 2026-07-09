@@ -8,7 +8,7 @@ import time
 import uuid
 import asyncio
 import math
-from fastapi import FastAPI, Header, HTTPException, Depends, Request
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import aiosqlite
@@ -27,73 +27,108 @@ ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID")
 ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
-# ========== 20 КЕЙСОВ ПО 15 ПРЕДМЕТОВ ==========
-
-# Звёздные кейсы (10 штук)
-STAR_CASE_PRICES = {
-    "star_case_1": 25, "star_case_2": 60, "star_case_3": 120, 
-    "star_case_4": 220, "star_case_5": 400, "star_case_6": 700,
-    "star_case_7": 1200, "star_case_8": 2000, "star_case_9": 3500,
-    "star_case_10": 6000
+# ============================================================
+# СТАРЫЕ КЕЙСЫ (6 предметов)
+# ============================================================
+STAR_CASE_DROPS_OLD = {
+    "star_case_1": {"s1_1": ("⭐ 12 Stars", 12), "s1_2": ("⭐ 29 Stars", 29), "s1_3": ("⭐ 46 Stars", 46), "s1_4": ("⭐ 69 Stars", 69), "s1_5": ("⭐ 115 Stars", 115), "s1_6": ("⭐ 230 Stars", 230)},
+    "star_case_2": {"s2_1": ("⭐ 35 Stars", 35), "s2_2": ("⭐ 86 Stars", 86), "s2_3": ("⭐ 138 Stars", 138), "s2_4": ("⭐ 230 Stars", 230), "s2_5": ("⭐ 403 Stars", 403), "s2_6": ("⭐ 690 Stars", 690)},
+    "star_case_3": {"s3_1": ("⭐ 92 Stars", 92), "s3_2": ("⭐ 230 Stars", 230), "s3_3": ("⭐ 403 Stars", 403), "s3_4": ("⭐ 575 Stars", 575), "s3_5": ("⭐ 920 Stars", 920), "s3_6": ("⭐ 1725 Stars", 1725)},
+    "star_case_4": {"s4_1": ("⭐ 173 Stars", 173), "s4_2": ("⭐ 460 Stars", 460), "s4_3": ("⭐ 748 Stars", 748), "s4_4": ("⭐ 1150 Stars", 1150), "s4_5": ("⭐ 2070 Stars", 2070), "s4_6": ("⭐ 3450 Stars", 3450)},
+    "star_case_5": {"s5_1": ("⭐ 345 Stars", 345), "s5_2": ("⭐ 920 Stars", 920), "s5_3": ("⭐ 1495 Stars", 1495), "s5_4": ("⭐ 2300 Stars", 2300), "s5_5": ("⭐ 4025 Stars", 4025), "s5_6": ("⭐ 6900 Stars", 6900)},
+    "star_case_6": {"s6_1": ("⭐ 575 Stars", 575), "s6_2": ("⭐ 1495 Stars", 1495), "s6_3": ("⭐ 2530 Stars", 2530), "s6_4": ("⭐ 4025 Stars", 4025), "s6_5": ("⭐ 6325 Stars", 6325), "s6_6": ("⭐ 11500 Stars", 11500)},
+    "star_case_7": {"s7_1": ("⭐ 920 Stars", 920), "s7_2": ("⭐ 1725 Stars", 1725), "s7_3": ("⭐ 2875 Stars", 2875), "s7_4": ("⭐ 4600 Stars", 4600), "s7_5": ("⭐ 8050 Stars", 8050), "s7_6": ("⭐ 13800 Stars", 13800)},
+    "star_case_8": {"s8_1": ("⭐ 1380 Stars", 1380), "s8_2": ("⭐ 2530 Stars", 2530), "s8_3": ("⭐ 4370 Stars", 4370), "s8_4": ("⭐ 6900 Stars", 6900), "s8_5": ("⭐ 11500 Stars", 11500), "s8_6": ("⭐ 20700 Stars", 20700)},
+    "star_case_9": {"s9_1": ("⭐ 2070 Stars", 2070), "s9_2": ("⭐ 4025 Stars", 4025), "s9_3": ("⭐ 6900 Stars", 6900), "s9_4": ("⭐ 10350 Stars", 10350), "s9_5": ("⭐ 17250 Stars", 17250), "s9_6": ("⭐ 28750 Stars", 28750)},
+    "star_case_10": {"s10_1": ("⭐ 3450 Stars", 3450), "s10_2": ("⭐ 6325 Stars", 6325), "s10_3": ("⭐ 10350 Stars", 10350), "s10_4": ("⭐ 17250 Stars", 17250), "s10_5": ("⭐ 28750 Stars", 28750), "s10_6": ("⭐ 46000 Stars", 46000)}
 }
 
-STAR_NAMES = ['Basic', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Divine', 'Cosmic', 'Eternal']
-STAR_EMOJIS = ['⭐', '🌟', '✨', '🌈', '🔥', '💫', '🌙', '☀️', '🌌', '♾️']
+NFT_CASE_DROPS_OLD = {
+    "nft_case_1": {"n1_1": ("💎 Blood Gem", 23), "n1_2": ("💜 Amethyst", 40), "n1_3": ("💙 Sapphire", 63), "n1_4": ("💍 Princess Cut", 92), "n1_5": ("👑 King Midas", 150), "n1_6": ("💚 Kryptonite", 288)},
+    "nft_case_2": {"n2_1": ("🐱 Scared Cat", 52), "n2_2": ("👻 Spooky Cat", 86), "n2_3": ("🐟 Fish Skeleton Cat", 138), "n2_4": ("🦇 Bat Cat", 219), "n2_5": ("🦠 Virus Cat", 345), "n2_6": ("👾 Glitch Cat", 575)},
+    "nft_case_3": {"n3_1": ("🔵 Evil Eye Blue", 104), "n3_2": ("🟢 Evil Eye Green", 173), "n3_3": ("🔴 Evil Eye Red", 276), "n3_4": ("🟡 Evil Eye Gold", 437), "n3_5": ("⚫ Evil Eye Black", 690), "n3_6": ("💎 Evil Eye Crystal", 1150)},
+    "nft_case_4": {"n4_1": ("🍑 Precious Peach", 207), "n4_2": ("🍑 Golden Peach", 345), "n4_3": ("🍑 Diamond Peach", 552), "n4_4": ("🍑 Royal Peach", 863), "n4_5": ("🍑 Mystic Peach", 1380), "n4_6": ("🍑 Legendary Peach", 2300)},
+    "nft_case_5": {"n5_1": ("🧢 Durov's Cap", 368), "n5_2": ("⚪ Cap Silver", 610), "n5_3": ("⚫ Cap Black", 978), "n5_4": ("🟡 Cap Gold Trim", 1553), "n5_5": ("⭐ Founder Edition Cap", 2415), "n5_6": ("👑 Durov's Crown Cap", 4025)},
+    "nft_case_6": {"n6_1": ("🐸 Plush Pepe", 690), "n6_2": ("😊 Pepe Smile", 1150), "n6_3": ("😎 Pepe Chill", 1840), "n6_4": ("🤨 Pepe Rare", 2875), "n6_5": ("✨ Golden Plush Pepe", 4600), "n6_6": ("👑 Mythic Plush Pepe", 8050)},
+    "nft_case_7": {"n7_1": ("🦊 Shadow Fox", 1150), "n7_2": ("🦊 Golden Fox", 1725), "n7_3": ("🦊 Crystal Fox", 2875), "n7_4": ("🦊 Royal Fox", 4600), "n7_5": ("🦊 Mystic Fox", 8050), "n7_6": ("🦊 Legendary Fox", 13800)},
+    "nft_case_8": {"n8_1": ("🐉 Dragon Scale", 1725), "n8_2": ("🐉 Dragon Eye", 2875), "n8_3": ("🐉 Dragon Wing", 4600), "n8_4": ("🐉 Dragon Crown", 7475), "n8_5": ("🐉 Dragon Soul", 13800), "n8_6": ("🐉 God Dragon", 23000)},
+    "nft_case_9": {"n9_1": ("👾 Cyber Samurai", 2875), "n9_2": ("👾 Golden Samurai", 4600), "n9_3": ("👾 Dark Samurai", 7475), "n9_4": ("👾 Samurai Lord", 11500), "n9_5": ("👾 Samurai Emperor", 20700), "n9_6": ("👾 God Samurai", 34500)},
+    "nft_case_10": {"n10_1": ("👑 Crown Prince", 4600), "n10_2": ("👑 Crown King", 8050), "n10_3": ("👑 Crown Emperor", 13800), "n10_4": ("👑 Crown God", 23000), "n10_5": ("👑 Crown Cosmic", 40250), "n10_6": ("👑 Crown Creator", 69000)}
+}
 
-STAR_CASE_DROPS = {}
-for i in range(1, 11):
+STAR_CASE_PRICES_OLD = {
+    "star_case_1": 50, "star_case_2": 150, "star_case_3": 400, 
+    "star_case_4": 750, "star_case_5": 1500, "star_case_6": 2500,
+    "star_case_7": 4000, "star_case_8": 6000, "star_case_9": 9000,
+    "star_case_10": 15000
+}
+
+NFT_CASE_PRICES_OLD = {
+    "nft_case_1": 100, "nft_case_2": 250, "nft_case_3": 500, 
+    "nft_case_4": 1000, "nft_case_5": 1750, "nft_case_6": 3000,
+    "nft_case_7": 5000, "nft_case_8": 7500, "nft_case_9": 10000,
+    "nft_case_10": 15000
+}
+
+# ============================================================
+# НОВЫЕ КЕЙСЫ (15 предметов)
+# ============================================================
+STAR_CASE_DROPS_NEW = {}
+for i in range(11, 21):
     key = f"star_case_{i}"
     drops = {}
-    base_price = STAR_CASE_PRICES[key]
+    base_price = 50 + (i - 10) * 100
     for j in range(1, 16):
-        mult = j / 2
-        price = round(base_price * (0.08 + mult * 1.3))
+        mult = (j / 15) ** 1.5
+        price = round(base_price * (0.05 + mult * 4.0))
         price = max(1, price)
-        emoji = STAR_EMOJIS[i-1] if j <= 5 else '⭐' if j <= 10 else '🌟'
-        drops[f"s{i}_{j}"] = (f"{emoji} {STAR_NAMES[i-1]} #{j}", price)
-    STAR_CASE_DROPS[key] = drops
+        if j <= 5:
+            emoji = '⭐'
+        elif j <= 10:
+            emoji = '🌟'
+        else:
+            emoji = '✨'
+        drops[f"s{i}_{j}"] = (f"{emoji} Star #{j}", price)
+    STAR_CASE_DROPS_NEW[key] = drops
 
-# NFT кейсы (10 штук)
-NFT_CASE_PRICES = {
-    "nft_case_1": 50, "nft_case_2": 150, "nft_case_3": 350, 
-    "nft_case_4": 600, "nft_case_5": 1000, "nft_case_6": 1800,
-    "nft_case_7": 3000, "nft_case_8": 5000, "nft_case_9": 8000,
-    "nft_case_10": 12000
-}
-
-NFT_NAMES = ['Ion Gem', 'Cyber Cat', 'Evil Eye', 'Peach', 'Durov', 'Pepe', 'Fox', 'Dragon', 'Samurai', 'Crown']
-NFT_EMOJIS = ['💎', '🐱', '👁️', '🍑', '🧢', '🐸', '🦊', '🐉', '👾', '👑']
-
-NFT_CASE_DROPS = {}
-for i in range(1, 11):
+NFT_CASE_DROPS_NEW = {}
+for i in range(11, 21):
     key = f"nft_case_{i}"
     drops = {}
-    base_price = NFT_CASE_PRICES[key]
+    base_price = 200 + (i - 10) * 150
     for j in range(1, 16):
-        mult = j / 2
-        price = round(base_price * (0.08 + mult * 1.3))
+        mult = (j / 15) ** 1.5
+        price = round(base_price * (0.05 + mult * 4.0))
         price = max(1, price)
-        emoji = NFT_EMOJIS[i-1]
-        drops[f"n{i}_{j}"] = (f"{emoji} {NFT_NAMES[i-1]} #{j}", price)
-    NFT_CASE_DROPS[key] = drops
+        emojis = ['💎', '🐱', '👁️', '🍑', '🧢', '🐸', '🦊', '🐉', '👾', '👑']
+        emoji = emojis[(i - 11) % len(emojis)]
+        drops[f"n{i}_{j}"] = (f"{emoji} NFT #{j}", price)
+    NFT_CASE_DROPS_NEW[key] = drops
 
+STAR_CASE_PRICES_NEW = {f"star_case_{i}": 50 + (i - 10) * 100 for i in range(11, 21)}
+NFT_CASE_PRICES_NEW = {f"nft_case_{i}": 200 + (i - 10) * 150 for i in range(11, 21)}
+
+# ============================================================
+# ОБЪЕДИНЯЕМ ВСЁ
+# ============================================================
+STAR_CASE_DROPS = {**STAR_CASE_DROPS_OLD, **STAR_CASE_DROPS_NEW}
+NFT_CASE_DROPS = {**NFT_CASE_DROPS_OLD, **NFT_CASE_DROPS_NEW}
+STAR_CASE_PRICES = {**STAR_CASE_PRICES_OLD, **STAR_CASE_PRICES_NEW}
+NFT_CASE_PRICES = {**NFT_CASE_PRICES_OLD, **NFT_CASE_PRICES_NEW}
 ALL_DROPS = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
-ALL_PRICES = sorted(set(
-    price for drops in ALL_DROPS.values() 
-    for _, price in drops.values()
-))
 
-# Веса для выпадения (экспоненциальное распределение)
 def get_case_weights(drops):
     count = len(drops)
-    return [max(1, 50 - i * 2.5) for i in range(count)]
+    if count == 6:
+        return [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
+    else:
+        return [max(0.5, 50 * (0.75 ** i)) for i in range(count)]
 
 # ========== CRASH ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.04
 CRASH_SPEED = 0.08
 
 # ========== MINES ==========
@@ -120,13 +155,10 @@ def calculate_mines_multiplier(mines_count, opened):
     for i in range(opened):
         probability *= (safe_cells - i) / (total_cells - i)
     multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
-    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
-    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
-    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
+    return round(min(multiplier, 200.0), 2)
 
 # ========== АПГРЕЙД ==========
 def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда, макс. 70%, мин. 2% + бонус от админа"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
@@ -174,8 +206,6 @@ TOP_RESET_DAYS = 14
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
 crash_nonce = 0
-ROUNDS_BEFORE_SEED_CHANGE = 100
-rounds_since_seed_change = 0
 
 crash_state = {
     "status": "waiting",
@@ -195,14 +225,8 @@ def bet_key(tg_id, round_id):
     return f"{tg_id}:{round_id}"
 
 def generate_crash_point():
-    global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
+    global crash_nonce, SERVER_SEED, SERVER_SEED_HASH
     crash_nonce += 1
-    rounds_since_seed_change += 1
-    if rounds_since_seed_change >= ROUNDS_BEFORE_SEED_CHANGE:
-        SERVER_SEED = str(uuid.uuid4())
-        SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
-        crash_nonce = 0
-        rounds_since_seed_change = 0
     message = f"{SERVER_SEED}:{crash_nonce}"
     hash_hex = hashlib.sha256(message.encode()).hexdigest()
     h = int(hash_hex[:16], 16)
@@ -701,9 +725,7 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
-        # Специальные пониженные шансы для бесплатного кейса
         pool = ALL_DROPS["star_case_1"]
-        # Только первые 10 предметов (дешёвые)
         limited_pool = dict(list(pool.items())[:10])
         weights = get_case_weights(limited_pool)
         reward_id = random.choices(list(limited_pool.keys()), weights=weights, k=1)[0]
@@ -724,19 +746,23 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
     
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
-    price = 0
+    
     if req.case_type in STAR_CASE_PRICES:
         price = STAR_CASE_PRICES[req.case_type]
     elif req.case_type in NFT_CASE_PRICES:
         price = NFT_CASE_PRICES[req.case_type]
+    else:
+        raise HTTPException(status_code=400, detail="Неизвестный кейс")
     
     if user_info["balance"] < price:
         raise HTTPException(status_code=400, detail="Недостаточно монет")
     
     pool = ALL_DROPS[req.case_type]
     weights = get_case_weights(pool)
+    
     reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
-    reward_name = pool[reward_id][0]
+    reward_name, reward_price = pool[reward_id]
+    
     new_balance = user_info["balance"] - price
     user_info["inventory"].append({"id": reward_id, "name": reward_name, "case": req.case_type})
     
@@ -746,7 +772,13 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
             (new_balance, price, json.dumps(user_info["inventory"]), tg_id)
         )
         await db.commit()
-    return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
+    
+    return {
+        "reward_id": reward_id,
+        "reward_name": reward_name,
+        "reward_price": reward_price,
+        "balance": new_balance
+    }
 
 # ========== INVENTORY ==========
 @app.post("/api/inventory/sell_item")
@@ -804,7 +836,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
-    # Получаем бонус шанса для игрока
     async with aiosqlite.connect(DB_NAME) as db:
         row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,))).fetchone()
         chance_bonus = row[0] if row else 0
@@ -816,12 +847,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
     
     new_balance = user_info["balance"] - upgrade_cost
-    
-    # Проверяем результат (или используем переданный от клиента)
     is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
     
     if is_success:
-        # Ищем новый предмет
         new_item = None
         for ct, drops in ALL_DROPS.items():
             for did, (dname, dprice) in drops.items():
@@ -830,17 +858,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
                     break
             if new_item:
                 break
-        
-        if not new_item:
-            # Ищем ближайшую цену
-            closest_price = min(ALL_PRICES, key=lambda x: abs(x - req.target_price))
-            for ct, drops in ALL_DROPS.items():
-                for did, (dname, dprice) in drops.items():
-                    if dprice == closest_price:
-                        new_item = {"id": did, "name": dname, "case": ct}
-                        break
-                if new_item:
-                    break
         
         if new_item:
             inventory[req.item_index] = new_item
@@ -857,7 +874,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
                 "chance": int(upgrade_chance * 100)
             }
     
-    # Неудача
     inventory.pop(req.item_index)
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
