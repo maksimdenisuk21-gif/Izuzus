@@ -114,32 +114,29 @@ WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
 
-# ========== АПГРЕЙД (макс. шанс 70%) ==========
+# ========== АПГРЕЙД (с рулеткой) ==========
 def calculate_upgrade_chance(current_price, target_price):
-    """
-    Реалистичный шанс апгрейда, макс. 70%
-    Чем больше разница — тем меньше шанс
-    """
+    """Реалистичный шанс апгрейда, макс. 70%, мин. 2%"""
     diff = target_price - current_price
-    ratio = current_price / target_price  # 0-1, чем ближе к 1, тем выше шанс
+    ratio = current_price / target_price
     
     # Базовый шанс от соотношения цен
-    if ratio >= 0.95:      # почти одинаковые
+    if ratio >= 0.95:
         base = 70
-    elif ratio >= 0.85:    # небольшая разница (100→115, 4600→5000)
+    elif ratio >= 0.85:
         base = 60
-    elif ratio >= 0.70:    # средняя разница (100→140, 1000→1400)
+    elif ratio >= 0.70:
         base = 50
-    elif ratio >= 0.55:    # (100→180)
+    elif ratio >= 0.55:
         base = 40
-    elif ratio >= 0.40:    # (100→250)
+    elif ratio >= 0.40:
         base = 30
-    elif ratio >= 0.25:    # (100→400)
+    elif ratio >= 0.25:
         base = 20
-    else:                  # очень большой скачок (100→1000+)
+    else:
         base = 10
     
-    # Корректировка по абсолютной разнице (штраф за большой скачок)
+    # Корректировка по разнице
     if diff <= 50:
         base += 5
     elif diff <= 100:
@@ -153,8 +150,10 @@ def calculate_upgrade_chance(current_price, target_price):
     elif diff >= 20000:
         base -= 25
     
-    # Жёсткие ограничения: минимум 2%, максимум 70%
     return min(max(round(base), 2), 70)
+
+# Доступные цены для улучшения
+UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
 
 TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
@@ -662,9 +661,10 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
+        # Специальные пониженные шансы для бесплатного кейса
+        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]  # почти никогда не выпадает топ
         pool = STAR_CASE_DROPS["star_case_1"]
-        weights = STAR_DROP_WEIGHTS
-        reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
+        reward_id = random.choices(list(pool.keys()), weights=free_weights, k=1)[0]
         reward_name = pool[reward_id][0]
         
         async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -745,7 +745,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (с макс. шансом 70%) ==========
+# ========== АПГРЕЙД (с рулеткой) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
