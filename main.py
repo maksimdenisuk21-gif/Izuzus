@@ -69,6 +69,117 @@ NFT_CASE_DROPS = {
     "nft_case_10": {"n10_1": ("👑 Crown Prince", 4600), "n10_2": ("👑 Crown King", 8050), "n10_3": ("👑 Crown Emperor", 13800), "n10_4": ("👑 Crown God", 23000), "n10_5": ("👑 Crown Cosmic", 40250), "n10_6": ("👑 Crown Creator", 69000)}
 }
 
+# ========== 100+ НОВЫХ ПРЕДМЕТОВ ДЛЯ АПГРЕЙДА ==========
+UPGRADE_ITEMS_POOL = [
+    {"name": "⚡ Искра", "price": 5},
+    {"name": "✨ Звездная пыль", "price": 8},
+    {"name": "🌙 Лунный камень", "price": 12},
+    {"name": "☀️ Солнечный кристалл", "price": 18},
+    {"name": "💧 Капля росы", "price": 25},
+    {"name": "🔥 Огненный цветок", "price": 35},
+    {"name": "🌀 Ветряной ключ", "price": 45},
+    {"name": "🌍 Земляной талисман", "price": 55},
+    {"name": "💎 Алмазный осколок", "price": 70},
+    {"name": "👑 Золотая корона", "price": 90},
+    {"name": "🦄 Единорожий рог", "price": 110},
+    {"name": "🐉 Драконий зуб", "price": 140},
+    {"name": "🌺 Мистический цветок", "price": 170},
+    {"name": "⭐ Падающая звезда", "price": 200},
+    {"name": "🌌 Космический камень", "price": 240},
+    {"name": "🌀 Изумрудный шар", "price": 280},
+    {"name": "🔮 Хрустальный шар", "price": 330},
+    {"name": "⚔️ Легендарный меч", "price": 380},
+    {"name": "🛡️ Щит судьбы", "price": 440},
+    {"name": "👁️ Око провидения", "price": 500},
+    {"name": "🧙‍♂️ Магический посох", "price": 570},
+    {"name": "🐲 Лунный дракон", "price": 650},
+    {"name": "🌠 Метеоритный осколок", "price": 740},
+    {"name": "💠 Небесный кристалл", "price": 840},
+    {"name": "🌟 Сияющая звезда", "price": 950},
+    {"name": "🎭 Карнавальная маска", "price": 1070},
+    {"name": "🏆 Золотой трофей", "price": 1200},
+    {"name": "🎪 Цирковой огонь", "price": 1340},
+    {"name": "🌋 Вулканический камень", "price": 1490},
+    {"name": "❄️ Ледяной жезл", "price": 1650},
+    {"name": "🌈 Радужный амулет", "price": 1820},
+    {"name": "☄️ Кометный хвост", "price": 2000},
+    {"name": "🌊 Жемчужина океана", "price": 2200},
+    {"name": "🌲 Древо жизни", "price": 2420},
+    {"name": "🏔️ Сердце гор", "price": 2660},
+    {"name": "🌅 Утренний свет", "price": 2920},
+    {"name": "🌙 Полная луна", "price": 3200},
+    {"name": "☀️ Божественное солнце", "price": 3500},
+    {"name": "✨ Космический кристалл", "price": 3820},
+    {"name": "🌀 Эфирный шар", "price": 4160},
+    {"name": "⚡ Молниевый жезл", "price": 4520},
+    {"name": "🌪️ Торнадо в бутылке", "price": 4900},
+    {"name": "🌋 Сердце вулкана", "price": 5300},
+    {"name": "❄️ Вечный лёд", "price": 5720},
+    {"name": "🌈 Мост радуги", "price": 6160},
+    {"name": "🌌 Галактический камень", "price": 6620},
+    {"name": "🪐 Кольцо Сатурна", "price": 7100},
+    {"name": "☀️ Фотонная сфера", "price": 7600},
+    {"name": "🌙 Лунное кольцо", "price": 8120},
+    {"name": "⭐ Звездный венец", "price": 8660},
+    {"name": "💫 Падающая звезда", "price": 9220},
+    {"name": "✨ Сияющий кристалл", "price": 9800},
+    {"name": "🌟 Сверхновая", "price": 10400},
+    {"name": "🌌 Туманность", "price": 11020},
+    {"name": "🌠 Звездный поток", "price": 11660},
+    {"name": "🪐 Астероидный камень", "price": 12320},
+    {"name": "☄️ Хвост кометы", "price": 13000},
+    {"name": "💠 Кристалл времени", "price": 13700},
+    {"name": "🌀 Космический вихрь", "price": 14420},
+    {"name": "⚡ Энергия хаоса", "price": 15160},
+    {"name": "🔥 Пламя вечности", "price": 15920},
+    {"name": "❄️ Ледяное сердце", "price": 16700},
+    {"name": "🌿 Древний корень", "price": 17500},
+    {"name": "🌊 Океанская душа", "price": 18320},
+    {"name": "🏔️ Горный дух", "price": 19160},
+    {"name": "🌋 Лавовое сердце", "price": 20020},
+    {"name": "🌪️ Ветряной глаз", "price": 20900},
+    {"name": "🌈 Радужный кристалл", "price": 21800},
+    {"name": "🌙 Лунный камень", "price": 22720},
+    {"name": "☀️ Солнечный кристалл", "price": 23660},
+    {"name": "⭐ Звездный осколок", "price": 24620},
+    {"name": "✨ Эфирный кристалл", "price": 25600},
+    {"name": "🌀 Космический камень", "price": 26600},
+    {"name": "💎 Алмазный кристалл", "price": 27620},
+    {"name": "👑 Императорская корона", "price": 28660},
+    {"name": "🦄 Кристалл единорога", "price": 29720},
+    {"name": "🐉 Сердце дракона", "price": 30800},
+    {"name": "🌺 Цветок жизни", "price": 31900},
+    {"name": "⭐ Звезда судьбы", "price": 33020},
+    {"name": "🌌 Космическое сердце", "price": 34160},
+    {"name": "🌀 Изначальный шар", "price": 35320},
+    {"name": "🔮 Хрустальный глаз", "price": 36500},
+    {"name": "⚔️ Клинок света", "price": 37700},
+    {"name": "🛡️ Щит вечности", "price": 38920},
+    {"name": "👁️ Око судьбы", "price": 40160},
+    {"name": "🧙‍♂️ Посох мудрости", "price": 41420},
+    {"name": "🐲 Дракон судьбы", "price": 42700},
+    {"name": "🌠 Метеоритный кристалл", "price": 44000},
+    {"name": "💠 Небесный камень", "price": 45320},
+    {"name": "🌟 Сияющий кристалл", "price": 46660},
+    {"name": "🎭 Маска хаоса", "price": 48020},
+    {"name": "🏆 Трофей судьбы", "price": 49400},
+    {"name": "🎪 Огонь карнавала", "price": 50800},
+    {"name": "🌋 Камень вулкана", "price": 52220},
+    {"name": "❄️ Ледяной кристалл", "price": 53660},
+    {"name": "🌈 Амулет радуги", "price": 55120},
+    {"name": "☄️ Кометный кристалл", "price": 56600},
+    {"name": "🌊 Жемчуг океана", "price": 58100},
+    {"name": "🌲 Древо судьбы", "price": 59620},
+    {"name": "🏔️ Сердце гор", "price": 61160},
+    {"name": "🌅 Рассветный кристалл", "price": 62720},
+    {"name": "🌙 Лунная корона", "price": 64300},
+    {"name": "☀️ Солнечная корона", "price": 65900},
+    {"name": "✨ Звездная корона", "price": 67520},
+    {"name": "🌀 Космическая корона", "price": 69160},
+    {"name": "💎 Алмазная корона", "price": 70820},
+    {"name": "👑 Корона судьбы", "price": 72500}
+]
+
 STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
 NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
 
@@ -114,9 +225,9 @@ WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
 
-# ========== АПГРЕЙД (с рулеткой) ==========
-def calculate_upgrade_chance(current_price, target_price):
-    """Реалистичный шанс апгрейда, макс. 70%, мин. 2%"""
+# ========== АПГРЕЙД ==========
+def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
+    """Реалистичный шанс апгрейда, макс. 70%, мин. 2% + бонус от админа"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
@@ -150,10 +261,20 @@ def calculate_upgrade_chance(current_price, target_price):
     elif diff >= 20000:
         base -= 25
     
+    # Добавляем бонус от админа
+    base += chance_bonus
+    
     return min(max(round(base), 2), 70)
 
 # Доступные цены для улучшения
 UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
+
+# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕНЫ ИЗ ПУЛА АПГРЕЙДА ==========
+def get_upgrade_item_price(item_name):
+    for item in UPGRADE_ITEMS_POOL:
+        if item["name"] == item_name:
+            return item["price"]
+    return 0
 
 TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
@@ -322,6 +443,10 @@ class AdminGiveStarsRequest(BaseModel):
     target_tg_id: int
     amount: int
 
+class AdminChanceRequest(BaseModel):
+    target_tg_id: int
+    chance_percent: int
+
 class MinesStartRequest(BaseModel):
     bet_amount: int
     mines_count: int
@@ -336,6 +461,8 @@ class MinesCashoutRequest(BaseModel):
 class UpgradeItemRequest(BaseModel):
     item_index: int
     target_price: int
+    success: bool = False
+    free_upgrade: bool = False  # НОВОЕ ПОЛЕ ДЛЯ БЕСПЛАТНОГО АПГРЕЙДА
 
 class PromoCreateRequest(BaseModel):
     code: str
@@ -475,6 +602,7 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS promos (code TEXT PRIMARY KEY, reward_type TEXT, case_type TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER)")
         await db.execute("CREATE TABLE IF NOT EXISTS top_rewards (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, place INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_uses (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS user_chances (tg_id INTEGER PRIMARY KEY, chance_bonus INTEGER DEFAULT 0)")
         await db.commit()
     asyncio.create_task(crash_game_loop())
 
@@ -508,12 +636,17 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 return {"balance": row[0], "total_spent": row[1], "inventory": json.loads(row[2])}
             else:
                 start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 20
+                # Даём 3 случайных предмета из пула апгрейда новым игрокам
+                starter_items = []
+                for _ in range(3):
+                    item = random.choice(UPGRADE_ITEMS_POOL)
+                    starter_items.append({"id": f"up_{item['name']}", "name": item["name"], "case": "upgrade"})
                 await db.execute(
                     "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,?)",
-                    (tg_id, username, start_balance, '[]')
+                    (tg_id, username, start_balance, json.dumps(starter_items))
                 )
                 await db.commit()
-                return {"balance": start_balance, "total_spent": 0, "inventory": []}
+                return {"balance": start_balance, "total_spent": 0, "inventory": starter_items}
 
 # ========== PROFILE ==========
 @app.get("/api/profile")
@@ -535,6 +668,9 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
                 user_info["free_case_available"] = (time.time() - last_ts) >= 86400
             else:
                 user_info["free_case_available"] = True
+        async with db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,)) as cursor:
+            row = await cursor.fetchone()
+            user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
 # ========== ADMIN ==========
@@ -567,6 +703,23 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
+
+@app.post("/api/admin/add_chance")
+async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if req.target_tg_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID")
+    if req.chance_percent < 1 or req.chance_percent > 100:
+        raise HTTPException(status_code=400, detail="Процент от 1 до 100")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO user_chances (tg_id, chance_bonus) VALUES (?, ?)",
+            (req.target_tg_id, req.chance_percent)
+        )
+        await db.commit()
+    return {"success": True, "message": f"✅ Игроку {req.target_tg_id} добавлен шанс +{req.chance_percent}%"}
 
 # ========== PROMO ==========
 @app.post("/api/admin/promo/create")
@@ -661,8 +814,7 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
-        # Специальные пониженные шансы для бесплатного кейса
-        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]  # почти никогда не выпадает топ
+        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]
         pool = STAR_CASE_DROPS["star_case_1"]
         reward_id = random.choices(list(pool.keys()), weights=free_weights, k=1)[0]
         reward_name = pool[reward_id][0]
@@ -716,10 +868,15 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
         raise HTTPException(status_code=400, detail="Предмет не найден")
     item = inventory.pop(req.item_index)
     gain = 0
-    if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-        gain = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-    elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-        gain = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+    
+    # Сначала проверяем в пуле апгрейда
+    gain = get_upgrade_item_price(item["name"])
+    if gain == 0:
+        if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
+            gain = STAR_CASE_DROPS[item["case"]][item["id"]][1]
+        elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
+            gain = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+    
     new_balance = user_info["balance"] + gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
@@ -735,17 +892,20 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         raise HTTPException(status_code=400, detail="Инвентарь пуст")
     total_gain = 0
     for item in inventory:
-        if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-            total_gain += STAR_CASE_DROPS[item["case"]][item["id"]][1]
-        elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-            total_gain += NFT_CASE_DROPS[item["case"]][item["id"]][1]
+        gain = get_upgrade_item_price(item["name"])
+        if gain == 0:
+            if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
+                gain = STAR_CASE_DROPS[item["case"]][item["id"]][1]
+            elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
+                gain = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+        total_gain += gain
     new_balance = user_info["balance"] + total_gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory='[]' WHERE tg_id=?", (new_balance, tg_id))
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (с рулеткой) ==========
+# ========== АПГРЕЙД (ОБНОВЛЁННЫЙ - БЕСПЛАТНЫЙ) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -758,11 +918,13 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     item = inventory[req.item_index]
     current_price = 0
     
-    # Находим текущую цену предмета
-    if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-        current_price = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-    elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-        current_price = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+    # Находим текущую цену предмета (сначала в пуле апгрейда)
+    current_price = get_upgrade_item_price(item["name"])
+    if current_price == 0:
+        if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
+            current_price = STAR_CASE_DROPS[item["case"]][item["id"]][1]
+        elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
+            current_price = NFT_CASE_DROPS[item["case"]][item["id"]][1]
     
     if current_price == 0:
         raise HTTPException(status_code=400, detail="Нельзя улучшить")
@@ -770,46 +932,65 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
-    # Вычисляем шанс (макс. 70%)
-    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price) / 100
-    upgrade_cost = int(req.target_price * 0.08)  # 8% от цены цели
-    
-    if user_info["balance"] < upgrade_cost:
-        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
-    
-    new_balance = user_info["balance"] - upgrade_cost
-    
-    # Списываем стоимость
+    # Получаем бонус шанса для игрока
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=? WHERE tg_id=?", (new_balance, tg_id))
-        await db.commit()
+        row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,))).fetchone()
+        chance_bonus = row[0] if row else 0
+    
+    # Вычисляем шанс
+    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
+    
+    # ⚡ АПГРЕЙД БЕСПЛАТНЫЙ - НЕ СПИСЫВАЕМ ЗВЁЗДЫ!
+    # Если free_upgrade == True, то не списываем звёзды
     
     # Проверяем успех
-    if random.random() < upgrade_chance:
+    is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
+    
+    if is_success:
         # Ищем новый предмет
         new_item = None
-        all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
-        for ct, drops in all_drops.items():
-            for did, (dname, dprice) in drops.items():
-                if dprice == req.target_price:
-                    new_item = {"id": did, "name": dname, "case": ct}
-                    break
-            if new_item:
+        
+        # Сначала ищем в пуле апгрейда
+        for up_item in UPGRADE_ITEMS_POOL:
+            if up_item["price"] == req.target_price:
+                new_item = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                 break
+        
+        # Если не нашли в пуле апгрейда, ищем в кейсах
+        if not new_item:
+            all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
+            for ct, drops in all_drops.items():
+                for did, (dname, dprice) in drops.items():
+                    if dprice == req.target_price:
+                        new_item = {"id": did, "name": dname, "case": ct}
+                        break
+                if new_item:
+                    break
         
         if new_item:
             inventory[req.item_index] = new_item
         else:
             # Если не нашли точную цену, ищем ближайшую
-            closest_price = min([d[1] for drops in all_drops.values() for d in drops.values()], 
-                               key=lambda x: abs(x - req.target_price))
-            for ct, drops in all_drops.items():
-                for did, (dname, dprice) in drops.items():
-                    if dprice == closest_price:
-                        inventory[req.item_index] = {"id": did, "name": dname, "case": ct}
-                        break
-                if new_item:
+            all_prices = []
+            for up_item in UPGRADE_ITEMS_POOL:
+                all_prices.append(up_item["price"])
+            for drops in all_drops.values():
+                for _, (_, price) in drops.items():
+                    all_prices.append(price)
+            closest_price = min(all_prices, key=lambda x: abs(x - req.target_price))
+            
+            for up_item in UPGRADE_ITEMS_POOL:
+                if up_item["price"] == closest_price:
+                    inventory[req.item_index] = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                     break
+            if not inventory[req.item_index]:
+                for ct, drops in all_drops.items():
+                    for did, (dname, dprice) in drops.items():
+                        if dprice == closest_price:
+                            inventory[req.item_index] = {"id": did, "name": dname, "case": ct}
+                            break
+                    if inventory[req.item_index]:
+                        break
         
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
@@ -818,8 +999,8 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         return {
             "success": True,
             "message": f"✅ Успех! Улучшено до {req.target_price}⭐️",
-            "new_balance": new_balance,
-            "upgrade_cost": upgrade_cost,
+            "new_balance": user_info["balance"],
+            "upgrade_cost": 0,
             "new_item": inventory[req.item_index]["name"],
             "chance": int(upgrade_chance * 100)
         }
@@ -832,11 +1013,24 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         
         return {
             "success": False,
-            "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️",
-            "new_balance": new_balance,
-            "upgrade_cost": upgrade_cost,
+            "message": f"💥 Сгорел!",
+            "new_balance": user_info["balance"],
+            "upgrade_cost": 0,
             "chance": int(upgrade_chance * 100)
         }
+
+# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕН ПРЕДМЕТОВ (ДЛЯ ФРОНТЕНДА) ==========
+@app.get("/api/upgrade/prices")
+async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
+    """Возвращает все доступные цены для апгрейда"""
+    prices = []
+    for item in UPGRADE_ITEMS_POOL:
+        prices.append(item["price"])
+    all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
+    for drops in all_drops.values():
+        for _, (_, price) in drops.items():
+            prices.append(price)
+    return {"prices": sorted(list(set(prices)))}
 
 # ========== LEADERBOARD ==========
 @app.get("/api/leaderboard")
@@ -1124,4 +1318,8 @@ async def verify_crash(server_seed: str, nonce: int):
         cp = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
     else:
         cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
-    return {"verified": True, "crah_point": min(cp, 50.0), "hash": hash_hex}
+    return {"verified": True, "crash_point": min(cp, 50.0), "hash": hash_hex}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
