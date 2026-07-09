@@ -114,9 +114,9 @@ WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
 
-# ========== АПГРЕЙД (НОВАЯ ВЕРСИЯ С БОНУСАМИ) ==========
-def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда, макс. 70%, мин. 2% + бонус от админа"""
+# ========== АПГРЕЙД (с рулеткой) ==========
+def calculate_upgrade_chance(current_price, target_price):
+    """Реалистичный шанс апгрейда, макс. 70%, мин. 2%"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
@@ -149,9 +149,6 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
         base -= 15
     elif diff >= 20000:
         base -= 25
-    
-    # Добавляем бонус от админа
-    base += chance_bonus
     
     return min(max(round(base), 2), 70)
 
@@ -325,10 +322,6 @@ class AdminGiveStarsRequest(BaseModel):
     target_tg_id: int
     amount: int
 
-class AdminChanceRequest(BaseModel):
-    target_tg_id: int
-    chance_percent: int
-
 class MinesStartRequest(BaseModel):
     bet_amount: int
     mines_count: int
@@ -343,7 +336,6 @@ class MinesCashoutRequest(BaseModel):
 class UpgradeItemRequest(BaseModel):
     item_index: int
     target_price: int
-    success: bool = False
 
 class PromoCreateRequest(BaseModel):
     code: str
@@ -483,7 +475,6 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS promos (code TEXT PRIMARY KEY, reward_type TEXT, case_type TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER)")
         await db.execute("CREATE TABLE IF NOT EXISTS top_rewards (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, place INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_uses (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS user_chances (tg_id INTEGER PRIMARY KEY, chance_bonus INTEGER DEFAULT 0)")
         await db.commit()
     asyncio.create_task(crash_game_loop())
 
@@ -544,10 +535,6 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
                 user_info["free_case_available"] = (time.time() - last_ts) >= 86400
             else:
                 user_info["free_case_available"] = True
-        # Получаем бонус шанса для апгрейда
-        async with db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,)) as cursor:
-            row = await cursor.fetchone()
-            user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
 # ========== ADMIN ==========
@@ -580,24 +567,6 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
-
-# ========== НОВАЯ АДМИН-ФУНКЦИЯ: ДОБАВЛЕНИЕ ШАНСА ==========
-@app.post("/api/admin/add_chance")
-async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.chance_percent < 1 or req.chance_percent > 100:
-        raise HTTPException(status_code=400, detail="Процент от 1 до 100")
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO user_chances (tg_id, chance_bonus) VALUES (?, ?)",
-            (req.target_tg_id, req.chance_percent)
-        )
-        await db.commit()
-    return {"success": True, "message": f"✅ Игроку {req.target_tg_id} добавлен шанс +{req.chance_percent}%"}
 
 # ========== PROMO ==========
 @app.post("/api/admin/promo/create")
@@ -693,7 +662,7 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
         # Специальные пониженные шансы для бесплатного кейса
-        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]
+        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]  # почти никогда не выпадает топ
         pool = STAR_CASE_DROPS["star_case_1"]
         reward_id = random.choices(list(pool.keys()), weights=free_weights, k=1)[0]
         reward_name = pool[reward_id][0]
@@ -776,7 +745,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (НОВАЯ ВЕРСИЯ) ==========
+# ========== АПГРЕЙД (с рулеткой) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -801,24 +770,22 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
-    # Получаем бонус шанса для игрока (НОВАЯ ФУНКЦИЯ)
-    async with aiosqlite.connect(DB_NAME) as db:
-        row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,))).fetchone()
-        chance_bonus = row[0] if row else 0
-    
-    # Вычисляем шанс с учётом бонуса
-    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
-    upgrade_cost = int(req.target_price * 0.08)
+    # Вычисляем шанс (макс. 70%)
+    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price) / 100
+    upgrade_cost = int(req.target_price * 0.08)  # 8% от цены цели
     
     if user_info["balance"] < upgrade_cost:
         raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
     
     new_balance = user_info["balance"] - upgrade_cost
     
-    # Проверяем успех (или используем результат от клиента)
-    is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
+    # Списываем стоимость
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=? WHERE tg_id=?", (new_balance, tg_id))
+        await db.commit()
     
-    if is_success:
+    # Проверяем успех
+    if random.random() < upgrade_chance:
         # Ищем новый предмет
         new_item = None
         all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
@@ -834,21 +801,18 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             inventory[req.item_index] = new_item
         else:
             # Если не нашли точную цену, ищем ближайшую
-            all_prices = []
-            for drops in all_drops.values():
-                for _, (_, price) in drops.items():
-                    all_prices.append(price)
-            closest_price = min(all_prices, key=lambda x: abs(x - req.target_price))
+            closest_price = min([d[1] for drops in all_drops.values() for d in drops.values()], 
+                               key=lambda x: abs(x - req.target_price))
             for ct, drops in all_drops.items():
                 for did, (dname, dprice) in drops.items():
                     if dprice == closest_price:
                         inventory[req.item_index] = {"id": did, "name": dname, "case": ct}
                         break
-                if inventory[req.item_index]:
+                if new_item:
                     break
         
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
             await db.commit()
         
         return {
@@ -863,7 +827,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         # Неудача - предмет сгорает
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
             await db.commit()
         
         return {
@@ -1160,8 +1124,4 @@ async def verify_crash(server_seed: str, nonce: int):
         cp = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
     else:
         cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
-    return {"verified": True, "crash_point": min(cp, 50.0), "hash": hash_hex}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
+    return {"verified": True, "crah_point": min(cp, 50.0), "hash": hash_hex}
