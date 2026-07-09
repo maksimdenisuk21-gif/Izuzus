@@ -80,39 +80,124 @@ CRASH_COOLDOWN = 3
 CRASH_HOUSE_EDGE = 0.04
 CRASH_SPEED = 0.08
 
-# ========== MINES ==========
-MINES_GRID_SIZE = 4
-MINES_MIN_COUNT = 1
-MINES_MAX_COUNT = 15
-MINES_HOUSE_EDGE = 0.05
-active_mines_games = {}
+// ========== МИНЫ с правильным множителем ==========
+let minesId = null, minesActive = false, minesBet = 0, opened = [];
 
-def generate_mines_grid(mines_count):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    grid = [0] * total_cells
-    mine_positions = random.sample(range(total_cells), mines_count)
-    for pos in mine_positions:
-        grid[pos] = 1
-    return grid
+function initMines() {
+    const g = document.getElementById('mines-grid');
+    g.innerHTML = '';
+    for (let i = 0; i < 16; i++) {
+        const c = document.createElement('div');
+        c.className = 'mine-cell';
+        c.id = `m${i}`;
+        c.onclick = () => openMine(i);
+        g.appendChild(c);
+    }
+}
 
-def calculate_mines_multiplier(mines_count, opened):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    safe_cells = total_cells - mines_count
-    if opened >= safe_cells:
-        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
-    probability = 1.0
-    for i in range(opened):
-        probability *= (safe_cells - i) / (total_cells - i)
-    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
-    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
-    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
-    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
+async function minesStart() {
+    const bet = +document.getElementById('mines-bet-input').value;
+    const mc = +document.getElementById('mines-count-input').value;
+    if (!bet || bet < 10 || !mc || mc < 1 || mc > 15) return alert('Ставка ≥10⭐️, мины 1-15');
+    playSound('sound-click');
+    const r = await fetch(`${API}/api/mines/start`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':auth},
+        body: JSON.stringify({bet_amount: bet, mines_count: mc})
+    });
+    if (!r.ok) return alert((await r.json()).detail);
+    const d = await r.json();
+    minesId = d.game_id;
+    minesBet = bet;
+    minesActive = true;
+    opened = [];
+    document.getElementById('mines-bet').innerText = `${bet}⭐️`;
+    document.getElementById('mines-mult').innerText = 'x1.00';
+    document.getElementById('mines-win').innerText = `${bet}⭐️`;
+    document.getElementById('mines-setup').style.display = 'none';
+    document.getElementById('mines-cashout-btn').style.display = 'block';
+    document.getElementById('user-balance').innerText = d.balance;
+    initMines();
+}
 
-REFERRAL_PERCENT = 7
-MAX_WITHDRAW_AMOUNT = 50000
-WITHDRAW_FEE = 0.05
-WITHDRAW_COOLDOWN_HOURS = 24
-MIN_DEPOSIT_FOR_REFERRAL = 50
+async function openMine(i) {
+    if (!minesActive) return;
+    const r = await fetch(`${API}/api/mines/open`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':auth},
+        body: JSON.stringify({game_id: minesId, cell_index: i})
+    });
+    const d = await r.json();
+    const c = document.getElementById(`m${i}`);
+    if (d.status === 'bomb') {
+        c.classList.add('bomb');
+        c.innerHTML = '💥';
+        minesActive = false;
+        document.getElementById('mines-cashout-btn').style.display = 'none';
+        d.mines.forEach(m => {
+            if (!opened.includes(m)) {
+                document.getElementById(`m${m}`).style.background = 'rgba(255,71,87,0.15)';
+                document.getElementById(`m${m}`).innerHTML = '💣';
+            }
+        });
+        playSound('sound-lose');
+        setTimeout(() => alert('💥 Мина!'), 300);
+        document.getElementById('user-balance').innerText = d.balance;
+        resetMines();
+    } else {
+        c.classList.add('opened');
+        c.innerHTML = '💎';
+        opened.push(i);
+        playSound('sound-click');
+        
+        // РАСЧЁТ МНОЖИТЕЛЯ
+        const totalCells = 16;
+        const minesCount = +document.getElementById('mines-count-input').value;
+        const safeCells = totalCells - minesCount;
+        const openedCount = opened.length;
+        
+        // Шанс найти все безопасные клетки
+        let multiplier = 1.0;
+        if (openedCount > 0) {
+            // Формула: (safeCells / totalCells) * (safeCells-1 / totalCells-1) * ... 
+            let prob = 1;
+            for (let k = 0; k < openedCount; k++) {
+                prob *= (safeCells - k) / (totalCells - k);
+            }
+            // Множитель = 1 / вероятность + небольшой бонус
+            multiplier = (1 / prob) * 0.92; // 8% маржа казино
+            multiplier = Math.round(multiplier * 100) / 100;
+        }
+        
+        document.getElementById('mines-mult').innerText = `x${multiplier.toFixed(2)}`;
+        document.getElementById('mines-win').innerText = `${Math.floor(minesBet * multiplier)}⭐️`;
+    }
+}
+
+async function minesCashout() {
+    if (!minesActive || !opened.length) return;
+    const r = await fetch(`${API}/api/mines/cashout`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':auth},
+        body: JSON.stringify({game_id: minesId})
+    });
+    const d = await r.json();
+    playSound('sound-win');
+    alert(`✅ Забрал x${d.multiplier.toFixed(2)}! +${d.profit}⭐️`);
+    document.getElementById('user-balance').innerText = d.balance;
+    resetMines();
+}
+
+function resetMines() {
+    minesActive = false;
+    minesId = null;
+    document.getElementById('mines-setup').style.display = 'block';
+    document.getElementById('mines-cashout-btn').style.display = 'none';
+    document.getElementById('mines-bet').innerText = '-';
+    document.getElementById('mines-mult').innerText = 'x1.00';
+    document.getElementById('mines-win').innerText = '-';
+    loadProfile();
+}
 
 # ========== АПГРЕЙД (с рулеткой) ==========
 def calculate_upgrade_chance(current_price, target_price):
