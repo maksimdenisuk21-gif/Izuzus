@@ -114,12 +114,47 @@ WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
 
-# ========== АПГРЕЙД (расширенный) ==========
-UPGRADE_CHANCES = {
-    50: 0.60, 100: 0.50, 200: 0.40, 500: 0.30, 
-    1000: 0.20, 2000: 0.10, 5000: 0.05,
-    7500: 0.03, 10000: 0.02, 15000: 0.01
-}
+# ========== АПГРЕЙД (макс. шанс 70%) ==========
+def calculate_upgrade_chance(current_price, target_price):
+    """
+    Реалистичный шанс апгрейда, макс. 70%
+    Чем больше разница — тем меньше шанс
+    """
+    diff = target_price - current_price
+    ratio = current_price / target_price  # 0-1, чем ближе к 1, тем выше шанс
+    
+    # Базовый шанс от соотношения цен
+    if ratio >= 0.95:      # почти одинаковые
+        base = 70
+    elif ratio >= 0.85:    # небольшая разница (100→115, 4600→5000)
+        base = 60
+    elif ratio >= 0.70:    # средняя разница (100→140, 1000→1400)
+        base = 50
+    elif ratio >= 0.55:    # (100→180)
+        base = 40
+    elif ratio >= 0.40:    # (100→250)
+        base = 30
+    elif ratio >= 0.25:    # (100→400)
+        base = 20
+    else:                  # очень большой скачок (100→1000+)
+        base = 10
+    
+    # Корректировка по абсолютной разнице (штраф за большой скачок)
+    if diff <= 50:
+        base += 5
+    elif diff <= 100:
+        base += 3
+    elif diff <= 300:
+        base += 1
+    elif diff >= 5000:
+        base -= 8
+    elif diff >= 10000:
+        base -= 15
+    elif diff >= 20000:
+        base -= 25
+    
+    # Жёсткие ограничения: минимум 2%, максимум 70%
+    return min(max(round(base), 2), 70)
 
 TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
@@ -710,7 +745,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (обновлённый) ==========
+# ========== АПГРЕЙД (с макс. шансом 70%) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -735,9 +770,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
-    # Получаем шанс и стоимость
-    upgrade_chance = UPGRADE_CHANCES.get(req.target_price, 0.10)
-    upgrade_cost = int(req.target_price * 0.1)
+    # Вычисляем шанс (макс. 70%)
+    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price) / 100
+    upgrade_cost = int(req.target_price * 0.08)  # 8% от цены цели
     
     if user_info["balance"] < upgrade_cost:
         raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
@@ -785,7 +820,8 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "message": f"✅ Успех! Улучшено до {req.target_price}⭐️",
             "new_balance": new_balance,
             "upgrade_cost": upgrade_cost,
-            "new_item": inventory[req.item_index]["name"]
+            "new_item": inventory[req.item_index]["name"],
+            "chance": int(upgrade_chance * 100)
         }
     else:
         # Неудача - предмет сгорает
@@ -798,7 +834,8 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "success": False,
             "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️",
             "new_balance": new_balance,
-            "upgrade_cost": upgrade_cost
+            "upgrade_cost": upgrade_cost,
+            "chance": int(upgrade_chance * 100)
         }
 
 # ========== LEADERBOARD ==========
