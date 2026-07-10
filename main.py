@@ -201,14 +201,14 @@ CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.04
+CRASH_HOUSE_EDGE = 0.05  # 5% HOUSE EDGE
 CRASH_SPEED = 0.08
 
 # ========== MINES ==========
 MINES_GRID_SIZE = 4
 MINES_MIN_COUNT = 1
 MINES_MAX_COUNT = 15
-MINES_HOUSE_EDGE = 0.05
+MINES_HOUSE_EDGE = 0.05  # 5% HOUSE EDGE
 active_mines_games = {}
 
 def generate_mines_grid(mines_count):
@@ -238,47 +238,85 @@ WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
 
-# ========== АПГРЕЙД ==========
+# ========== АПГРЕЙД (СЛОЖНЫЙ) ==========
 def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда, макс. 70%, мин. 0.1% + бонус от админа"""
+    """Реалистичный шанс апгрейда - СЛОЖНЫЙ!
+       Макс. 70%, мин. 0.01% + бонус от админа"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
-    # Базовый шанс от соотношения цен
-    if ratio >= 0.95:
+    # ===== НОВАЯ СИСТЕМА - СЛОЖНЕЕ =====
+    
+    # 1. Базовый шанс от соотношения цен (более жёсткий)
+    if ratio >= 0.98:
         base = 70
-    elif ratio >= 0.85:
+    elif ratio >= 0.95:
         base = 60
-    elif ratio >= 0.70:
+    elif ratio >= 0.90:
         base = 50
+    elif ratio >= 0.80:
+        base = 38
+    elif ratio >= 0.70:
+        base = 28
     elif ratio >= 0.55:
-        base = 40
+        base = 18
     elif ratio >= 0.40:
-        base = 30
-    elif ratio >= 0.25:
-        base = 20
-    else:
         base = 10
+    elif ratio >= 0.25:
+        base = 5
+    else:
+        base = 2
     
-    # Корректировка по разнице
-    if diff <= 50:
+    # 2. Жёсткая корректировка по разнице (чем больше разница, тем сильнее штраф)
+    if diff <= 10:
+        base += 8
+    elif diff <= 25:
         base += 5
+    elif diff <= 50:
+        base += 2
     elif diff <= 100:
-        base += 3
+        base += 0
     elif diff <= 300:
-        base += 1
-    elif diff >= 5000:
-        base -= 8
-    elif diff >= 10000:
+        base -= 3
+    elif diff <= 500:
+        base -= 6
+    elif diff <= 1000:
+        base -= 10
+    elif diff <= 2000:
         base -= 15
-    elif diff >= 20000:
-        base -= 25
+    elif diff <= 5000:
+        base -= 22
+    elif diff <= 10000:
+        base -= 30
+    elif diff <= 20000:
+        base -= 40
+    elif diff <= 50000:
+        base -= 50
+    else:
+        base -= 60
     
-    # Добавляем бонус от админа
+    # 3. Множитель сложности в зависимости от цены
+    # Чем выше цена, тем сложнее (штраф за дорогие предметы)
+    if target_price >= 50000:
+        base -= 15
+    elif target_price >= 30000:
+        base -= 10
+    elif target_price >= 15000:
+        base -= 6
+    elif target_price >= 8000:
+        base -= 3
+    elif target_price >= 3000:
+        base -= 1
+    
+    # 4. Добавляем бонус от админа
     base += chance_bonus
     
-    # МИНИМАЛЬНЫЙ ШАНС 0.1%
-    return min(max(round(base, 1), 0.1), 70)
+    # 5. Случайный фактор (иногда везёт, иногда нет)
+    random_factor = random.randint(-2, 2)
+    base += random_factor
+    
+    # МИНИМАЛЬНЫЙ ШАНС 0.01%
+    return min(max(round(base, 2), 0.01), 70)
 
 # Доступные цены для улучшения
 UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
@@ -715,6 +753,29 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
 
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
+@app.post("/api/admin/remove_stars")
+async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if req.target_tg_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID")
+    if req.amount < 1:
+        raise HTTPException(status_code=400, detail="Сумма > 0")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        row = await (await db.execute("SELECT balance FROM users WHERE tg_id=?", (req.target_tg_id,))).fetchone()
+        if not row:
+            raise HTTPException(status_code=400, detail="Игрок не найден")
+        if row[0] < req.amount:
+            raise HTTPException(status_code=400, detail=f"У игрока только {row[0]} ⭐️")
+        
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, req.target_tg_id))
+        await db.commit()
+    
+    return {"success": True, "message": f"✅ Забрано {req.amount} ⭐️ у игрока {req.target_tg_id}"}
+
 @app.post("/api/admin/add_chance")
 async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -921,7 +982,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (БЕСПЛАТНЫЙ, МИН. ШАНС 0.1%) ==========
+# ========== АПГРЕЙД (БЕСПЛАТНЫЙ, СЛОЖНЫЙ, МИН. ШАНС 0.01%) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -960,11 +1021,13 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if is_success:
         new_item = None
         
+        # Ищем в пуле апгрейда
         for up_item in UPGRADE_ITEMS_POOL:
             if up_item["price"] == req.target_price:
                 new_item = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                 break
         
+        # Ищем в кейсах
         if not new_item:
             all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
             for ct, drops in all_drops.items():
@@ -978,6 +1041,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         if new_item:
             inventory[req.item_index] = new_item
         else:
+            # Ищем ближайшую цену
             all_prices = []
             for up_item in UPGRADE_ITEMS_POOL:
                 all_prices.append(up_item["price"])
