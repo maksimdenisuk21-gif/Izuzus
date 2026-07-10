@@ -69,6 +69,19 @@ NFT_CASE_DROPS = {
     "nft_case_10": {"n10_1": ("👑 Crown Prince", 4600), "n10_2": ("👑 Crown King", 8050), "n10_3": ("👑 Crown Emperor", 13800), "n10_4": ("👑 Crown God", 23000), "n10_5": ("👑 Crown Cosmic", 40250), "n10_6": ("👑 Crown Creator", 69000)}
 }
 
+# ========== БЕСПЛАТНЫЙ КЕЙС ==========
+FREE_CASE_DROPS = [
+    {"name": "⭐ 0.1 Stars", "price": 0.1, "weight": 35.0},
+    {"name": "⭐ 0.5 Stars", "price": 0.5, "weight": 25.0},
+    {"name": "⭐ 1 Star", "price": 1.0, "weight": 18.0},
+    {"name": "⭐ 2.5 Stars", "price": 2.5, "weight": 12.0},
+    {"name": "⭐ 5 Stars", "price": 5.0, "weight": 6.0},
+    {"name": "⭐ 15 Stars", "price": 15.0, "weight": 2.5},
+    {"name": "⭐ 35 Stars", "price": 35.0, "weight": 1.0},
+    {"name": "⭐ 60 Stars", "price": 60.0, "weight": 0.4},
+    {"name": "⭐ 100 Stars", "price": 100.0, "weight": 0.1}
+]
+
 # ========== 100+ НОВЫХ ПРЕДМЕТОВ ДЛЯ АПГРЕЙДА ==========
 UPGRADE_ITEMS_POOL = [
     {"name": "⚡ Искра", "price": 5},
@@ -264,7 +277,7 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
     # Добавляем бонус от админа
     base += chance_bonus
     
-    # МИНИМАЛЬНЫЙ ШАНС ТЕПЕРЬ 0.1% (вместо 2%)
+    # МИНИМАЛЬНЫЙ ШАНС 0.1%
     return min(max(round(base, 1), 0.1), 70)
 
 # Доступные цены для улучшения
@@ -594,7 +607,7 @@ async def cashout(sid, data):
 @app.on_event("startup")
 async def startup():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Игрок', balance INTEGER DEFAULT 20, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]')")
+        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Игрок', balance INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]')")
         await db.execute("CREATE TABLE IF NOT EXISTS withdraws (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, requisites TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, total_earned INTEGER DEFAULT 0)")
         await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
@@ -627,7 +640,7 @@ def verify_telegram_data(authorization: str = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Parsing error")
 
-# ========== ИЗМЕНЕНО: ПУСТОЙ ИНВЕНТАРЬ ДЛЯ НОВЫХ ИГРОКОВ ==========
+# ========== ПОЛЬЗОВАТЕЛИ (СТАРТОВЫЙ БАЛАНС 0) ==========
 async def get_or_create_user(tg_id: int, username: str = "Игрок"):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance, total_spent, inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -637,8 +650,8 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 await db.commit()
                 return {"balance": row[0], "total_spent": row[1], "inventory": json.loads(row[2])}
             else:
-                start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 20
-                # ⚡ ПУСТОЙ ИНВЕНТАРЬ - НИЧЕГО НЕ ДАЁМ!
+                # СТАРТОВЫЙ БАЛАНС 0 ДЛЯ ВСЕХ (КРОМЕ АДМИНА)
+                start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 0
                 await db.execute(
                     "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,'[]')",
                     (tg_id, username, start_balance)
@@ -695,12 +708,127 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         raise HTTPException(status_code=400, detail="Макс 1M ⭐️")
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,20,0,'[]')",
+            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,0,0,'[]')",
             (req.target_tg_id, f"Player_{req.target_tg_id}")
         )
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
+
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
+@app.post("/api/admin/remove_stars")
+async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if req.target_tg_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID")
+    if req.amount < 1:
+        raise HTTPException(status_code=400, detail="Сумма > 0")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        row = await (await db.execute("SELECT balance FROM users WHERE tg_id=?", (req.target_tg_id,))).fetchone()
+        if not row:
+            raise HTTPException(status_code=400, detail="Игрок не найден")
+        if row[0] < req.amount:
+            raise HTTPException(status_code=400, detail=f"У игрока только {row[0]} ⭐️")
+        
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, req.target_tg_id))
+        await db.commit()
+    
+    return {"success": True, "message": f"✅ Забрано {req.amount} ⭐️ у игрока {req.target_tg_id}"}
+
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ДОБАВИТЬ ЗВЁЗДЫ (АЛЬТЕРНАТИВА) =====
+@app.post("/api/admin/add_stars")
+async def admin_add_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if req.target_tg_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID")
+    if req.amount < 1:
+        raise HTTPException(status_code=400, detail="Сумма > 0")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,0,0,'[]')",
+            (req.target_tg_id, f"Player_{req.target_tg_id}")
+        )
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
+        await db.commit()
+    
+    return {"success": True, "message": f"✅ Добавлено {req.amount} ⭐️ игроку {req.target_tg_id}"}
+
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ПОЛУЧИТЬ ИНФО ОБ ИГРОКЕ =====
+@app.get("/api/admin/user/{target_tg_id}")
+async def admin_get_user(target_tg_id: int, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        row = await (await db.execute(
+            "SELECT tg_id, username, balance, total_spent, inventory FROM users WHERE tg_id=?",
+            (target_tg_id,)
+        )).fetchone()
+        if not row:
+            raise HTTPException(status_code=400, detail="Игрок не найден")
+        
+        chance_row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (target_tg_id,))).fetchone()
+        chance_bonus = chance_row[0] if chance_row else 0
+        
+        return {
+            "tg_id": row[0],
+            "username": row[1],
+            "balance": row[2],
+            "total_spent": row[3],
+            "inventory": json.loads(row[4]),
+            "chance_bonus": chance_bonus
+        }
+
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: УСТАНОВИТЬ ШАНС =====
+@app.post("/api/admin/set_chance")
+async def admin_set_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    if req.target_tg_id <= 0:
+        raise HTTPException(status_code=400, detail="Неверный ID")
+    if req.chance_percent < 0 or req.chance_percent > 100:
+        raise HTTPException(status_code=400, detail="Процент от 0 до 100")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO user_chances (tg_id, chance_bonus) VALUES (?, ?)",
+            (req.target_tg_id, req.chance_percent)
+        )
+        await db.commit()
+    
+    return {"success": True, "message": f"✅ Игроку {req.target_tg_id} установлен шанс +{req.chance_percent}%"}
+
+# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ТОП ИГРОКОВ =====
+@app.get("/api/admin/top")
+async def admin_get_top(user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    async with aiosqlite.connect(DB_NAME) as db:
+        rows = await (await db.execute(
+            "SELECT tg_id, username, balance, total_spent FROM users ORDER BY balance DESC LIMIT 50"
+        )).fetchall()
+        
+        result = []
+        for i, row in enumerate(rows):
+            result.append({
+                "place": i + 1,
+                "tg_id": row[0],
+                "username": row[1],
+                "balance": row[2],
+                "total_spent": row[3]
+            })
+        
+        return {"players": result}
 
 @app.post("/api/admin/add_chance")
 async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
@@ -796,7 +924,7 @@ async def get_top_rewards(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
         return [{"tg_id": r[0], "amount": r[1], "place": r[2], "date": r[3]} for r in rows]
 
-# ========== FREE CASE ==========
+# ========== FREE CASE (ОБНОВЛЁННЫЙ) ==========
 @app.post("/api/free_case/claim")
 async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -812,17 +940,26 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
-        free_weights = [55.0, 30.0, 10.0, 4.0, 1.0, 0.0]
-        pool = STAR_CASE_DROPS["star_case_1"]
-        reward_id = random.choices(list(pool.keys()), weights=free_weights, k=1)[0]
-        reward_name = pool[reward_id][0]
+        # Новый бесплатный кейс с весами
+        weights = [d["weight"] for d in FREE_CASE_DROPS]
+        total_weight = sum(weights)
+        norm_weights = [w / total_weight for w in weights]
         
+        reward = random.choices(FREE_CASE_DROPS, weights=norm_weights, k=1)[0]
+        reward_name = reward["name"]
+        reward_price = reward["price"]
+        
+        # Зачисляем на баланс
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (reward_price, tg_id))
+        
+        # Добавляем в инвентарь для истории
         async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
             inventory = json.loads((await cursor.fetchone())[0] or '[]')
-        inventory.append({"id": reward_id, "name": reward_name, "case": "star_case_1"})
+        inventory.append({"id": f"free_{int(time.time())}", "name": reward_name, "case": "free_case"})
         await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
         await db.commit()
-    return {"success": True, "reward": reward_name}
+    
+    return {"success": True, "reward": reward_name, "price": reward_price}
 
 # ========== CASES ==========
 @app.post("/api/case/open")
@@ -934,7 +1071,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     
     upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
     
-    # ⚡ АПГРЕЙД БЕСПЛАТНЫЙ - НЕ СПИСЫВАЕМ ЗВЁЗДЫ!
+    # ⚡ АПГРЕЙД БЕСПЛАТНЫЙ
     
     is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
     
