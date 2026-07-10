@@ -715,7 +715,7 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
+# ===== АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
 @app.post("/api/admin/remove_stars")
 async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -738,7 +738,7 @@ async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(ve
     
     return {"success": True, "message": f"✅ Забрано {req.amount} ⭐️ у игрока {req.target_tg_id}"}
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ДОБАВИТЬ ЗВЁЗДЫ (АЛЬТЕРНАТИВА) =====
+# ===== АДМИН-ФУНКЦИЯ: ДОБАВИТЬ ЗВЁЗДЫ (АЛЬТЕРНАТИВА) =====
 @app.post("/api/admin/add_stars")
 async def admin_add_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -759,7 +759,7 @@ async def admin_add_stars(req: AdminGiveStarsRequest, user: dict = Depends(verif
     
     return {"success": True, "message": f"✅ Добавлено {req.amount} ⭐️ игроку {req.target_tg_id}"}
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ПОЛУЧИТЬ ИНФО ОБ ИГРОКЕ =====
+# ===== АДМИН-ФУНКЦИЯ: ПОЛУЧИТЬ ИНФО ОБ ИГРОКЕ =====
 @app.get("/api/admin/user/{target_tg_id}")
 async def admin_get_user(target_tg_id: int, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -786,7 +786,7 @@ async def admin_get_user(target_tg_id: int, user: dict = Depends(verify_telegram
             "chance_bonus": chance_bonus
         }
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: УСТАНОВИТЬ ШАНС =====
+# ===== АДМИН-ФУНКЦИЯ: УСТАНОВИТЬ ШАНС =====
 @app.post("/api/admin/set_chance")
 async def admin_set_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -806,7 +806,7 @@ async def admin_set_chance(req: AdminChanceRequest, user: dict = Depends(verify_
     
     return {"success": True, "message": f"✅ Игроку {req.target_tg_id} установлен шанс +{req.chance_percent}%"}
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ТОП ИГРОКОВ =====
+# ===== АДМИН-ФУНКЦИЯ: ТОП ИГРОКОВ =====
 @app.get("/api/admin/top")
 async def admin_get_top(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -940,7 +940,6 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         
         await db.execute("INSERT OR REPLACE INTO free_case_uses (user_id, last_used) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
         
-        # Новый бесплатный кейс с весами
         weights = [d["weight"] for d in FREE_CASE_DROPS]
         total_weight = sum(weights)
         norm_weights = [w / total_weight for w in weights]
@@ -949,10 +948,8 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
         reward_name = reward["name"]
         reward_price = reward["price"]
         
-        # Зачисляем на баланс
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (reward_price, tg_id))
         
-        # Добавляем в инвентарь для истории
         async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
             inventory = json.loads((await cursor.fetchone())[0] or '[]')
         inventory.append({"id": f"free_{int(time.time())}", "name": reward_name, "case": "free_case"})
