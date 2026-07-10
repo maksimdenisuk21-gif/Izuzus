@@ -684,7 +684,7 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
             user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
-# ========== ADMIN ==========
+# ========== СТАРАЯ АДМИНКА ==========
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -714,121 +714,6 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
-
-# ===== АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
-@app.post("/api/admin/remove_stars")
-async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.amount < 1:
-        raise HTTPException(status_code=400, detail="Сумма > 0")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        row = await (await db.execute("SELECT balance FROM users WHERE tg_id=?", (req.target_tg_id,))).fetchone()
-        if not row:
-            raise HTTPException(status_code=400, detail="Игрок не найден")
-        if row[0] < req.amount:
-            raise HTTPException(status_code=400, detail=f"У игрока только {row[0]} ⭐️")
-        
-        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, req.target_tg_id))
-        await db.commit()
-    
-    return {"success": True, "message": f"✅ Забрано {req.amount} ⭐️ у игрока {req.target_tg_id}"}
-
-# ===== АДМИН-ФУНКЦИЯ: ДОБАВИТЬ ЗВЁЗДЫ (АЛЬТЕРНАТИВА) =====
-@app.post("/api/admin/add_stars")
-async def admin_add_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.amount < 1:
-        raise HTTPException(status_code=400, detail="Сумма > 0")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,0,0,'[]')",
-            (req.target_tg_id, f"Player_{req.target_tg_id}")
-        )
-        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
-        await db.commit()
-    
-    return {"success": True, "message": f"✅ Добавлено {req.amount} ⭐️ игроку {req.target_tg_id}"}
-
-# ===== АДМИН-ФУНКЦИЯ: ПОЛУЧИТЬ ИНФО ОБ ИГРОКЕ =====
-@app.get("/api/admin/user/{target_tg_id}")
-async def admin_get_user(target_tg_id: int, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        row = await (await db.execute(
-            "SELECT tg_id, username, balance, total_spent, inventory FROM users WHERE tg_id=?",
-            (target_tg_id,)
-        )).fetchone()
-        if not row:
-            raise HTTPException(status_code=400, detail="Игрок не найден")
-        
-        chance_row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (target_tg_id,))).fetchone()
-        chance_bonus = chance_row[0] if chance_row else 0
-        
-        return {
-            "tg_id": row[0],
-            "username": row[1],
-            "balance": row[2],
-            "total_spent": row[3],
-            "inventory": json.loads(row[4]),
-            "chance_bonus": chance_bonus
-        }
-
-# ===== АДМИН-ФУНКЦИЯ: УСТАНОВИТЬ ШАНС =====
-@app.post("/api/admin/set_chance")
-async def admin_set_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.chance_percent < 0 or req.chance_percent > 100:
-        raise HTTPException(status_code=400, detail="Процент от 0 до 100")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO user_chances (tg_id, chance_bonus) VALUES (?, ?)",
-            (req.target_tg_id, req.chance_percent)
-        )
-        await db.commit()
-    
-    return {"success": True, "message": f"✅ Игроку {req.target_tg_id} установлен шанс +{req.chance_percent}%"}
-
-# ===== АДМИН-ФУНКЦИЯ: ТОП ИГРОКОВ =====
-@app.get("/api/admin/top")
-async def admin_get_top(user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        rows = await (await db.execute(
-            "SELECT tg_id, username, balance, total_spent FROM users ORDER BY balance DESC LIMIT 50"
-        )).fetchall()
-        
-        result = []
-        for i, row in enumerate(rows):
-            result.append({
-                "place": i + 1,
-                "tg_id": row[0],
-                "username": row[1],
-                "balance": row[2],
-                "total_spent": row[3]
-            })
-        
-        return {"players": result}
 
 @app.post("/api/admin/add_chance")
 async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
