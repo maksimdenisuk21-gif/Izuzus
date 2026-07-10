@@ -227,7 +227,7 @@ MIN_DEPOSIT_FOR_REFERRAL = 50
 
 # ========== АПГРЕЙД ==========
 def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда, макс. 70%, мин. 2% + бонус от админа"""
+    """Реалистичный шанс апгрейда, макс. 70%, мин. 0.1% + бонус от админа"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
@@ -264,7 +264,8 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
     # Добавляем бонус от админа
     base += chance_bonus
     
-    return min(max(round(base), 2), 70)
+    # МИНИМАЛЬНЫЙ ШАНС ТЕПЕРЬ 0.1% (вместо 2%)
+    return min(max(round(base, 1), 0.1), 70)
 
 # Доступные цены для улучшения
 UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
@@ -462,7 +463,7 @@ class UpgradeItemRequest(BaseModel):
     item_index: int
     target_price: int
     success: bool = False
-    free_upgrade: bool = False  # НОВОЕ ПОЛЕ ДЛЯ БЕСПЛАТНОГО АПГРЕЙДА
+    free_upgrade: bool = False
 
 class PromoCreateRequest(BaseModel):
     code: str
@@ -626,6 +627,7 @@ def verify_telegram_data(authorization: str = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Parsing error")
 
+# ========== ИЗМЕНЕНО: ПУСТОЙ ИНВЕНТАРЬ ДЛЯ НОВЫХ ИГРОКОВ ==========
 async def get_or_create_user(tg_id: int, username: str = "Игрок"):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance, total_spent, inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -636,17 +638,13 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 return {"balance": row[0], "total_spent": row[1], "inventory": json.loads(row[2])}
             else:
                 start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 20
-                # Даём 3 случайных предмета из пула апгрейда новым игрокам
-                starter_items = []
-                for _ in range(3):
-                    item = random.choice(UPGRADE_ITEMS_POOL)
-                    starter_items.append({"id": f"up_{item['name']}", "name": item["name"], "case": "upgrade"})
+                # ⚡ ПУСТОЙ ИНВЕНТАРЬ - НИЧЕГО НЕ ДАЁМ!
                 await db.execute(
-                    "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,?)",
-                    (tg_id, username, start_balance, json.dumps(starter_items))
+                    "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,'[]')",
+                    (tg_id, username, start_balance)
                 )
                 await db.commit()
-                return {"balance": start_balance, "total_spent": 0, "inventory": starter_items}
+                return {"balance": start_balance, "total_spent": 0, "inventory": []}
 
 # ========== PROFILE ==========
 @app.get("/api/profile")
@@ -869,7 +867,6 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
     item = inventory.pop(req.item_index)
     gain = 0
     
-    # Сначала проверяем в пуле апгрейда
     gain = get_upgrade_item_price(item["name"])
     if gain == 0:
         if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
@@ -905,7 +902,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (ОБНОВЛЁННЫЙ - БЕСПЛАТНЫЙ) ==========
+# ========== АПГРЕЙД (БЕСПЛАТНЫЙ, МИН. ШАНС 0.1%) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -918,7 +915,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     item = inventory[req.item_index]
     current_price = 0
     
-    # Находим текущую цену предмета (сначала в пуле апгрейда)
     current_price = get_upgrade_item_price(item["name"])
     if current_price == 0:
         if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
@@ -932,31 +928,24 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
-    # Получаем бонус шанса для игрока
     async with aiosqlite.connect(DB_NAME) as db:
         row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,))).fetchone()
         chance_bonus = row[0] if row else 0
     
-    # Вычисляем шанс
     upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
     
     # ⚡ АПГРЕЙД БЕСПЛАТНЫЙ - НЕ СПИСЫВАЕМ ЗВЁЗДЫ!
-    # Если free_upgrade == True, то не списываем звёзды
     
-    # Проверяем успех
     is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
     
     if is_success:
-        # Ищем новый предмет
         new_item = None
         
-        # Сначала ищем в пуле апгрейда
         for up_item in UPGRADE_ITEMS_POOL:
             if up_item["price"] == req.target_price:
                 new_item = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                 break
         
-        # Если не нашли в пуле апгрейда, ищем в кейсах
         if not new_item:
             all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
             for ct, drops in all_drops.items():
@@ -970,7 +959,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         if new_item:
             inventory[req.item_index] = new_item
         else:
-            # Если не нашли точную цену, ищем ближайшую
             all_prices = []
             for up_item in UPGRADE_ITEMS_POOL:
                 all_prices.append(up_item["price"])
@@ -1005,7 +993,6 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "chance": int(upgrade_chance * 100)
         }
     else:
-        # Неудача - предмет сгорает
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
@@ -1019,10 +1006,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "chance": int(upgrade_chance * 100)
         }
 
-# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕН ПРЕДМЕТОВ (ДЛЯ ФРОНТЕНДА) ==========
+# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕН ПРЕДМЕТОВ ==========
 @app.get("/api/upgrade/prices")
 async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
-    """Возвращает все доступные цены для апгрейда"""
     prices = []
     for item in UPGRADE_ITEMS_POOL:
         prices.append(item["price"])
