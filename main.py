@@ -1,5 +1,5 @@
 import os
-import hmac
+import hma
 import hashlib
 import json
 import urllib.parse
