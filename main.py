@@ -28,80 +28,70 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
 # ============================================================
-#  PUBG METRO — ВАЛЮТА: METROCOIN (MC)
-# ============================================================
-
-# ============================================================
-#  КОНТЕЙНЕРЫ (КЕЙСЫ)
+#  PUBG METRO — КОНТЕЙНЕРЫ (С БОЛЬШИМИ ВЫИГРЫШАМИ)
 # ============================================================
 CONTAINER_PRICES = {
-    "container_1": 50,   # Базовый
-    "container_2": 150,  # Продвинутый
-    "container_3": 400,  # Элитный
-    "container_4": 750,  # Легендарный
-    "container_5": 1500, # Мифический
-    "container_6": 3000, # Божественный
+    "container_1": 50,
+    "container_2": 150,
+    "container_3": 400,
+    "container_4": 750,
+    "container_5": 1500,
+    "container_6": 3000,
 }
 
 CONTAINER_DROPS = {
-    # ===== КОНТЕЙНЕР 1 (Базовый) =====
     "container_1": {
         "c1_1": ("🛡️ Броник Ур.1", 8),
         "c1_2": ("⛑️ Шлем Ур.1", 12),
         "c1_3": ("🎒 Рюкзак Ур.1", 10),
-        "c1_4": ("🔫 M416", 25),
+        "c1_4": ("🔫 M416", 35),
         "c1_5": ("💊 Аптечка", 5),
-        "c1_6": ("💰 MetroCoin", 15),
+        "c1_6": ("💰 MetroCoin", 50),
     },
-    # ===== КОНТЕЙНЕР 2 (Продвинутый) =====
     "container_2": {
         "c2_1": ("🛡️ Броник Ур.2", 35),
         "c2_2": ("⛑️ Шлем Ур.2", 40),
         "c2_3": ("🎒 Рюкзак Ур.2", 38),
-        "c2_4": ("🔫 M762", 55),
+        "c2_4": ("🔫 M762", 120),
         "c2_5": ("💊 Адреналин", 20),
-        "c2_6": ("💰 MetroCoin", 45),
+        "c2_6": ("💰 MetroCoin", 150),
     },
-    # ===== КОНТЕЙНЕР 3 (Элитный) =====
     "container_3": {
         "c3_1": ("🛡️ Броник Ур.3", 80),
         "c3_2": ("⛑️ Шлем Ур.3", 90),
         "c3_3": ("🎒 Рюкзак Ур.3", 85),
-        "c3_4": ("🔫 AUG", 120),
+        "c3_4": ("🔫 AUG", 300),
         "c3_5": ("💊 Адреналин", 30),
-        "c3_6": ("💰 MetroCoin", 100),
+        "c3_6": ("💰 MetroCoin", 400),
     },
-    # ===== КОНТЕЙНЕР 4 (Легендарный) =====
     "container_4": {
         "c4_1": ("🛡️ Броник Ур.4", 180),
         "c4_2": ("⛑️ Шлем Ур.4", 200),
         "c4_3": ("🎒 Рюкзак Ур.4", 190),
-        "c4_4": ("🔫 MK14", 250),
-        "c4_5": ("⚔️ Золотой меч", 350),
-        "c4_6": ("💰 MetroCoin", 220),
+        "c4_4": ("🔫 MK14", 600),
+        "c4_5": ("⚔️ Золотой меч", 800),
+        "c4_6": ("💰 MetroCoin", 750),
     },
-    # ===== КОНТЕЙНЕР 5 (Мифический) =====
     "container_5": {
         "c5_1": ("🛡️ Броник Ур.5", 400),
         "c5_2": ("⛑️ Шлем Ур.5", 450),
         "c5_3": ("🎒 Рюкзак Ур.5", 420),
-        "c5_4": ("🔫 Groza", 550),
-        "c5_5": ("🍥 Артефакт Наруто", 700),
-        "c5_6": ("💰 MetroCoin", 500),
+        "c5_4": ("🔫 Groza", 1200),
+        "c5_5": ("🍥 Артефакт Наруто", 1800),
+        "c5_6": ("💰 MetroCoin", 1500),
     },
-    # ===== КОНТЕЙНЕР 6 (Божественный) =====
     "container_6": {
         "c6_1": ("🛡️ Броник Ур.6", 900),
         "c6_2": ("⛑️ Шлем Ур.6", 1000),
         "c6_3": ("🎒 Рюкзак Ур.6", 950),
-        "c6_4": ("🔫 AWM", 1200),
-        "c6_5": ("🗡️ Керамбит", 1800),
-        "c6_6": ("🦋 Бабочка", 3000),  # САМОЕ РЕДКОЕ!
+        "c6_4": ("🔫 AWM", 2500),
+        "c6_5": ("🗡️ Керамбит", 4000),
+        "c6_6": ("🦋 Бабочка", 7500),
     },
 }
 
 # ============================================================
-#  ЗОЛОТЫЕ КОНТЕЙНЕРЫ (ДОПОЛНИТЕЛЬНЫЕ)
+#  ЗОЛОТЫЕ КОНТЕЙНЕРЫ
 # ============================================================
 GOLD_CONTAINER_PRICES = {
     "gold_container_1": 500,
@@ -111,28 +101,28 @@ GOLD_CONTAINER_PRICES = {
 
 GOLD_CONTAINER_DROPS = {
     "gold_container_1": {
-        "g1_1": ("⭐ Золотая M416", 600),
-        "g1_2": ("⭐ Золотой AUG", 700),
-        "g1_3": ("⭐ Золотой броник", 500),
-        "g1_4": ("⭐ Золотой шлем", 550),
-        "g1_5": ("⭐ Золотая аптечка", 300),
-        "g1_6": ("💰 MetroCoin", 400),
+        "g1_1": ("⭐ Золотая M416", 800),
+        "g1_2": ("⭐ Золотой AUG", 900),
+        "g1_3": ("⭐ Золотой броник", 600),
+        "g1_4": ("⭐ Золотой шлем", 650),
+        "g1_5": ("⭐ Золотая аптечка", 400),
+        "g1_6": ("💰 MetroCoin", 500),
     },
     "gold_container_2": {
-        "g2_1": ("⭐ Золотая Groza", 1200),
-        "g2_2": ("⭐ Золотой MK14", 1300),
-        "g2_3": ("⭐ Золотой рюкзак", 1000),
-        "g2_4": ("⚔️ Золотой меч", 800),
-        "g2_5": ("🍥 Артефакт Наруто", 700),
-        "g2_6": ("💰 MetroCoin", 900),
+        "g2_1": ("⭐ Золотая Groza", 1600),
+        "g2_2": ("⭐ Золотой MK14", 1700),
+        "g2_3": ("⭐ Золотой рюкзак", 1200),
+        "g2_4": ("⚔️ Золотой меч", 1000),
+        "g2_5": ("🍥 Артефакт Наруто", 900),
+        "g2_6": ("💰 MetroCoin", 1000),
     },
     "gold_container_3": {
-        "g3_1": ("⭐ Золотая AWM", 2500),
-        "g3_2": ("⭐ Золотой Керамбит", 2800),
-        "g3_3": ("🦋 Бабочка", 3000),
-        "g3_4": ("🗡️ Керамбит", 1800),
-        "g3_5": ("🍥 Артефакт Наруто", 700),
-        "g3_6": ("💰 MetroCoin", 1500),
+        "g3_1": ("⭐ Золотая AWM", 3000),
+        "g3_2": ("⭐ Золотой Керамбит", 3500),
+        "g3_3": ("🦋 Бабочка", 4000),
+        "g3_4": ("🗡️ Керамбит", 2500),
+        "g3_5": ("🍥 Артефакт Наруто", 900),
+        "g3_6": ("💰 MetroCoin", 2000),
     },
 }
 
@@ -158,9 +148,9 @@ FREE_CASE_DROPS = [
     {"name": "🛡️ Броник Ур.1", "price": 8, "weight": 25.0},
     {"name": "⛑️ Шлем Ур.1", "price": 12, "weight": 25.0},
     {"name": "🎒 Рюкзак Ур.1", "price": 10, "weight": 25.0},
-    {"name": "🔫 M416", "price": 25, "weight": 15.0},
+    {"name": "🔫 M416", "price": 35, "weight": 15.0},
     {"name": "💊 Аптечка", "price": 5, "weight": 5.0},
-    {"name": "💰 MetroCoin", "price": 15, "weight": 5.0},
+    {"name": "💰 MetroCoin", "price": 50, "weight": 5.0},
 ]
 
 # ============================================================
@@ -589,7 +579,10 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     username = user.get('first_name', 'Игрок')
     user_info = await get_or_create_user(tg_id, username)
-    user_info["is_admin"] = (ADMIN_TG_ID and tg_id == ADMIN_TG_ID)
+    
+    is_admin = (ADMIN_TG_ID and tg_id == ADMIN_TG_ID)
+    user_info["is_admin"] = is_admin
+    
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (tg_id,)) as cursor:
             user_info["friends_count"] = (await cursor.fetchone())[0]
@@ -672,7 +665,6 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
         reward_name = None
         if promo[1] == "case":
             ct = promo[2]
-            all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
             if ct in CONTAINER_DROPS:
                 pool = CONTAINER_DROPS[ct]
                 weights = DROP_WEIGHTS.get(ct, [20.0, 20.0, 20.0, 20.0, 10.0, 10.0])
@@ -767,9 +759,6 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
 # ============================================================
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
-    all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
-    all_prices = {**CONTAINER_PRICES, **GOLD_CONTAINER_PRICES}
-    
     if req.case_type in CONTAINER_DROPS:
         price = CONTAINER_PRICES[req.case_type]
         pool = CONTAINER_DROPS[req.case_type]
