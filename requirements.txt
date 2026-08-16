@@ -2,5 +2,6 @@ fastapi
 uvicorn
 aiosqlite
 httpx
-pydantic
 python-socketio
+pydantic
+python-multipart
