@@ -8,40 +8,46 @@ import time
 import uuid
 import asyncio
 import math
-from fastapi import FastAPI, Header, HTTPException, Depends, Request
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import aiosqlite
 import httpx
 import socketio
 
+# ============================================================
+#  ДЛЯ RENDER — БЕРЁМ ПОРТ ИЗ ПЕРЕМЕННЫХ
+# ============================================================
+PORT = int(os.getenv("PORT", 8000))
+
 app = FastAPI()
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', ping_timeout=10, ping_interval=5)
 socket_app = socketio.ASGIApp(sio, app)
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+# ============================================================
+#  CORS — РАЗРЕШАЕМ ВСЁ (для Netlify)
+# ============================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID")
 ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
-# ==================================================
-# НАСТРОЙКИ ДЛЯ PUBG METRO ROYALE
-# ==================================================
-
-# ========== КОНТЕЙНЕРЫ (КЕЙСЫ) В СТИЛЕ PUBG METRO ==========
+# ============================================================
+#  КОНТЕЙНЕРЫ PUBG METRO
+# ============================================================
 CONTAINER_PRICES = {
-    "container_1": 50,   # Стандартный ящик
-    "container_2": 150,  # Ящик повышенной сложности
-    "container_3": 400,  # Суперконтейнер
-    "container_4": 750,  # Режимный ящик
-    "container_5": 1500, # Секретный контейнер
-    "container_6": 2500, # Тайный склад
-    "container_7": 4000,
-    "container_8": 6000,
-    "container_9": 9000,
+    "container_1": 50, "container_2": 150, "container_3": 400,
+    "container_4": 750, "container_5": 1500, "container_6": 2500,
+    "container_7": 4000, "container_8": 6000, "container_9": 9000,
     "container_10": 15000
 }
 
@@ -128,7 +134,11 @@ CONTAINER_DROPS = {
     }
 }
 
-# ========== ЛУТ ИЗ РЕЖИМА МЕТРО ==========
+CONTAINER_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
+
+# ============================================================
+#  ЛУТ МЕТРО
+# ============================================================
 METRO_LOOT_POOL = [
     {"name": "💊 Аптечка", "price": 5},
     {"name": "💊 Адреналин", "price": 8},
@@ -239,9 +249,9 @@ METRO_LOOT_POOL = [
     {"name": "🔫 Прототип Ур.8", "price": 72500}
 ]
 
-CONTAINER_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
-
-# ========== БЕСПЛАТНЫЙ КЕЙС (ДЖЕКПОТ) ==========
+# ============================================================
+#  БЕСПЛАТНЫЙ КЕЙС
+# ============================================================
 FREE_CASE_DROPS = [
     {"name": "🔫 M416", "price": 0.1, "weight": 35.0},
     {"name": "🔫 M762", "price": 0.5, "weight": 25.0},
@@ -254,129 +264,15 @@ FREE_CASE_DROPS = [
     {"name": "📡 Секретный документ", "price": 100.0, "weight": 0.1}
 ]
 
-# Остальные настройки (CRASH, MINES, REFERRAL) остаются без изменений, 
-# но можно подкорректировать названия под стиль PUBG
-
+# ============================================================
+#  CRASH
+# ============================================================
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
 CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
-
-MINES_GRID_SIZE = 4
-MINES_MIN_COUNT = 1
-MINES_MAX_COUNT = 15
-MINES_HOUSE_EDGE = 0.05
-active_mines_games = {}
-
-def generate_mines_grid(mines_count):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    grid = [0] * total_cells
-    mine_positions = random.sample(range(total_cells), mines_count)
-    for pos in mine_positions:
-        grid[pos] = 1
-    return grid
-
-def calculate_mines_multiplier(mines_count, opened):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    safe_cells = total_cells - mines_count
-    if opened >= safe_cells:
-        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
-    probability = 1.0
-    for i in range(opened):
-        probability *= (safe_cells - i) / (total_cells - i)
-    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
-    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
-    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
-    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
-
-REFERRAL_PERCENT = 7
-MAX_WITHDRAW_AMOUNT = 50000
-WITHDRAW_FEE = 0.05
-WITHDRAW_COOLDOWN_HOURS = 24
-MIN_DEPOSIT_FOR_REFERRAL = 50
-
-# ========== АПГРЕЙД (СЛОЖНЫЙ) ==========
-def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда - СЛОЖНЫЙ!"""
-    diff = target_price - current_price
-    ratio = current_price / target_price
-    
-    if ratio >= 0.98:
-        base = 70
-    elif ratio >= 0.95:
-        base = 60
-    elif ratio >= 0.90:
-        base = 50
-    elif ratio >= 0.80:
-        base = 38
-    elif ratio >= 0.70:
-        base = 28
-    elif ratio >= 0.55:
-        base = 18
-    elif ratio >= 0.40:
-        base = 10
-    elif ratio >= 0.25:
-        base = 5
-    else:
-        base = 2
-    
-    if diff <= 10:
-        base += 8
-    elif diff <= 25:
-        base += 5
-    elif diff <= 50:
-        base += 2
-    elif diff <= 100:
-        base += 0
-    elif diff <= 300:
-        base -= 3
-    elif diff <= 500:
-        base -= 6
-    elif diff <= 1000:
-        base -= 10
-    elif diff <= 2000:
-        base -= 15
-    elif diff <= 5000:
-        base -= 22
-    elif diff <= 10000:
-        base -= 30
-    elif diff <= 20000:
-        base -= 40
-    elif diff <= 50000:
-        base -= 50
-    else:
-        base -= 60
-    
-    if target_price >= 50000:
-        base -= 15
-    elif target_price >= 30000:
-        base -= 10
-    elif target_price >= 15000:
-        base -= 6
-    elif target_price >= 8000:
-        base -= 3
-    elif target_price >= 3000:
-        base -= 1
-    
-    base += chance_bonus
-    random_factor = random.randint(-2, 2)
-    base += random_factor
-    
-    return min(max(round(base, 2), 0.01), 70)
-
-UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
-
-def get_upgrade_item_price(item_name):
-    for item in METRO_LOOT_POOL:
-        if item["name"] == item_name:
-            return item["price"]
-    return 0
-
-TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
-TOP_MIN_PLAYERS = 100
-TOP_RESET_DAYS = 14
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -523,7 +419,128 @@ async def crash_game_loop():
         })
         await asyncio.sleep(CRASH_COOLDOWN)
 
-# ========== MODELS ==========
+# ============================================================
+#  MINES
+# ============================================================
+MINES_GRID_SIZE = 4
+MINES_MIN_COUNT = 1
+MINES_MAX_COUNT = 15
+MINES_HOUSE_EDGE = 0.05
+active_mines_games = {}
+
+def generate_mines_grid(mines_count):
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    grid = [0] * total_cells
+    mine_positions = random.sample(range(total_cells), mines_count)
+    for pos in mine_positions:
+        grid[pos] = 1
+    return grid
+
+def calculate_mines_multiplier(mines_count, opened):
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    safe_cells = total_cells - mines_count
+    if opened >= safe_cells:
+        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
+    probability = 1.0
+    for i in range(opened):
+        probability *= (safe_cells - i) / (total_cells - i)
+    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
+    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
+    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
+    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
+
+# ============================================================
+#  REFERRAL
+# ============================================================
+REFERRAL_PERCENT = 7
+MAX_WITHDRAW_AMOUNT = 50000
+WITHDRAW_FEE = 0.05
+WITHDRAW_COOLDOWN_HOURS = 24
+MIN_DEPOSIT_FOR_REFERRAL = 50
+
+# ============================================================
+#  UPGRADE
+# ============================================================
+def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
+    diff = target_price - current_price
+    ratio = current_price / target_price
+    
+    if ratio >= 0.98:
+        base = 70
+    elif ratio >= 0.95:
+        base = 60
+    elif ratio >= 0.90:
+        base = 50
+    elif ratio >= 0.80:
+        base = 38
+    elif ratio >= 0.70:
+        base = 28
+    elif ratio >= 0.55:
+        base = 18
+    elif ratio >= 0.40:
+        base = 10
+    elif ratio >= 0.25:
+        base = 5
+    else:
+        base = 2
+    
+    if diff <= 10:
+        base += 8
+    elif diff <= 25:
+        base += 5
+    elif diff <= 50:
+        base += 2
+    elif diff <= 100:
+        base += 0
+    elif diff <= 300:
+        base -= 3
+    elif diff <= 500:
+        base -= 6
+    elif diff <= 1000:
+        base -= 10
+    elif diff <= 2000:
+        base -= 15
+    elif diff <= 5000:
+        base -= 22
+    elif diff <= 10000:
+        base -= 30
+    elif diff <= 20000:
+        base -= 40
+    elif diff <= 50000:
+        base -= 50
+    else:
+        base -= 60
+    
+    if target_price >= 50000:
+        base -= 15
+    elif target_price >= 30000:
+        base -= 10
+    elif target_price >= 15000:
+        base -= 6
+    elif target_price >= 8000:
+        base -= 3
+    elif target_price >= 3000:
+        base -= 1
+    
+    base += chance_bonus
+    random_factor = random.randint(-2, 2)
+    base += random_factor
+    
+    return min(max(round(base, 2), 0.01), 70)
+
+def get_upgrade_item_price(item_name):
+    for item in METRO_LOOT_POOL:
+        if item["name"] == item_name:
+            return item["price"]
+    return 0
+
+TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
+TOP_MIN_PLAYERS = 100
+TOP_RESET_DAYS = 14
+
+# ============================================================
+#  MODELS
+# ============================================================
 class OpenCaseRequest(BaseModel):
     case_type: str
 
@@ -569,7 +586,9 @@ class PromoCreateRequest(BaseModel):
     stars: int = 0
     max_uses: int = 1
 
-# ========== SOCKET.IO ==========
+# ============================================================
+#  SOCKET.IO
+# ============================================================
 @sio.event
 async def connect(sid, environ):
     crash_state["connected_users"].add(sid)
@@ -687,7 +706,9 @@ async def cashout(sid, data):
         'win': win_amount
     })
 
-# ========== STARTUP ==========
+# ============================================================
+#  STARTUP
+# ============================================================
 @app.on_event("startup")
 async def startup():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -704,7 +725,9 @@ async def startup():
         await db.commit()
     asyncio.create_task(crash_game_loop())
 
-# ========== AUTH ==========
+# ============================================================
+#  AUTH
+# ============================================================
 def verify_telegram_data(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
@@ -724,7 +747,9 @@ def verify_telegram_data(authorization: str = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Parsing error")
 
-# ========== ПОЛЬЗОВАТЕЛИ ==========
+# ============================================================
+#  USER
+# ============================================================
 async def get_or_create_user(tg_id: int, username: str = "Игрок"):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance, total_spent, inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -742,7 +767,9 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 await db.commit()
                 return {"balance": start_balance, "total_spent": 0, "inventory": []}
 
-# ========== PROFILE ==========
+# ============================================================
+#  PROFILE
+# ============================================================
 @app.get("/api/profile")
 async def get_profile(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -767,7 +794,9 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
             user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
-# ========== АДМИНКА ==========
+# ============================================================
+#  ADMIN
+# ============================================================
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -837,7 +866,9 @@ async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_
         await db.commit()
     return {"success": True, "message": f"✅ Игроку {req.target_tg_id} добавлен шанс +{req.chance_percent}%"}
 
-# ========== PROMO ==========
+# ============================================================
+#  PROMO
+# ============================================================
 @app.post("/api/admin/promo/create")
 async def create_promo(req: PromoCreateRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -885,7 +916,9 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"success": True, "message": f"🎉 Промокод {code} активирован!", "reward": reward_name}
 
-# ========== TOP REWARDS ==========
+# ============================================================
+#  TOP REWARDS
+# ============================================================
 @app.post("/api/admin/top/reward")
 async def reward_top_players(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -914,7 +947,9 @@ async def get_top_rewards(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
         return [{"tg_id": r[0], "amount": r[1], "place": r[2], "date": r[3]} for r in rows]
 
-# ========== FREE CASE ==========
+# ============================================================
+#  FREE CASE
+# ============================================================
 @app.post("/api/free_case/claim")
 async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -948,7 +983,9 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "reward": reward_name, "price": reward_price}
 
-# ========== CASES (КОНТЕЙНЕРЫ) ==========
+# ============================================================
+#  CASES (КОНТЕЙНЕРЫ)
+# ============================================================
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
     if req.case_type in CONTAINER_PRICES:
@@ -976,7 +1013,9 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
         await db.commit()
     return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
 
-# ========== INVENTORY ==========
+# ============================================================
+#  INVENTORY
+# ============================================================
 @app.post("/api/inventory/sell_item")
 async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1018,7 +1057,9 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД ==========
+# ============================================================
+#  UPGRADE
+# ============================================================
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1118,7 +1159,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "chance": int(upgrade_chance * 100)
         }
 
-# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕН ПРЕДМЕТОВ ==========
+# ============================================================
+#  UPGRADE PRICES
+# ============================================================
 @app.get("/api/upgrade/prices")
 async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
     prices = []
@@ -1130,7 +1173,9 @@ async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
             prices.append(price)
     return {"prices": sorted(list(set(prices)))}
 
-# ========== LEADERBOARD ==========
+# ============================================================
+#  LEADERBOARD
+# ============================================================
 @app.get("/api/leaderboard")
 async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -1149,7 +1194,9 @@ async def get_spent_leaderboard(user: dict = Depends(verify_telegram_data)):
             total = (await cursor.fetchone())[0]
     return {"players": [{"username": r[0], "total_spent": r[1]} for r in rows], "total_players": total, "min_for_prizes": TOP_MIN_PLAYERS, "prizes": TOP_PRIZES, "reset_days": TOP_RESET_DAYS}
 
-# ========== STARS SHOP ==========
+# ============================================================
+#  STARS SHOP
+# ============================================================
 @app.post("/api/stars/buy")
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
@@ -1185,7 +1232,9 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
         else:
             raise HTTPException(status_code=500, detail="Ошибка Telegram Invoice")
 
-# ========== WITHDRAW ==========
+# ============================================================
+#  WITHDRAW
+# ============================================================
 @app.post("/api/withdraw")
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1236,7 +1285,9 @@ async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = 
         await db.commit()
     return {"success": True, "new_status": req.status}
 
-# ========== REFERRAL ==========
+# ============================================================
+#  REFERRAL
+# ============================================================
 @app.post("/api/referral/activate")
 async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(verify_telegram_data)):
     user_id = user.get('id')
@@ -1268,7 +1319,9 @@ async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
         "history": [{"referral_id": r[0], "deposit": r[1], "earned": r[2], "date": r[3]} for r in history]
     }
 
-# ========== MINES ==========
+# ============================================================
+#  MINES
+# ============================================================
 @app.post("/api/mines/start")
 async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1391,7 +1444,9 @@ async def mines_get_state(user: dict = Depends(verify_telegram_data)):
         "total_cells": 16
     }
 
-# ========== CRASH API ==========
+# ============================================================
+#  CRASH API
+# ============================================================
 @app.get("/api/crash/history")
 async def crash_history():
     return {"history": crash_state["history"][:15], "server_seed_hash": SERVER_SEED_HASH}
@@ -1418,6 +1473,9 @@ async def verify_crash(server_seed: str, nonce: int):
         cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
     return {"verified": True, "crash_point": min(cp, 50.0), "hash": hash_hex}
 
+# ============================================================
+#  ЗАПУСК
+# ============================================================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
+    uvicorn.run(socket_app, host="0.0.0.0", port=PORT)
