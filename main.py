@@ -4,9 +4,10 @@ import asyncio
 import sqlite3
 import time
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, List, Any
 from fastapi import FastAPI, HTTPException, Header, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import socketio
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -14,7 +15,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 # ==========================================
-# 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ЭКОНОМИКА (PUBG)
+# 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ЭКОНОМИКА
 # ==========================================
 
 START_BALANCE: int = 5
@@ -22,25 +23,38 @@ CRASH_HOUSE_EDGE: float = 0.08
 MINES_HOUSE_EDGE: float = 0.10
 UPGRADE_HOUSE_EDGE: float = 0.10
 COINFLIP_HOUSE_EDGE: float = 0.05
+WITHDRAW_FEE: float = 0.05
+MIN_WITHDRAW: int = 100
+MAX_WITHDRAW: int = 50000
 
+# Множители для Mines (5x5 поле)
 MINES_MULTIPLIERS: Dict[int, List[float]] = {
-    1: [1.03, 1.12, 1.23, 1.35, 1.50, 1.68, 1.90, 2.18, 2.54, 3.00],
-    3: [1.15, 1.40, 1.75, 2.25, 2.95, 4.00, 5.60, 8.00, 10.00],
-    5: [1.30, 1.80, 2.60, 3.90, 6.00, 9.80, 16.00, 20.00],
-    7: [1.50, 2.50, 4.50, 8.50, 17.00, 40.00],
-    10: [2.00, 5.00, 15.00, 45.00, 100.00]
+    1: [1.03, 1.12, 1.23, 1.35, 1.50, 1.68, 1.90, 2.18, 2.54, 3.00, 3.50, 4.00, 4.50, 5.00],
+    2: [1.08, 1.25, 1.45, 1.70, 2.00, 2.40, 2.90, 3.50, 4.20, 5.00, 6.00, 7.50, 9.00],
+    3: [1.15, 1.40, 1.75, 2.25, 2.95, 4.00, 5.60, 8.00, 10.00, 13.00, 17.00, 22.00],
+    4: [1.25, 1.60, 2.10, 2.85, 4.00, 5.80, 8.50, 12.50, 18.00, 25.00, 35.00],
+    5: [1.30, 1.80, 2.60, 3.90, 6.00, 9.80, 16.00, 20.00, 28.00, 40.00],
+    7: [1.50, 2.50, 4.50, 8.50, 17.00, 30.00, 50.00, 80.00],
+    10: [2.00, 5.00, 15.00, 45.00, 100.00, 200.00]
 }
 
+# ==========================================
+# 2. ДАННЫЕ ЯЩИКОВ (18 штук)
+# ==========================================
+
 CASE_PRICES: Dict[str, Dict[str, Any]] = {
+    # UC Ящики (8 шт)
     "star_case_1": {
         "id": "star_case_1",
         "name": "Бронзовый Ящик",
         "price": 30,
         "items": [
-            {"id": "item_1", "name": "Кепка PUBG Camo", "price": 10, "rarity": "common"},
-            {"id": "item_2", "name": "Футболка Survivor Red", "price": 25, "rarity": "common"},
-            {"id": "item_3", "name": "Очки Combat Tactical", "price": 35, "rarity": "rare"},
-            {"id": "item_4", "name": "M416 Desert Camo", "price": 80, "rarity": "epic"}
+            {"id": "s1_1", "name": "⭐ 12 UC", "price": 12, "rarity": "common"},
+            {"id": "s1_2", "name": "⭐ 29 UC", "price": 29, "rarity": "common"},
+            {"id": "s1_3", "name": "⭐ 46 UC", "price": 46, "rarity": "rare"},
+            {"id": "s1_4", "name": "⭐ 69 UC", "price": 69, "rarity": "rare"},
+            {"id": "s1_5", "name": "⭐ 115 UC", "price": 115, "rarity": "epic"},
+            {"id": "s1_6", "name": "⭐ 230 UC", "price": 230, "rarity": "epic"}
         ]
     },
     "star_case_2": {
@@ -48,10 +62,12 @@ CASE_PRICES: Dict[str, Dict[str, Any]] = {
         "name": "Серебряный Ящик",
         "price": 100,
         "items": [
-            {"id": "item_5", "name": "Шлем Level 2 Military", "price": 50, "rarity": "common"},
-            {"id": "item_6", "name": "Куртка Biker Black", "price": 90, "rarity": "rare"},
-            {"id": "item_7", "name": "AKM Gold Skin", "price": 190, "rarity": "epic"},
-            {"id": "item_8", "name": "AWM Dragon Lore", "price": 400, "rarity": "legendary"}
+            {"id": "s2_1", "name": "⭐ 35 UC", "price": 35, "rarity": "common"},
+            {"id": "s2_2", "name": "⭐ 86 UC", "price": 86, "rarity": "common"},
+            {"id": "s2_3", "name": "⭐ 138 UC", "price": 138, "rarity": "rare"},
+            {"id": "s2_4", "name": "⭐ 230 UC", "price": 230, "rarity": "rare"},
+            {"id": "s2_5", "name": "⭐ 403 UC", "price": 403, "rarity": "epic"},
+            {"id": "s2_6", "name": "⭐ 690 UC", "price": 690, "rarity": "epic"}
         ]
     },
     "star_case_3": {
@@ -59,27 +75,188 @@ CASE_PRICES: Dict[str, Dict[str, Any]] = {
         "name": "Золотой Ящик",
         "price": 250,
         "items": [
-            {"id": "item_9", "name": "Бронежилет L3 Heavy", "price": 150, "rarity": "rare"},
-            {"id": "item_10", "name": "M416 Glacier Level 1", "price": 450, "rarity": "epic"},
-            {"id": "item_11", "name": "Рюкзак L3 Gold Plated", "price": 600, "rarity": "epic"},
-            {"id": "item_12", "name": "Костюм Мумии White", "price": 1300, "rarity": "legendary"}
+            {"id": "s3_1", "name": "⭐ 92 UC", "price": 92, "rarity": "common"},
+            {"id": "s3_2", "name": "⭐ 230 UC", "price": 230, "rarity": "rare"},
+            {"id": "s3_3", "name": "⭐ 403 UC", "price": 403, "rarity": "rare"},
+            {"id": "s3_4", "name": "⭐ 575 UC", "price": 575, "rarity": "epic"},
+            {"id": "s3_5", "name": "⭐ 920 UC", "price": 920, "rarity": "legendary"},
+            {"id": "s3_6", "name": "⭐ 1725 UC", "price": 1725, "rarity": "legendary"}
         ]
     },
     "star_case_4": {
         "id": "star_case_4",
-        "name": "Легендарный X-Suit Ящик",
+        "name": "Платиновый Ящик",
         "price": 500,
         "items": [
-            {"id": "item_13", "name": "Kar98k Kukulkan", "price": 300, "rarity": "rare"},
-            {"id": "item_14", "name": "M24 Pharaoh Gold", "price": 750, "rarity": "epic"},
-            {"id": "item_15", "name": "X-Suit Poseidon Full", "price": 2600, "rarity": "mythic"},
-            {"id": "item_16", "name": "X-Suit Blood Raven Ultimate", "price": 5500, "rarity": "mythic"}
+            {"id": "s4_1", "name": "⭐ 173 UC", "price": 173, "rarity": "common"},
+            {"id": "s4_2", "name": "⭐ 460 UC", "price": 460, "rarity": "rare"},
+            {"id": "s4_3", "name": "⭐ 748 UC", "price": 748, "rarity": "epic"},
+            {"id": "s4_4", "name": "⭐ 1150 UC", "price": 1150, "rarity": "epic"},
+            {"id": "s4_5", "name": "⭐ 2070 UC", "price": 2070, "rarity": "legendary"},
+            {"id": "s4_6", "name": "⭐ 3450 UC", "price": 3450, "rarity": "mythic"}
+        ]
+    },
+    "star_case_5": {
+        "id": "star_case_5",
+        "name": "Алмазный Ящик",
+        "price": 1000,
+        "items": [
+            {"id": "s5_1", "name": "⭐ 345 UC", "price": 345, "rarity": "common"},
+            {"id": "s5_2", "name": "⭐ 920 UC", "price": 920, "rarity": "rare"},
+            {"id": "s5_3", "name": "⭐ 1495 UC", "price": 1495, "rarity": "epic"},
+            {"id": "s5_4", "name": "⭐ 2300 UC", "price": 2300, "rarity": "legendary"},
+            {"id": "s5_5", "name": "⭐ 4025 UC", "price": 4025, "rarity": "legendary"},
+            {"id": "s5_6", "name": "⭐ 6900 UC", "price": 6900, "rarity": "mythic"}
+        ]
+    },
+    "star_case_6": {
+        "id": "star_case_6",
+        "name": "Мифический Ящик",
+        "price": 2000,
+        "items": [
+            {"id": "s6_1", "name": "⭐ 575 UC", "price": 575, "rarity": "rare"},
+            {"id": "s6_2", "name": "⭐ 1495 UC", "price": 1495, "rarity": "epic"},
+            {"id": "s6_3", "name": "⭐ 2530 UC", "price": 2530, "rarity": "epic"},
+            {"id": "s6_4", "name": "⭐ 4025 UC", "price": 4025, "rarity": "legendary"},
+            {"id": "s6_5", "name": "⭐ 6325 UC", "price": 6325, "rarity": "mythic"},
+            {"id": "s6_6", "name": "⭐ 11500 UC", "price": 11500, "rarity": "mythic"}
+        ]
+    },
+    "star_case_7": {
+        "id": "star_case_7",
+        "name": "Божественный Ящик",
+        "price": 5000,
+        "items": [
+            {"id": "s7_1", "name": "⭐ 1000 UC", "price": 1000, "rarity": "rare"},
+            {"id": "s7_2", "name": "⭐ 2500 UC", "price": 2500, "rarity": "epic"},
+            {"id": "s7_3", "name": "⭐ 5000 UC", "price": 5000, "rarity": "legendary"},
+            {"id": "s7_4", "name": "⭐ 7500 UC", "price": 7500, "rarity": "legendary"},
+            {"id": "s7_5", "name": "⭐ 10000 UC", "price": 10000, "rarity": "mythic"},
+            {"id": "s7_6", "name": "⭐ 25000 UC", "price": 25000, "rarity": "mythic"}
+        ]
+    },
+    "star_case_8": {
+        "id": "star_case_8",
+        "name": "Космический Ящик",
+        "price": 10000,
+        "items": [
+            {"id": "s8_1", "name": "⭐ 250 UC", "price": 250, "rarity": "common"},
+            {"id": "s8_2", "name": "⭐ 750 UC", "price": 750, "rarity": "rare"},
+            {"id": "s8_3", "name": "⭐ 1500 UC", "price": 1500, "rarity": "epic"},
+            {"id": "s8_4", "name": "⭐ 3000 UC", "price": 3000, "rarity": "legendary"},
+            {"id": "s8_5", "name": "⭐ 5000 UC", "price": 5000, "rarity": "legendary"},
+            {"id": "s8_6", "name": "⭐ 15000 UC", "price": 15000, "rarity": "mythic"}
+        ]
+    },
+    # NFT Скины (8 шт)
+    "nft_case_1": {
+        "id": "nft_case_1",
+        "name": "Basic Skins",
+        "price": 80,
+        "items": [
+            {"id": "n1_1", "name": "🎽 Brown Shirt", "price": 23, "rarity": "common"},
+            {"id": "n1_2", "name": "🧢 Grey Cap", "price": 40, "rarity": "common"},
+            {"id": "n1_3", "name": "👖 Cargo Pants", "price": 63, "rarity": "common"},
+            {"id": "n1_4", "name": "🎒 Level 1 Backpack", "price": 92, "rarity": "rare"},
+            {"id": "n1_5", "name": "🪖 Steel Helmet", "price": 150, "rarity": "rare"},
+            {"id": "n1_6", "name": "🥾 Military Boots", "price": 288, "rarity": "epic"}
+        ]
+    },
+    "nft_case_2": {
+        "id": "nft_case_2",
+        "name": "Tactical Skins",
+        "price": 200,
+        "items": [
+            {"id": "n2_1", "name": "🧣 Red Scarf", "price": 52, "rarity": "common"},
+            {"id": "n2_2", "name": "🧤 Tactical Gloves", "price": 86, "rarity": "rare"},
+            {"id": "n2_3", "name": "🦺 Police Vest", "price": 138, "rarity": "rare"},
+            {"id": "n2_4", "name": "🎽 Sports Top", "price": 219, "rarity": "epic"},
+            {"id": "n2_5", "name": "👒 Straw Hat", "price": 345, "rarity": "epic"},
+            {"id": "n2_6", "name": "🪖 Level 2 Helmet", "price": 575, "rarity": "legendary"}
+        ]
+    },
+    "nft_case_3": {
+        "id": "nft_case_3",
+        "name": "Urban Skins",
+        "price": 400,
+        "items": [
+            {"id": "n3_1", "name": "🧥 Leather Jacket", "price": 104, "rarity": "rare"},
+            {"id": "n3_2", "name": "👖 Jeans", "price": 173, "rarity": "rare"},
+            {"id": "n3_3", "name": "👟 Sneakers", "price": 276, "rarity": "epic"},
+            {"id": "n3_4", "name": "🎒 Level 2 Backpack", "price": 437, "rarity": "epic"},
+            {"id": "n3_5", "name": "🛡️ Riot Shield", "price": 690, "rarity": "legendary"},
+            {"id": "n3_6", "name": "🪖 Level 3 Helmet", "price": 1150, "rarity": "legendary"}
+        ]
+    },
+    "nft_case_4": {
+        "id": "nft_case_4",
+        "name": "Military Skins",
+        "price": 800,
+        "items": [
+            {"id": "n4_1", "name": "🥋 Martial Arts", "price": 207, "rarity": "rare"},
+            {"id": "n4_2", "name": "🦺 Ghillie Suit", "price": 345, "rarity": "epic"},
+            {"id": "n4_3", "name": "🪖 Spetsnaz Helmet", "price": 552, "rarity": "epic"},
+            {"id": "n4_4", "name": "🎒 Level 3 Backpack", "price": 863, "rarity": "legendary"},
+            {"id": "n4_5", "name": "🔫 M416 Skin", "price": 1380, "rarity": "legendary"},
+            {"id": "n4_6", "name": "🎯 AWM Skin", "price": 2300, "rarity": "mythic"}
+        ]
+    },
+    "nft_case_5": {
+        "id": "nft_case_5",
+        "name": "Elite Skins",
+        "price": 1500,
+        "items": [
+            {"id": "n5_1", "name": "👑 Crown", "price": 368, "rarity": "epic"},
+            {"id": "n5_2", "name": "🦅 Eagle Mask", "price": 610, "rarity": "epic"},
+            {"id": "n5_3", "name": "🐯 Tiger Suit", "price": 978, "rarity": "legendary"},
+            {"id": "n5_4", "name": "🤖 Robot Suit", "price": 1553, "rarity": "legendary"},
+            {"id": "n5_5", "name": "🔥 Flame Jacket", "price": 2415, "rarity": "mythic"},
+            {"id": "n5_6", "name": "💎 Diamond Helmet", "price": 4025, "rarity": "mythic"}
+        ]
+    },
+    "nft_case_6": {
+        "id": "nft_case_6",
+        "name": "Legendary Skins",
+        "price": 2500,
+        "items": [
+            {"id": "n6_1", "name": "🦺 Golden Ghillie", "price": 690, "rarity": "epic"},
+            {"id": "n6_2", "name": "🔫 Golden AKM", "price": 1150, "rarity": "legendary"},
+            {"id": "n6_3", "name": "🎯 Golden AWM", "price": 1840, "rarity": "legendary"},
+            {"id": "n6_4", "name": "👑 Royal Crown", "price": 2875, "rarity": "mythic"},
+            {"id": "n6_5", "name": "🐲 Dragon Suit", "price": 4600, "rarity": "mythic"},
+            {"id": "n6_6", "name": "⭐ Legendary Set", "price": 8050, "rarity": "mythic"}
+        ]
+    },
+    "nft_case_7": {
+        "id": "nft_case_7",
+        "name": "Halloween Skins",
+        "price": 500,
+        "items": [
+            {"id": "n7_1", "name": "🧛 Vampire Cape", "price": 150, "rarity": "rare"},
+            {"id": "n7_2", "name": "🦇 Bat Mask", "price": 300, "rarity": "epic"},
+            {"id": "n7_3", "name": "🎃 Pumpkin Head", "price": 500, "rarity": "epic"},
+            {"id": "n7_4", "name": "👻 Ghost Suit", "price": 800, "rarity": "legendary"},
+            {"id": "n7_5", "name": "🧟 Zombie Skin", "price": 1200, "rarity": "legendary"},
+            {"id": "n7_6", "name": "🕷️ Spider Set", "price": 2000, "rarity": "mythic"}
+        ]
+    },
+    "nft_case_8": {
+        "id": "nft_case_8",
+        "name": "Wild West Skins",
+        "price": 1000,
+        "items": [
+            {"id": "n8_1", "name": "🤠 Cowboy Hat", "price": 200, "rarity": "rare"},
+            {"id": "n8_2", "name": "🐴 Horse Mask", "price": 400, "rarity": "epic"},
+            {"id": "n8_3", "name": "🔫 Sheriff Revolver", "price": 700, "rarity": "epic"},
+            {"id": "n8_4", "name": "👢 Boots", "price": 1000, "rarity": "legendary"},
+            {"id": "n8_5", "name": "⭐ Star Badge", "price": 1800, "rarity": "legendary"},
+            {"id": "n8_6", "name": "🔥 Blazing Set", "price": 3500, "rarity": "mythic"}
         ]
     }
 }
 
 # ==========================================
-# 2. ИНИЦИАЛИЗАЦИЯ И МИДДЛВЕЙРЫ FASTAPI
+# 3. ИНИЦИАЛИЗАЦИЯ FASTAPI
 # ==========================================
 
 limiter = Limiter(key_func=get_remote_address)
@@ -92,6 +269,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Socket.IO сервер
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 socket_app = socketio.ASGIApp(sio, app)
 
@@ -106,43 +284,46 @@ app.add_middleware(
 DB_NAME = "database.db"
 
 # ==========================================
-# 3. Pydantic МОДЕЛИ ЗАПРОСОВ (DTO)
+# 4. PYDANTIC МОДЕЛИ
 # ==========================================
 
 class DepositRequest(BaseModel):
-    amount: int = Field(..., ge=10, description="Минимальное пополнение 10 UC")
+    amount: int = Field(..., ge=10)
 
 class WithdrawRequest(BaseModel):
-    amount: int = Field(..., ge=100, description="Минимальный вывод 100 UC")
-    wallet: str = Field(..., min_length=5, description="Реквизиты для вывода")
+    amount: int = Field(..., ge=100)
+    wallet: str = Field(..., min_length=5)
 
 class CaseOpenRequest(BaseModel):
-    case_type: str = Field(..., description="ID кейса для открытия")
+    case_type: str
 
 class UpgradeRequest(BaseModel):
-    item_index: int = Field(..., ge=0, description="Индекс предмета в инвентаре")
-    target_multiplier: float = Field(..., ge=1.1, le=100.0, description="Множитель для апгрейда")
+    item_index: int = Field(..., ge=0)
+    target_price: int = Field(..., ge=1)
 
 class CoinFlipRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5, description="Минимальная ставка 5 UC")
-    choice: str = Field(..., regex="^(heads|tails)$", description="Выбор: heads или tails")
+    bet_amount: int = Field(..., ge=5)
+    choice: str = Field(..., regex="^(heads|tails)$")
 
 class MinesStartRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5, description="Минимальная ставка 5 UC")
-    mines_count: int = Field(..., ge=1, le=10, description="Количество мин от 1 до 10")
+    bet_amount: int = Field(..., ge=5)
+    mines_count: int = Field(..., ge=1, le=10)
 
 class MinesOpenRequest(BaseModel):
-    game_id: str = Field(..., description="Идентификатор активной игры")
-    cell_index: int = Field(..., ge=0, le=24, description="Индекс ячейки от 0 до 24")
+    game_id: str
+    cell_index: int = Field(..., ge=0, le=24)
 
 class MinesCashoutRequest(BaseModel):
-    game_id: str = Field(..., description="Идентификатор активной игры")
+    game_id: str
 
 class CrashBetRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5, description="Минимальная ставка 5 UC")
+    bet_amount: int = Field(..., ge=5)
+
+class SellItemRequest(BaseModel):
+    item_index: int = Field(..., ge=0)
 
 # ==========================================
-# 4. РАБОТА С БАЗОЙ ДАННЫХ SQLITE
+# 5. РАБОТА С БАЗОЙ ДАННЫХ
 # ==========================================
 
 def get_db_connection():
@@ -201,6 +382,12 @@ def init_db():
         FOREIGN KEY(user_id) REFERENCES users(tg_id)
     )''')
     
+    c.execute('''CREATE TABLE IF NOT EXISTS withdraw_cooldowns (
+        user_id INTEGER PRIMARY KEY,
+        last_withdraw_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(tg_id)
+    )''')
+    
     conn.commit()
     conn.close()
 
@@ -212,9 +399,7 @@ def db_get_user(tg_id: int) -> Optional[Dict[str, Any]]:
     c.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
     row = c.fetchone()
     conn.close()
-    if row:
-        return dict(row)
-    return None
+    return dict(row) if row else None
 
 def db_create_user_if_not_exists(tg_id: int, username: str) -> Dict[str, Any]:
     user = db_get_user(tg_id)
@@ -246,46 +431,40 @@ def db_update_inventory(tg_id: int, inventory_list: List[Dict[str, Any]]):
     c.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory_list), tg_id))
     conn.commit()
     conn.close()
+
 # ==========================================
-# 5. СЕССИИ И СОСТОЯНИЯ ИГР (IN-MEMORY)
+# 6. ХРАНИЛИЩА СОСТОЯНИЙ
 # ==========================================
 
-# Хранилище активных игр в Mines: {game_id: {...}}
 active_mines_games: Dict[str, Dict[str, Any]] = {}
 
-# Глобальное состояние игры Crash
 crash_state: Dict[str, Any] = {
     "multiplier": 1.0,
-    "status": "waiting",  # waiting -> running -> crashed
+    "status": "waiting",
     "crash_point": 1.0,
-    "bets": {}            # {user_id: bet_amount}
+    "bets": {}
 }
 
 # ==========================================
-# 6. CRASH ENGINE (WEBSOCKET LOOP)
+# 7. CRASH ENGINE (WEBSOCKET LOOP)
 # ==========================================
 
 async def crash_loop():
-    """Бесконечный фоновый цикл игры Crash с передачей параметров по WebSocket."""
     global crash_state
     while True:
-        # Фаза ожидания
         crash_state["status"] = "waiting"
         crash_state["multiplier"] = 1.0
         
-        # Расчет точки краша с учетом House Edge
         e = random.uniform(0.01, 1.0)
         crash_point = max(1.0, round((1.0 - CRASH_HOUSE_EDGE) / e, 2))
         if crash_point > 100.0:
             crash_point = 100.0
         crash_state["crash_point"] = crash_point
 
-        # Обратный отсчет до старта
         for t in range(5, 0, -1):
             await sio.emit('crash_state', {'timer': t, 'status': 'waiting'})
             await asyncio.sleep(1)
 
-        # Старт раунда
         crash_state["status"] = "running"
         await sio.emit('crash_start', {})
         
@@ -296,7 +475,6 @@ async def crash_loop():
             crash_state["multiplier"] = current
             await sio.emit('crash_multiplier', {'multiplier': current})
 
-        # Завершение раунда
         crash_state["status"] = "crashed"
         await sio.emit('crash_end', {'crash_point': crash_state["crash_point"]})
         crash_state["bets"].clear()
@@ -304,113 +482,227 @@ async def crash_loop():
 
 @app.on_event("startup")
 async def startup_event():
-    # Запуск фонового процесса Crash при старте FastAPI
     asyncio.create_task(crash_loop())
 
 # ==========================================
-# 7. API ENDPOINTS: ИГРОВЫЕ РЕЖИМЫ
+# 8. SOCKET.IO СОБЫТИЯ
 # ==========================================
 
-@app.post("/api/upgrade")
-@limiter.limit("20/minute")
-async def upgrade_item_api(
-    req: Request,
-    data: UpgradeRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Режим Upgrade (Улучшение предметов из инвентаря)."""
-    tg_id = 12345678  # Тестовый ID
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+@sio.event
+async def connect(sid, environ):
+    await sio.emit('crash_state', {
+        'status': crash_state["status"],
+        'multiplier': crash_state["multiplier"]
+    }, to=sid)
 
-    inv = json.loads(user['inventory'])
-    if data.item_index < 0 or data.item_index >= len(inv):
-        raise HTTPException(status_code=400, detail="Указанный предмет не найден в инвентаре")
-
-    # Извлекаем предмет из инвентаря
-    item = inv.pop(data.item_index)
+@sio.event
+async def place_bet(sid, data):
+    tg_id = data.get('tg_id')
+    bet_amount = data.get('bet_amount', 0)
     
-    # Шанс победы рассчитывается строго от целевого коэффициента с учетом комиссий
-    chance = (1.0 / data.target_multiplier) * (1.0 - UPGRADE_HOUSE_EDGE)
-    is_success = random.random() < chance
-    win_item = None
+    if crash_state["status"] != "running":
+        await sio.emit('error', {'message': 'Игра не запущена'}, to=sid)
+        return
+    
+    if bet_amount < 5:
+        await sio.emit('error', {'message': 'Минимальная ставка 5 UC'}, to=sid)
+        return
+    
+    user = db_get_user(tg_id)
+    if not user or user['balance'] < bet_amount:
+        await sio.emit('error', {'message': 'Недостаточно средств'}, to=sid)
+        return
+    
+    db_update_balance(tg_id, -bet_amount, "crash_bet")
+    crash_state["bets"][tg_id] = bet_amount
+    await sio.emit('bet_placed', {'tg_id': tg_id, 'amount': bet_amount})
 
-    if is_success:
-        win_item = {
-            "id": f"upgraded_{int(time.time())}",
-            "name": f"★ {item['name']}",
-            "price": int(item['price'] * data.target_multiplier),
-            "rarity": "mythic"
-        }
-        inv.append(win_item)
+@sio.event
+async def cashout(sid, data):
+    tg_id = data.get('tg_id')
+    
+    if crash_state["status"] != "running":
+        await sio.emit('error', {'message': 'Игра не запущена'}, to=sid)
+        return
+    
+    if tg_id not in crash_state["bets"]:
+        await sio.emit('error', {'message': 'Ставка не найдена'}, to=sid)
+        return
+    
+    bet = crash_state["bets"][tg_id]
+    win_amount = int(bet * crash_state["multiplier"])
+    
+    db_update_balance(tg_id, win_amount, "crash_win")
+    del crash_state["bets"][tg_id]
+    
+    await sio.emit('cashout_success', {
+        'tg_id': tg_id,
+        'amount': win_amount,
+        'multiplier': crash_state["multiplier"]
+    })
 
-    db_update_inventory(tg_id, inv)
+# ==========================================
+# 9. API ENDPOINTS
+# ==========================================
 
-    return {
-        "success": bool(is_success),
-        "chance": round(chance * 100, 2),
-        "win_item": win_item
-    }
+@app.get("/api/profile")
+async def get_profile_api(authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    user = db_create_user_if_not_exists(tg_id, "Survivor_Player")
+    user_data = dict(user)
+    user_data['inventory'] = json.loads(user_data['inventory'])
+    return user_data
 
-@app.post("/api/coinflip")
-@limiter.limit("30/minute")
-async def play_coinflip_api(
-    req: Request,
-    data: CoinFlipRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Режим CoinFlip (Орел или Решка)."""
+@app.post("/api/case/open")
+@limiter.limit("15/minute")
+async def open_case_api(req: Request, data: CaseOpenRequest, authorization: Optional[str] = Header(None)):
     tg_id = 12345678
     user = db_get_user(tg_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    if user['balance'] < data.bet_amount:
-        raise HTTPException(status_code=400, detail="Недостаточно UC на балансе")
-
-    # Списываем ставку
-    db_update_balance(tg_id, -data.bet_amount, "coinflip_bet")
-
-    result = random.choice(['heads', 'tails'])
-    win = (result == data.choice)
-    win_amount = 0
-
-    if win:
-        # Выигрыш х1.9 (5% house edge)
-        win_amount = int(data.bet_amount * (2.0 - COINFLIP_HOUSE_EDGE))
-        db_update_balance(tg_id, win_amount, "coinflip_win")
-
+    
+    case = CASE_PRICES.get(data.case_type)
+    if not case:
+        raise HTTPException(status_code=400, detail="Ящик не существует")
+    
+    if user['balance'] < case['price']:
+        raise HTTPException(status_code=400, detail="Недостаточно UC")
+    
+    db_update_balance(tg_id, -case['price'], "case_open")
+    
+    win_item = random.choice(case['items'])
+    inv = json.loads(user['inventory'])
+    inv.append(win_item)
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET inventory = ?, total_spent = total_spent + ? WHERE tg_id = ?", 
+              (json.dumps(inv), case['price'], tg_id))
+    c.execute("UPDATE daily_quests SET progress = progress + 1 WHERE user_id = ? AND quest_type = 'open_cases'", 
+              (tg_id,))
+    conn.commit()
+    conn.close()
+    
     return {
-        "win": win,
-        "result": result,
-        "win_amount": win_amount
+        "reward_name": win_item['name'],
+        "balance": user['balance'] - case['price']
+    }
+
+@app.post("/api/inventory/sell_item")
+async def sell_item_api(data: SellItemRequest, authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    user = db_get_user(tg_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    inv = json.loads(user['inventory'])
+    if data.item_index < 0 or data.item_index >= len(inv):
+        raise HTTPException(status_code=400, detail="Предмет не найден")
+    
+    item = inv.pop(data.item_index)
+    sell_price = int(item['price'] * 0.5)  # Продажа за 50% цены
+    
+    db_update_balance(tg_id, sell_price, "sell_item")
+    db_update_inventory(tg_id, inv)
+    
+    return {"gain": sell_price, "balance": user['balance'] + sell_price}
+
+@app.post("/api/inventory/sell_all")
+async def sell_all_items_api(authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    user = db_get_user(tg_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    inv = json.loads(user['inventory'])
+    total_gain = sum(int(item['price'] * 0.5) for item in inv)
+    
+    db_update_balance(tg_id, total_gain, "sell_all")
+    db_update_inventory(tg_id, [])
+    
+    return {"gain": total_gain, "balance": user['balance'] + total_gain}
+
+@app.post("/api/inventory/upgrade")
+async def upgrade_item_api(data: UpgradeRequest, authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    user = db_get_user(tg_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    inv = json.loads(user['inventory'])
+    if data.item_index < 0 or data.item_index >= len(inv):
+        raise HTTPException(status_code=400, detail="Предмет не найден")
+    
+    item = inv.pop(data.item_index)
+    current_price = item['price']
+    target_price = data.target_price
+    
+    if target_price <= current_price:
+        inv.append(item)
+        raise HTTPException(status_code=400, detail="Цель должна быть дороже текущего предмета")
+    
+    # Шанс зависит от соотношения цен
+    ratio = target_price / current_price
+    if ratio >= 20:
+        chance = 0.01
+    elif ratio >= 10:
+        chance = 0.03
+    elif ratio >= 5:
+        chance = 0.08
+    elif ratio >= 3:
+        chance = 0.15
+    elif ratio >= 2:
+        chance = 0.30
+    elif ratio >= 1.5:
+        chance = 0.50
+    else:
+        chance = 0.70
+    
+    chance = chance * (1 - UPGRADE_HOUSE_EDGE)
+    is_success = random.random() < chance
+    
+    if is_success:
+        # Успех — улучшаем предмет
+        win_item = {
+            "id": f"upgraded_{int(time.time())}",
+            "name": f"★ {item['name']}",
+            "price": target_price,
+            "rarity": "mythic" if target_price >= 2000 else "legendary" if target_price >= 800 else "epic"
+        }
+        inv.append(win_item)
+        message = f"✅ Успех! Улучшено до {target_price} UC (шанс был {int(chance*100)}%)"
+    else:
+        # Провал — предмет сгорает
+        win_item = None
+        message = f"💥 Провал! Предмет {item['name']} сгорел (шанс был {int(chance*100)}%)"
+    
+    db_update_inventory(tg_id, inv)
+    
+    return {
+        "success": is_success,
+        "chance": round(chance * 100, 2),
+        "message": message,
+        "win_item": win_item
     }
 
 @app.post("/api/mines/start")
 @limiter.limit("15/minute")
-async def mines_start_api(
-    req: Request,
-    data: MinesStartRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Старт игры в Mines (Минное поле 5x5)."""
+async def mines_start_api(req: Request, data: MinesStartRequest, authorization: Optional[str] = Header(None)):
     tg_id = 12345678
     user = db_get_user(tg_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-
+    
     if user['balance'] < data.bet_amount:
-        raise HTTPException(status_code=400, detail="Недостаточно UC на балансе")
-
+        raise HTTPException(status_code=400, detail="Недостаточно UC")
+    
     db_update_balance(tg_id, -data.bet_amount, "mines_bet")
-
-    # Генерируем 25 ячеек с минами
+    
     grid = [False] * 25
     mine_positions = random.sample(range(25), data.mines_count)
     for pos in mine_positions:
         grid[pos] = True
-
+    
     game_id = f"mines_{tg_id}_{int(time.time() * 1000)}"
     active_mines_games[game_id] = {
         "user_id": tg_id,
@@ -420,73 +712,64 @@ async def mines_start_api(
         "opened_cells": [],
         "step": 0
     }
-
+    
     return {
         "game_id": game_id,
         "mines_count": data.mines_count,
-        "bet": data.bet_amount
-    }@app.post("/api/mines/open")
+        "bet": data.bet_amount,
+        "balance": user['balance'] - data.bet_amount
+    }
+
+@app.post("/api/mines/open")
 @limiter.limit("60/minute")
-async def mines_open_api(
-    req: Request,
-    data: MinesOpenRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Открытие ячейки в режиме Mines."""
+async def mines_open_api(req: Request, data: MinesOpenRequest, authorization: Optional[str] = Header(None)):
     game = active_mines_games.get(data.game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Активная игра не найдена")
-
+    
     if data.cell_index in game["opened_cells"]:
         raise HTTPException(status_code=400, detail="Ячейка уже открыта")
-
-    # Проверка на мину
+    
     if game["grid"][data.cell_index]:
-        # Взрыв - игра окончена
         del active_mines_games[data.game_id]
         return {
-            "game_over": True,
-            "hit_mine": True,
+            "status": "bomb",
             "cell_index": data.cell_index,
-            "opened_cells": game["opened_cells"]
+            "opened": game["opened_cells"],
+            "mines": [i for i, v in enumerate(game["grid"]) if v]
         }
-
+    
     game["opened_cells"].append(data.cell_index)
     game["step"] += 1
     
-    # Получение текущего множителя
     mults = MINES_MULTIPLIERS.get(game["mines_count"], [1.05 * game["step"]])
     step_idx = min(game["step"] - 1, len(mults) - 1)
     current_mult = mults[step_idx]
-
+    
     return {
-        "game_over": False,
-        "hit_mine": False,
+        "status": "safe",
         "cell_index": data.cell_index,
-        "step": game["step"],
-        "current_multiplier": current_mult,
-        "current_win": int(game["bet"] * current_mult)
+        "opened": game["opened_cells"],
+        "opened_count": game["step"],
+        "current_multiplier": current_mult
     }
 
 @app.post("/api/mines/cashout")
 async def mines_cashout_api(data: MinesCashoutRequest, authorization: Optional[str] = Header(None)):
-    """Забрать выигрыш в режиме Mines."""
     game = active_mines_games.get(data.game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Активная игра не найдена")
-
+    
     if game["step"] == 0:
-        raise HTTPException(status_code=400, detail="Необходимо открыть хотя бы одну ячейку")
-
+        raise HTTPException(status_code=400, detail="Откройте хотя бы одну клетку")
+    
     mults = MINES_MULTIPLIERS.get(game["mines_count"], [1.05 * game["step"]])
     step_idx = min(game["step"] - 1, len(mults) - 1)
     final_mult = mults[step_idx]
     win_amount = int(game["bet"] * final_mult)
-
-    # Начисление выигрыша
+    
     db_update_balance(game["user_id"], win_amount, "mines_win")
-
-    # Обновление квестов
+    
     conn = get_db_connection()
     c = conn.cursor()
     c.execute(
@@ -495,147 +778,185 @@ async def mines_cashout_api(data: MinesCashoutRequest, authorization: Optional[s
     )
     conn.commit()
     conn.close()
-
+    
     del active_mines_games[data.game_id]
-
+    
     return {
         "success": True,
         "win_amount": win_amount,
-        "multiplier": final_mult
+        "multiplier": final_mult,
+        "profit": win_amount - game["bet"]
     }
 
-# ==========================================
-# 8. API ENDPOINTS: КЕЙСЫ И ИНВЕНТАРЬ
-# ==========================================
-
-@app.post("/api/case/open")
-@limiter.limit("15/minute")
-async def open_case_api(
-    req: Request,
-    data: CaseOpenRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Открытие ящика с выпадением предметов."""
+@app.post("/api/coinflip")
+@limiter.limit("30/minute")
+async def play_coinflip_api(req: Request, data: CoinFlipRequest, authorization: Optional[str] = Header(None)):
     tg_id = 12345678
     user = db_get_user(tg_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    case = CASE_PRICES.get(data.case_type)
-    if not case:
-        raise HTTPException(status_code=400, detail="Ящик не существует")
-
-    if user['balance'] < case['price']:
+    
+    if user['balance'] < data.bet_amount:
         raise HTTPException(status_code=400, detail="Недостаточно UC")
-
-    # Списываем стоимость кейса
-    db_update_balance(tg_id, -case['price'], "case_open")
-
-    # Выбор случайного предмета из списка
-    win_item = random.choice(case['items'])
-    inv = json.loads(user['inventory'])
-    inv.append(win_item)
-
-    # Обновление инвентаря, расходов и квестов
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET inventory = ?, total_spent = total_spent + ? WHERE tg_id = ?", 
-              (json.dumps(inv), case['price'], tg_id))
-    c.execute("UPDATE daily_quests SET progress = progress + 1 WHERE user_id = ? AND quest_type = 'open_cases'", 
-              (tg_id,))
-    conn.commit()
-    conn.close()
-
+    
+    db_update_balance(tg_id, -data.bet_amount, "coinflip_bet")
+    
+    result = random.choice(['heads', 'tails'])
+    win = (result == data.choice)
+    win_amount = 0
+    
+    if win:
+        win_amount = int(data.bet_amount * (2.0 - COINFLIP_HOUSE_EDGE))
+        db_update_balance(tg_id, win_amount, "coinflip_win")
+    
     return {
-        "win_item": win_item,
-        "win_index": case['items'].index(win_item)
+        "win": win,
+        "result": result,
+        "win_amount": win_amount,
+        "balance": user['balance'] - data.bet_amount + win_amount
     }
 
-# ==========================================
-# 9. API ENDPOINTS: ПРОФИЛЬ И ФИНАНСЫ
-# ==========================================
-
-@app.get("/api/profile")
-async def get_profile_api(authorization: Optional[str] = Header(None)):
-    """Получение данных профиля и инвентаря."""
+@app.post("/api/free_case/claim")
+async def claim_free_case_api(authorization: Optional[str] = Header(None)):
     tg_id = 12345678
-    user = db_create_user_if_not_exists(tg_id, "Survivor_Player")
-    user_data = dict(user)
-    user_data['inventory'] = json.loads(user_data['inventory'])
-    return user_data
-
-@app.post("/api/deposit/create")
-@limiter.limit("5/minute")
-async def create_deposit_api(
-    req: Request,
-    data: DepositRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """Пополнение баланса UC."""
-    tg_id = 12345678
-    db_update_balance(tg_id, data.amount, "deposit")
-
+    user = db_get_user(tg_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Проверяем, не использовал ли уже сегодня
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO deposits (user_id, amount) VALUES (?, ?)", (tg_id, data.amount))
-    conn.commit()
+    c.execute("SELECT created_at FROM transactions WHERE user_id = ? AND type = 'free_case' ORDER BY created_at DESC LIMIT 1", (tg_id,))
+    row = c.fetchone()
     conn.close()
+    
+    if row:
+        last_used = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
+        if time.time() - last_used < 86400:
+            raise HTTPException(status_code=400, detail="Бесплатный ящик доступен раз в 24 часа")
+    
+    # Даём бесплатный предмет из бронзового ящика
+    case = CASE_PRICES["star_case_1"]
+    win_item = random.choice(case['items'])
+    
+    inv = json.loads(user['inventory'])
+    inv.append(win_item)
+    db_update_inventory(tg_id, inv)
+    db_update_balance(tg_id, 0, "free_case")
+    
+    return {"success": True, "reward": win_item['name']}
 
-    return {"status": "success", "amount": data.amount}
+@app.post("/api/stars/buy")
+async def buy_stars_api(stars_amount: int, authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    if stars_amount < 50:
+        raise HTTPException(status_code=400, detail="Минимальная покупка 50 UC")
+    
+    # Имитация оплаты через Telegram Stars
+    db_update_balance(tg_id, stars_amount, "deposit")
+    
+    return {"status": "success", "amount": stars_amount, "balance": db_get_user(tg_id)['balance']}
 
 @app.post("/api/withdraw")
 async def request_withdraw_api(data: WithdrawRequest, authorization: Optional[str] = Header(None)):
-    """Создание заявки на вывод средств."""
     tg_id = 12345678
     user = db_get_user(tg_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-
+    
+    if data.amount < MIN_WITHDRAW:
+        raise HTTPException(status_code=400, detail=f"Минимальный вывод {MIN_WITHDRAW} UC")
+    if data.amount > MAX_WITHDRAW:
+        raise HTTPException(status_code=400, detail=f"Максимальный вывод {MAX_WITHDRAW} UC")
     if user['balance'] < data.amount:
-        raise HTTPException(status_code=400, detail="Недостаточно средств для вывода")
-
-    db_update_balance(tg_id, -data.amount, "withdraw_request")
-
+        raise HTTPException(status_code=400, detail="Недостаточно средств")
+    
+    # Проверка кулдауна
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO withdraws (user_id, amount, wallet) VALUES (?, ?, ?)", 
-              (tg_id, data.amount, data.wallet))
+    c.execute("SELECT last_withdraw_at FROM withdraw_cooldowns WHERE user_id = ?", (tg_id,))
+    row = c.fetchone()
+    if row:
+        last_ts = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
+        if time.time() - last_ts < 86400:
+            hours_left = int((86400 - (time.time() - last_ts)) / 3600)
+            raise HTTPException(status_code=400, detail=f"Следующий вывод через {hours_left} ч.")
+    
+    fee = int(data.amount * WITHDRAW_FEE)
+    payout = data.amount - fee
+    new_balance = user['balance'] - data.amount
+    
+    db_update_balance(tg_id, -data.amount, "withdraw_request")
+    
+    c.execute("INSERT INTO withdraws (user_id, amount, wallet) VALUES (?, ?, ?)", (tg_id, data.amount, data.wallet))
+    c.execute("INSERT OR REPLACE INTO withdraw_cooldowns (user_id, last_withdraw_at) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
     conn.commit()
     conn.close()
+    
+    return {
+        "status": "pending",
+        "payout": payout,
+        "fee": fee,
+        "new_balance": new_balance
+    }
 
-    return {"status": "success", "amount": data.amount, "wallet": data.wallet}
+@app.post("/api/promo/activate")
+async def activate_promo_api(code: str, authorization: Optional[str] = Header(None)):
+    tg_id = 12345678
+    # Простая реализация промокодов (можно расширить)
+    if code.upper() == "PUBG2024":
+        db_update_balance(tg_id, 100, "promo")
+        return {"success": True, "message": "Промокод активирован! +100 UC", "reward": "100 UC"}
+    else:
+        raise HTTPException(status_code=400, detail="Неверный промокод")
 
 @app.get("/api/admin/stats")
 async def get_admin_stats_api():
-    """Статистика для админ-панели."""
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT COUNT(*), SUM(balance) FROM users")
     users_cnt, total_bal = c.fetchone()
     c.execute("SELECT SUM(amount) FROM deposits")
     deposits = c.fetchone()[0] or 0
-    c.execute("SELECT SUM(amount) FROM withdraws")
-    withdraws = c.fetchone()[0] or 0
+    c.execute("SELECT SUM(amount) FROM withdraws WHERE status = 'pending'")
+    pending_withdraws = c.fetchone()[0] or 0
     conn.close()
     
     return {
         "total_users": users_cnt,
         "total_balance": total_bal or 0,
         "total_deposits": deposits,
-        "total_withdraws": withdraws
+        "pending_withdraws": pending_withdraws
     }
 
-# ==========================================
-# 10. РАЗДАЧА HTML И ЗАПУСК
-# ==========================================
+@app.get("/api/leaderboard")
+async def get_leaderboard_api():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT username, balance FROM users ORDER BY balance DESC LIMIT 10")
+    rows = c.fetchall()
+    conn.close()
+    return {"players": [{"username": row[0], "balance": row[1]} for row in rows]}
 
-from fastapi.responses import HTMLResponse
+@app.get("/api/crash/history")
+async def get_crash_history_api():
+    return {"history": []}
+
+# ==========================================
+# 10. РАЗДАЧА HTML
+# ==========================================
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
-    """Отдача фронтенда index.html клиенту."""
     if not os.path.exists("index.html"):
-        return HTMLResponse("<h2>Ошибка: Файл index.html не найден в папке с main.py</h2>", status_code=404)
+        return HTMLResponse("<h2>Ошибка: index.html не найден</h2>", status_code=404)
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
+# ==========================================
+# 11. ЗАПУСК
+# ==========================================
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
