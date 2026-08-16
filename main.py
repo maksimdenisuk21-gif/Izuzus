@@ -27,188 +27,247 @@ ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID")
 ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
-# ========== ЗВЁЗДНЫЕ КЕЙСЫ (10 штук) ==========
-STAR_CASE_PRICES = {
-    "star_case_1": 50, "star_case_2": 150, "star_case_3": 400, 
-    "star_case_4": 750, "star_case_5": 1500, "star_case_6": 2500,
-    "star_case_7": 4000, "star_case_8": 6000, "star_case_9": 9000,
-    "star_case_10": 15000
+# ==================================================
+# НАСТРОЙКИ ДЛЯ PUBG METRO ROYALE
+# ==================================================
+
+# ========== КОНТЕЙНЕРЫ (КЕЙСЫ) В СТИЛЕ PUBG METRO ==========
+CONTAINER_PRICES = {
+    "container_1": 50,   # Стандартный ящик
+    "container_2": 150,  # Ящик повышенной сложности
+    "container_3": 400,  # Суперконтейнер
+    "container_4": 750,  # Режимный ящик
+    "container_5": 1500, # Секретный контейнер
+    "container_6": 2500, # Тайный склад
+    "container_7": 4000,
+    "container_8": 6000,
+    "container_9": 9000,
+    "container_10": 15000
 }
 
-STAR_CASE_DROPS = {
-    "star_case_1": {"s1_1": ("⭐ 12 Stars", 12), "s1_2": ("⭐ 29 Stars", 29), "s1_3": ("⭐ 46 Stars", 46), "s1_4": ("⭐ 69 Stars", 69), "s1_5": ("⭐ 115 Stars", 115), "s1_6": ("⭐ 230 Stars", 230)},
-    "star_case_2": {"s2_1": ("⭐ 35 Stars", 35), "s2_2": ("⭐ 86 Stars", 86), "s2_3": ("⭐ 138 Stars", 138), "s2_4": ("⭐ 230 Stars", 230), "s2_5": ("⭐ 403 Stars", 403), "s2_6": ("⭐ 690 Stars", 690)},
-    "star_case_3": {"s3_1": ("⭐ 92 Stars", 92), "s3_2": ("⭐ 230 Stars", 230), "s3_3": ("⭐ 403 Stars", 403), "s3_4": ("⭐ 575 Stars", 575), "s3_5": ("⭐ 920 Stars", 920), "s3_6": ("⭐ 1725 Stars", 1725)},
-    "star_case_4": {"s4_1": ("⭐ 173 Stars", 173), "s4_2": ("⭐ 460 Stars", 460), "s4_3": ("⭐ 748 Stars", 748), "s4_4": ("⭐ 1150 Stars", 1150), "s4_5": ("⭐ 2070 Stars", 2070), "s4_6": ("⭐ 3450 Stars", 3450)},
-    "star_case_5": {"s5_1": ("⭐ 345 Stars", 345), "s5_2": ("⭐ 920 Stars", 920), "s5_3": ("⭐ 1495 Stars", 1495), "s5_4": ("⭐ 2300 Stars", 2300), "s5_5": ("⭐ 4025 Stars", 4025), "s5_6": ("⭐ 6900 Stars", 6900)},
-    "star_case_6": {"s6_1": ("⭐ 575 Stars", 575), "s6_2": ("⭐ 1495 Stars", 1495), "s6_3": ("⭐ 2530 Stars", 2530), "s6_4": ("⭐ 4025 Stars", 4025), "s6_5": ("⭐ 6325 Stars", 6325), "s6_6": ("⭐ 11500 Stars", 11500)},
-    "star_case_7": {"s7_1": ("⭐ 920 Stars", 920), "s7_2": ("⭐ 1725 Stars", 1725), "s7_3": ("⭐ 2875 Stars", 2875), "s7_4": ("⭐ 4600 Stars", 4600), "s7_5": ("⭐ 8050 Stars", 8050), "s7_6": ("⭐ 13800 Stars", 13800)},
-    "star_case_8": {"s8_1": ("⭐ 1380 Stars", 1380), "s8_2": ("⭐ 2530 Stars", 2530), "s8_3": ("⭐ 4370 Stars", 4370), "s8_4": ("⭐ 6900 Stars", 6900), "s8_5": ("⭐ 11500 Stars", 11500), "s8_6": ("⭐ 20700 Stars", 20700)},
-    "star_case_9": {"s9_1": ("⭐ 2070 Stars", 2070), "s9_2": ("⭐ 4025 Stars", 4025), "s9_3": ("⭐ 6900 Stars", 6900), "s9_4": ("⭐ 10350 Stars", 10350), "s9_5": ("⭐ 17250 Stars", 17250), "s9_6": ("⭐ 28750 Stars", 28750)},
-    "star_case_10": {"s10_1": ("⭐ 3450 Stars", 3450), "s10_2": ("⭐ 6325 Stars", 6325), "s10_3": ("⭐ 10350 Stars", 10350), "s10_4": ("⭐ 17250 Stars", 17250), "s10_5": ("⭐ 28750 Stars", 28750), "s10_6": ("⭐ 46000 Stars", 46000)}
+CONTAINER_DROPS = {
+    "container_1": {
+        "c1_1": ("📦 Ящик с припасами", 12),
+        "c1_2": ("🔫 M416", 29),
+        "c1_3": ("🎒 Рюкзак Ур.2", 46),
+        "c1_4": ("🛡️ Бронежилет Ур.2", 69),
+        "c1_5": ("💊 Адреналин", 115),
+        "c1_6": ("💰 Слиток золота", 230)
+    },
+    "container_2": {
+        "c2_1": ("🔫 M762", 35),
+        "c2_2": ("🎒 Рюкзак Ур.3", 86),
+        "c2_3": ("🛡️ Бронежилет Ур.3", 138),
+        "c2_4": ("📡 Портативная рация", 230),
+        "c2_5": ("💰 Слиток золота", 403),
+        "c2_6": ("💎 Легендарный артефакт", 690)
+    },
+    "container_3": {
+        "c3_1": ("🔫 AUG", 92),
+        "c3_2": ("🎒 Рюкзак Ур.4", 230),
+        "c3_3": ("🛡️ Бронежилет Ур.4", 403),
+        "c3_4": ("📡 Портативная рация", 575),
+        "c3_5": ("💰 Слиток золота", 920),
+        "c3_6": ("💎 Легендарный артефакт", 1725)
+    },
+    "container_4": {
+        "c4_1": ("🔫 MK14", 173),
+        "c4_2": ("🎒 Тактический рюкзак", 460),
+        "c4_3": ("🛡️ Бронежилет Ур.5", 748),
+        "c4_4": ("📡 Портативная рация", 1150),
+        "c4_5": ("💰 Слиток золота", 2070),
+        "c4_6": ("💎 Легендарный артефакт", 3450)
+    },
+    "container_5": {
+        "c5_1": ("🔫 Groza", 345),
+        "c5_2": ("🎒 Тактический рюкзак", 920),
+        "c5_3": ("🛡️ Бронежилет Ур.5", 1495),
+        "c5_4": ("📡 Портативная рация", 2300),
+        "c5_5": ("💰 Слиток золота", 4025),
+        "c5_6": ("💎 Легендарный артефакт", 6900)
+    },
+    "container_6": {
+        "c6_1": ("🔫 AWM", 575),
+        "c6_2": ("🎒 Тактический рюкзак", 1495),
+        "c6_3": ("🛡️ Бронежилет Ур.5", 2530),
+        "c6_4": ("📡 Портативная рация", 4025),
+        "c6_5": ("💰 Слиток золота", 6325),
+        "c6_6": ("💎 Легендарный артефакт", 11500)
+    },
+    "container_7": {
+        "c7_1": ("🔫 M249", 920),
+        "c7_2": ("🎒 Тактический рюкзак", 1725),
+        "c7_3": ("🛡️ Бронежилет Ур.5", 2875),
+        "c7_4": ("📡 Портативная рация", 4600),
+        "c7_5": ("💰 Слиток золота", 8050),
+        "c7_6": ("💎 Легендарный артефакт", 13800)
+    },
+    "container_8": {
+        "c8_1": ("🔫 MG3", 1380),
+        "c8_2": ("🎒 Тактический рюкзак", 2530),
+        "c8_3": ("🛡️ Бронежилет Ур.5", 4370),
+        "c8_4": ("📡 Портативная рация", 6900),
+        "c8_5": ("💰 Слиток золота", 11500),
+        "c8_6": ("💎 Легендарный артефакт", 20700)
+    },
+    "container_9": {
+        "c9_1": ("🔫 P90", 2070),
+        "c9_2": ("🎒 Тактический рюкзак", 4025),
+        "c9_3": ("🛡️ Бронежилет Ур.5", 6900),
+        "c9_4": ("📡 Портативная рация", 10350),
+        "c9_5": ("💰 Слиток золота", 17250),
+        "c9_6": ("💎 Легендарный артефакт", 28750)
+    },
+    "container_10": {
+        "c10_1": ("🔫 FAMAS", 3450),
+        "c10_2": ("🎒 Тактический рюкзак", 6325),
+        "c10_3": ("🛡️ Бронежилет Ур.5", 10350),
+        "c10_4": ("📡 Портативная рация", 17250),
+        "c10_5": ("💰 Слиток золота", 28750),
+        "c10_6": ("💎 Легендарный артефакт", 46000)
+    }
 }
 
-# ========== NFT КЕЙСЫ (10 штук) ==========
-NFT_CASE_PRICES = {
-    "nft_case_1": 100, "nft_case_2": 250, "nft_case_3": 500, 
-    "nft_case_4": 1000, "nft_case_5": 1750, "nft_case_6": 3000,
-    "nft_case_7": 5000, "nft_case_8": 7500, "nft_case_9": 10000,
-    "nft_case_10": 15000
-}
+# ========== ЛУТ ИЗ РЕЖИМА МЕТРО ==========
+METRO_LOOT_POOL = [
+    {"name": "💊 Аптечка", "price": 5},
+    {"name": "💊 Адреналин", "price": 8},
+    {"name": "🔫 M416", "price": 12},
+    {"name": "🔫 M762", "price": 18},
+    {"name": "🎒 Рюкзак Ур.2", "price": 25},
+    {"name": "🎒 Рюкзак Ур.3", "price": 35},
+    {"name": "🛡️ Бронежилет Ур.2", "price": 45},
+    {"name": "🛡️ Бронежилет Ур.3", "price": 55},
+    {"name": "💰 Слиток золота", "price": 70},
+    {"name": "📡 Портативная рация", "price": 90},
+    {"name": "🔫 AUG", "price": 110},
+    {"name": "🎒 Тактический рюкзак", "price": 140},
+    {"name": "🛡️ Бронежилет Ур.4", "price": 170},
+    {"name": "💎 Артефакт", "price": 200},
+    {"name": "🔫 MK14", "price": 240},
+    {"name": "🛡️ Бронежилет Ур.5", "price": 280},
+    {"name": "🔫 Groza", "price": 330},
+    {"name": "💎 Легендарный артефакт", "price": 380},
+    {"name": "🔫 AWM", "price": 440},
+    {"name": "📡 Секретный документ", "price": 500},
+    {"name": "🔫 M249", "price": 570},
+    {"name": "🎒 Экзоскелет", "price": 650},
+    {"name": "🛡️ Экзоскелет", "price": 740},
+    {"name": "🔫 MG3", "price": 840},
+    {"name": "💎 Артефакт Ур.2", "price": 950},
+    {"name": "🔫 P90", "price": 1070},
+    {"name": "🔫 FAMAS", "price": 1200},
+    {"name": "📡 Рация Ур.2", "price": 1340},
+    {"name": "💎 Артефакт Ур.3", "price": 1490},
+    {"name": "💰 Слиток золота", "price": 1650},
+    {"name": "🔫 Оружие будущего", "price": 1820},
+    {"name": "🎒 Легендарный рюкзак", "price": 2000},
+    {"name": "🛡️ Легендарный бронежилет", "price": 2200},
+    {"name": "📡 Секретная рация", "price": 2420},
+    {"name": "💎 Артефакт Ур.4", "price": 2660},
+    {"name": "🔫 Прототип", "price": 2920},
+    {"name": "🎒 Рюкзак Ур.6", "price": 3200},
+    {"name": "🛡️ Бронежилет Ур.6", "price": 3500},
+    {"name": "💰 Крупный слиток", "price": 3820},
+    {"name": "📡 Секретная рация", "price": 4160},
+    {"name": "💎 Артефакт Ур.5", "price": 4520},
+    {"name": "🔫 Оружие будущего", "price": 4900},
+    {"name": "🎒 Рюкзак Ур.7", "price": 5300},
+    {"name": "🛡️ Бронежилет Ур.7", "price": 5720},
+    {"name": "📡 Секретная рация", "price": 6160},
+    {"name": "💎 Артефакт Ур.6", "price": 6620},
+    {"name": "🔫 Прототип Ур.2", "price": 7100},
+    {"name": "🎒 Рюкзак Ур.8", "price": 7600},
+    {"name": "🛡️ Бронежилет Ур.8", "price": 8120},
+    {"name": "📡 Секретная рация", "price": 8660},
+    {"name": "💎 Артефакт Ур.7", "price": 9220},
+    {"name": "🔫 Оружие будущего Ур.3", "price": 9800},
+    {"name": "🎒 Рюкзак Ур.9", "price": 10400},
+    {"name": "🛡️ Бронежилет Ур.9", "price": 11020},
+    {"name": "📡 Секретная рация", "price": 11660},
+    {"name": "💎 Артефакт Ур.8", "price": 12320},
+    {"name": "🔫 Прототип Ур.3", "price": 13000},
+    {"name": "🎒 Рюкзак Ур.10", "price": 13700},
+    {"name": "🛡️ Бронежилет Ур.10", "price": 14420},
+    {"name": "📡 Секретная рация", "price": 15160},
+    {"name": "💎 Артефакт Ур.9", "price": 15920},
+    {"name": "🔫 Оружие будущего Ур.4", "price": 16700},
+    {"name": "🎒 Рюкзак Ур.11", "price": 17500},
+    {"name": "🛡️ Бронежилет Ур.11", "price": 18320},
+    {"name": "📡 Секретная рация", "price": 19160},
+    {"name": "💎 Артефакт Ур.10", "price": 20020},
+    {"name": "🔫 Прототип Ур.4", "price": 20900},
+    {"name": "🎒 Рюкзак Ур.12", "price": 21800},
+    {"name": "🛡️ Бронежилет Ур.12", "price": 22720},
+    {"name": "📡 Секретная рация", "price": 23660},
+    {"name": "💎 Артефакт Ур.11", "price": 24620},
+    {"name": "🔫 Оружие будущего Ур.5", "price": 25600},
+    {"name": "🎒 Рюкзак Ур.13", "price": 26600},
+    {"name": "🛡️ Бронежилет Ур.13", "price": 27620},
+    {"name": "📡 Секретная рация", "price": 28660},
+    {"name": "💎 Артефакт Ур.12", "price": 29720},
+    {"name": "🔫 Прототип Ур.5", "price": 30800},
+    {"name": "🎒 Рюкзак Ур.14", "price": 31900},
+    {"name": "🛡️ Бронежилет Ур.14", "price": 33020},
+    {"name": "📡 Секретная рация", "price": 34160},
+    {"name": "💎 Артефакт Ур.13", "price": 35320},
+    {"name": "🔫 Оружие будущего Ур.6", "price": 36500},
+    {"name": "🎒 Рюкзак Ур.15", "price": 37700},
+    {"name": "🛡️ Бронежилет Ур.15", "price": 38920},
+    {"name": "📡 Секретная рация", "price": 40160},
+    {"name": "💎 Артефакт Ур.14", "price": 41420},
+    {"name": "🔫 Прототип Ур.6", "price": 42700},
+    {"name": "🎒 Рюкзак Ур.16", "price": 44000},
+    {"name": "🛡️ Бронежилет Ур.16", "price": 45320},
+    {"name": "📡 Секретная рация", "price": 46660},
+    {"name": "💎 Артефакт Ур.15", "price": 48020},
+    {"name": "🔫 Оружие будущего Ур.7", "price": 49400},
+    {"name": "🎒 Рюкзак Ур.17", "price": 50800},
+    {"name": "🛡️ Бронежилет Ур.17", "price": 52220},
+    {"name": "📡 Секретная рация", "price": 53660},
+    {"name": "💎 Артефакт Ур.16", "price": 55120},
+    {"name": "🔫 Прототип Ур.7", "price": 56600},
+    {"name": "🎒 Рюкзак Ур.18", "price": 58100},
+    {"name": "🛡️ Бронежилет Ур.18", "price": 59620},
+    {"name": "📡 Секретная рация", "price": 61160},
+    {"name": "💎 Артефакт Ур.17", "price": 62720},
+    {"name": "🔫 Оружие будущего Ур.8", "price": 64300},
+    {"name": "🎒 Рюкзак Ур.19", "price": 65900},
+    {"name": "🛡️ Бронежилет Ур.19", "price": 67520},
+    {"name": "📡 Секретная рация", "price": 69160},
+    {"name": "💎 Артефакт Ур.18", "price": 70820},
+    {"name": "🔫 Прототип Ур.8", "price": 72500}
+]
 
-NFT_CASE_DROPS = {
-    "nft_case_1": {"n1_1": ("💎 Blood Gem", 23), "n1_2": ("💜 Amethyst", 40), "n1_3": ("💙 Sapphire", 63), "n1_4": ("💍 Princess Cut", 92), "n1_5": ("👑 King Midas", 150), "n1_6": ("💚 Kryptonite", 288)},
-    "nft_case_2": {"n2_1": ("🐱 Scared Cat", 52), "n2_2": ("👻 Spooky Cat", 86), "n2_3": ("🐟 Fish Skeleton Cat", 138), "n2_4": ("🦇 Bat Cat", 219), "n2_5": ("🦠 Virus Cat", 345), "n2_6": ("👾 Glitch Cat", 575)},
-    "nft_case_3": {"n3_1": ("🔵 Evil Eye Blue", 104), "n3_2": ("🟢 Evil Eye Green", 173), "n3_3": ("🔴 Evil Eye Red", 276), "n3_4": ("🟡 Evil Eye Gold", 437), "n3_5": ("⚫ Evil Eye Black", 690), "n3_6": ("💎 Evil Eye Crystal", 1150)},
-    "nft_case_4": {"n4_1": ("🍑 Precious Peach", 207), "n4_2": ("🍑 Golden Peach", 345), "n4_3": ("🍑 Diamond Peach", 552), "n4_4": ("🍑 Royal Peach", 863), "n4_5": ("🍑 Mystic Peach", 1380), "n4_6": ("🍑 Legendary Peach", 2300)},
-    "nft_case_5": {"n5_1": ("🧢 Durov's Cap", 368), "n5_2": ("⚪ Cap Silver", 610), "n5_3": ("⚫ Cap Black", 978), "n5_4": ("🟡 Cap Gold Trim", 1553), "n5_5": ("⭐ Founder Edition Cap", 2415), "n5_6": ("👑 Durov's Crown Cap", 4025)},
-    "nft_case_6": {"n6_1": ("🐸 Plush Pepe", 690), "n6_2": ("😊 Pepe Smile", 1150), "n6_3": ("😎 Pepe Chill", 1840), "n6_4": ("🤨 Pepe Rare", 2875), "n6_5": ("✨ Golden Plush Pepe", 4600), "n6_6": ("👑 Mythic Plush Pepe", 8050)},
-    "nft_case_7": {"n7_1": ("🦊 Shadow Fox", 1150), "n7_2": ("🦊 Golden Fox", 1725), "n7_3": ("🦊 Crystal Fox", 2875), "n7_4": ("🦊 Royal Fox", 4600), "n7_5": ("🦊 Mystic Fox", 8050), "n7_6": ("🦊 Legendary Fox", 13800)},
-    "nft_case_8": {"n8_1": ("🐉 Dragon Scale", 1725), "n8_2": ("🐉 Dragon Eye", 2875), "n8_3": ("🐉 Dragon Wing", 4600), "n8_4": ("🐉 Dragon Crown", 7475), "n8_5": ("🐉 Dragon Soul", 13800), "n8_6": ("🐉 God Dragon", 23000)},
-    "nft_case_9": {"n9_1": ("👾 Cyber Samurai", 2875), "n9_2": ("👾 Golden Samurai", 4600), "n9_3": ("👾 Dark Samurai", 7475), "n9_4": ("👾 Samurai Lord", 11500), "n9_5": ("👾 Samurai Emperor", 20700), "n9_6": ("👾 God Samurai", 34500)},
-    "nft_case_10": {"n10_1": ("👑 Crown Prince", 4600), "n10_2": ("👑 Crown King", 8050), "n10_3": ("👑 Crown Emperor", 13800), "n10_4": ("👑 Crown God", 23000), "n10_5": ("👑 Crown Cosmic", 40250), "n10_6": ("👑 Crown Creator", 69000)}
-}
+CONTAINER_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
 
-# ========== БЕСПЛАТНЫЙ КЕЙС ==========
+# ========== БЕСПЛАТНЫЙ КЕЙС (ДЖЕКПОТ) ==========
 FREE_CASE_DROPS = [
-    {"name": "⭐ 0.1 Stars", "price": 0.1, "weight": 35.0},
-    {"name": "⭐ 0.5 Stars", "price": 0.5, "weight": 25.0},
-    {"name": "⭐ 1 Star", "price": 1.0, "weight": 18.0},
-    {"name": "⭐ 2.5 Stars", "price": 2.5, "weight": 12.0},
-    {"name": "⭐ 5 Stars", "price": 5.0, "weight": 6.0},
-    {"name": "⭐ 15 Stars", "price": 15.0, "weight": 2.5},
-    {"name": "⭐ 35 Stars", "price": 35.0, "weight": 1.0},
-    {"name": "⭐ 60 Stars", "price": 60.0, "weight": 0.4},
-    {"name": "⭐ 100 Stars", "price": 100.0, "weight": 0.1}
+    {"name": "🔫 M416", "price": 0.1, "weight": 35.0},
+    {"name": "🔫 M762", "price": 0.5, "weight": 25.0},
+    {"name": "🎒 Рюкзак Ур.2", "price": 1.0, "weight": 18.0},
+    {"name": "🛡️ Бронежилет Ур.2", "price": 2.5, "weight": 12.0},
+    {"name": "💊 Адреналин", "price": 5.0, "weight": 6.0},
+    {"name": "💰 Слиток золота", "price": 15.0, "weight": 2.5},
+    {"name": "📡 Портативная рация", "price": 35.0, "weight": 1.0},
+    {"name": "💎 Артефакт", "price": 60.0, "weight": 0.4},
+    {"name": "📡 Секретный документ", "price": 100.0, "weight": 0.1}
 ]
 
-# ========== 100+ НОВЫХ ПРЕДМЕТОВ ДЛЯ АПГРЕЙДА ==========
-UPGRADE_ITEMS_POOL = [
-    {"name": "⚡ Искра", "price": 5},
-    {"name": "✨ Звездная пыль", "price": 8},
-    {"name": "🌙 Лунный камень", "price": 12},
-    {"name": "☀️ Солнечный кристалл", "price": 18},
-    {"name": "💧 Капля росы", "price": 25},
-    {"name": "🔥 Огненный цветок", "price": 35},
-    {"name": "🌀 Ветряной ключ", "price": 45},
-    {"name": "🌍 Земляной талисман", "price": 55},
-    {"name": "💎 Алмазный осколок", "price": 70},
-    {"name": "👑 Золотая корона", "price": 90},
-    {"name": "🦄 Единорожий рог", "price": 110},
-    {"name": "🐉 Драконий зуб", "price": 140},
-    {"name": "🌺 Мистический цветок", "price": 170},
-    {"name": "⭐ Падающая звезда", "price": 200},
-    {"name": "🌌 Космический камень", "price": 240},
-    {"name": "🌀 Изумрудный шар", "price": 280},
-    {"name": "🔮 Хрустальный шар", "price": 330},
-    {"name": "⚔️ Легендарный меч", "price": 380},
-    {"name": "🛡️ Щит судьбы", "price": 440},
-    {"name": "👁️ Око провидения", "price": 500},
-    {"name": "🧙‍♂️ Магический посох", "price": 570},
-    {"name": "🐲 Лунный дракон", "price": 650},
-    {"name": "🌠 Метеоритный осколок", "price": 740},
-    {"name": "💠 Небесный кристалл", "price": 840},
-    {"name": "🌟 Сияющая звезда", "price": 950},
-    {"name": "🎭 Карнавальная маска", "price": 1070},
-    {"name": "🏆 Золотой трофей", "price": 1200},
-    {"name": "🎪 Цирковой огонь", "price": 1340},
-    {"name": "🌋 Вулканический камень", "price": 1490},
-    {"name": "❄️ Ледяной жезл", "price": 1650},
-    {"name": "🌈 Радужный амулет", "price": 1820},
-    {"name": "☄️ Кометный хвост", "price": 2000},
-    {"name": "🌊 Жемчужина океана", "price": 2200},
-    {"name": "🌲 Древо жизни", "price": 2420},
-    {"name": "🏔️ Сердце гор", "price": 2660},
-    {"name": "🌅 Утренний свет", "price": 2920},
-    {"name": "🌙 Полная луна", "price": 3200},
-    {"name": "☀️ Божественное солнце", "price": 3500},
-    {"name": "✨ Космический кристалл", "price": 3820},
-    {"name": "🌀 Эфирный шар", "price": 4160},
-    {"name": "⚡ Молниевый жезл", "price": 4520},
-    {"name": "🌪️ Торнадо в бутылке", "price": 4900},
-    {"name": "🌋 Сердце вулкана", "price": 5300},
-    {"name": "❄️ Вечный лёд", "price": 5720},
-    {"name": "🌈 Мост радуги", "price": 6160},
-    {"name": "🌌 Галактический камень", "price": 6620},
-    {"name": "🪐 Кольцо Сатурна", "price": 7100},
-    {"name": "☀️ Фотонная сфера", "price": 7600},
-    {"name": "🌙 Лунное кольцо", "price": 8120},
-    {"name": "⭐ Звездный венец", "price": 8660},
-    {"name": "💫 Падающая звезда", "price": 9220},
-    {"name": "✨ Сияющий кристалл", "price": 9800},
-    {"name": "🌟 Сверхновая", "price": 10400},
-    {"name": "🌌 Туманность", "price": 11020},
-    {"name": "🌠 Звездный поток", "price": 11660},
-    {"name": "🪐 Астероидный камень", "price": 12320},
-    {"name": "☄️ Хвост кометы", "price": 13000},
-    {"name": "💠 Кристалл времени", "price": 13700},
-    {"name": "🌀 Космический вихрь", "price": 14420},
-    {"name": "⚡ Энергия хаоса", "price": 15160},
-    {"name": "🔥 Пламя вечности", "price": 15920},
-    {"name": "❄️ Ледяное сердце", "price": 16700},
-    {"name": "🌿 Древний корень", "price": 17500},
-    {"name": "🌊 Океанская душа", "price": 18320},
-    {"name": "🏔️ Горный дух", "price": 19160},
-    {"name": "🌋 Лавовое сердце", "price": 20020},
-    {"name": "🌪️ Ветряной глаз", "price": 20900},
-    {"name": "🌈 Радужный кристалл", "price": 21800},
-    {"name": "🌙 Лунный камень", "price": 22720},
-    {"name": "☀️ Солнечный кристалл", "price": 23660},
-    {"name": "⭐ Звездный осколок", "price": 24620},
-    {"name": "✨ Эфирный кристалл", "price": 25600},
-    {"name": "🌀 Космический камень", "price": 26600},
-    {"name": "💎 Алмазный кристалл", "price": 27620},
-    {"name": "👑 Императорская корона", "price": 28660},
-    {"name": "🦄 Кристалл единорога", "price": 29720},
-    {"name": "🐉 Сердце дракона", "price": 30800},
-    {"name": "🌺 Цветок жизни", "price": 31900},
-    {"name": "⭐ Звезда судьбы", "price": 33020},
-    {"name": "🌌 Космическое сердце", "price": 34160},
-    {"name": "🌀 Изначальный шар", "price": 35320},
-    {"name": "🔮 Хрустальный глаз", "price": 36500},
-    {"name": "⚔️ Клинок света", "price": 37700},
-    {"name": "🛡️ Щит вечности", "price": 38920},
-    {"name": "👁️ Око судьбы", "price": 40160},
-    {"name": "🧙‍♂️ Посох мудрости", "price": 41420},
-    {"name": "🐲 Дракон судьбы", "price": 42700},
-    {"name": "🌠 Метеоритный кристалл", "price": 44000},
-    {"name": "💠 Небесный камень", "price": 45320},
-    {"name": "🌟 Сияющий кристалл", "price": 46660},
-    {"name": "🎭 Маска хаоса", "price": 48020},
-    {"name": "🏆 Трофей судьбы", "price": 49400},
-    {"name": "🎪 Огонь карнавала", "price": 50800},
-    {"name": "🌋 Камень вулкана", "price": 52220},
-    {"name": "❄️ Ледяной кристалл", "price": 53660},
-    {"name": "🌈 Амулет радуги", "price": 55120},
-    {"name": "☄️ Кометный кристалл", "price": 56600},
-    {"name": "🌊 Жемчуг океана", "price": 58100},
-    {"name": "🌲 Древо судьбы", "price": 59620},
-    {"name": "🏔️ Сердце гор", "price": 61160},
-    {"name": "🌅 Рассветный кристалл", "price": 62720},
-    {"name": "🌙 Лунная корона", "price": 64300},
-    {"name": "☀️ Солнечная корона", "price": 65900},
-    {"name": "✨ Звездная корона", "price": 67520},
-    {"name": "🌀 Космическая корона", "price": 69160},
-    {"name": "💎 Алмазная корона", "price": 70820},
-    {"name": "👑 Корона судьбы", "price": 72500}
-]
+# Остальные настройки (CRASH, MINES, REFERRAL) остаются без изменений, 
+# но можно подкорректировать названия под стиль PUBG
 
-STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
-NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
-
-# ========== CRASH ==========
 CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.05  # 5% HOUSE EDGE
+CRASH_HOUSE_EDGE = 0.05
 CRASH_SPEED = 0.08
 
-# ========== MINES ==========
 MINES_GRID_SIZE = 4
 MINES_MIN_COUNT = 1
 MINES_MAX_COUNT = 15
-MINES_HOUSE_EDGE = 0.05  # 5% HOUSE EDGE
+MINES_HOUSE_EDGE = 0.05
 active_mines_games = {}
 
 def generate_mines_grid(mines_count):
@@ -240,14 +299,10 @@ MIN_DEPOSIT_FOR_REFERRAL = 50
 
 # ========== АПГРЕЙД (СЛОЖНЫЙ) ==========
 def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    """Реалистичный шанс апгрейда - СЛОЖНЫЙ!
-       Макс. 70%, мин. 0.01% + бонус от админа"""
+    """Реалистичный шанс апгрейда - СЛОЖНЫЙ!"""
     diff = target_price - current_price
     ratio = current_price / target_price
     
-    # ===== НОВАЯ СИСТЕМА - СЛОЖНЕЕ =====
-    
-    # 1. Базовый шанс от соотношения цен (более жёсткий)
     if ratio >= 0.98:
         base = 70
     elif ratio >= 0.95:
@@ -267,7 +322,6 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
     else:
         base = 2
     
-    # 2. Жёсткая корректировка по разнице (чем больше разница, тем сильнее штраф)
     if diff <= 10:
         base += 8
     elif diff <= 25:
@@ -295,8 +349,6 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
     else:
         base -= 60
     
-    # 3. Множитель сложности в зависимости от цены
-    # Чем выше цена, тем сложнее (штраф за дорогие предметы)
     if target_price >= 50000:
         base -= 15
     elif target_price >= 30000:
@@ -308,22 +360,16 @@ def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
     elif target_price >= 3000:
         base -= 1
     
-    # 4. Добавляем бонус от админа
     base += chance_bonus
-    
-    # 5. Случайный фактор (иногда везёт, иногда нет)
     random_factor = random.randint(-2, 2)
     base += random_factor
     
-    # МИНИМАЛЬНЫЙ ШАНС 0.01%
     return min(max(round(base, 2), 0.01), 70)
 
-# Доступные цены для улучшения
 UPGRADE_PRICES = [50, 100, 200, 500, 1000, 2000, 5000, 7500, 10000, 15000]
 
-# ========== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЦЕНЫ ИЗ ПУЛА АПГРЕЙДА ==========
 def get_upgrade_item_price(item_name):
-    for item in UPGRADE_ITEMS_POOL:
+    for item in METRO_LOOT_POOL:
         if item["name"] == item_name:
             return item["price"]
     return 0
@@ -678,7 +724,7 @@ def verify_telegram_data(authorization: str = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Parsing error")
 
-# ========== ПОЛЬЗОВАТЕЛИ (СТАРТОВЫЙ БАЛАНС 0) ==========
+# ========== ПОЛЬЗОВАТЕЛИ ==========
 async def get_or_create_user(tg_id: int, username: str = "Игрок"):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance, total_spent, inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -688,7 +734,6 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 await db.commit()
                 return {"balance": row[0], "total_spent": row[1], "inventory": json.loads(row[2])}
             else:
-                # СТАРТОВЫЙ БАЛАНС 0 ДЛЯ ВСЕХ (КРОМЕ АДМИНА)
                 start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 0
                 await db.execute(
                     "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,'[]')",
@@ -722,7 +767,7 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
             user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
-# ========== СТАРАЯ АДМИНКА ==========
+# ========== АДМИНКА ==========
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -753,7 +798,6 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
 
-# ===== НОВАЯ АДМИН-ФУНКЦИЯ: ЗАБРАТЬ ЗВЁЗДЫ =====
 @app.post("/api/admin/remove_stars")
 async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -825,8 +869,8 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
         reward_name = None
         if promo[1] == "case":
             ct = promo[2]
-            pool = STAR_CASE_DROPS[ct] if ct in STAR_CASE_PRICES else NFT_CASE_DROPS[ct]
-            weights = STAR_DROP_WEIGHTS if ct in STAR_CASE_PRICES else NFT_DROP_WEIGHTS
+            pool = CONTAINER_DROPS[ct] if ct in CONTAINER_PRICES else CONTAINER_DROPS[ct]
+            weights = CONTAINER_DROP_WEIGHTS if ct in CONTAINER_PRICES else CONTAINER_DROP_WEIGHTS
             reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
             reward_name = pool[reward_id][0]
             async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -870,7 +914,7 @@ async def get_top_rewards(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
         return [{"tg_id": r[0], "amount": r[1], "place": r[2], "date": r[3]} for r in rows]
 
-# ========== FREE CASE (ОБНОВЛЁННЫЙ) ==========
+# ========== FREE CASE ==========
 @app.post("/api/free_case/claim")
 async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -904,19 +948,15 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "reward": reward_name, "price": reward_price}
 
-# ========== CASES ==========
+# ========== CASES (КОНТЕЙНЕРЫ) ==========
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
-    if req.case_type in STAR_CASE_PRICES:
-        price = STAR_CASE_PRICES[req.case_type]
-        pool = STAR_CASE_DROPS[req.case_type]
-        weights = STAR_DROP_WEIGHTS
-    elif req.case_type in NFT_CASE_PRICES:
-        price = NFT_CASE_PRICES[req.case_type]
-        pool = NFT_CASE_DROPS[req.case_type]
-        weights = NFT_DROP_WEIGHTS
+    if req.case_type in CONTAINER_PRICES:
+        price = CONTAINER_PRICES[req.case_type]
+        pool = CONTAINER_DROPS[req.case_type]
+        weights = CONTAINER_DROP_WEIGHTS
     else:
-        raise HTTPException(status_code=400, detail="Неизвестный кейс")
+        raise HTTPException(status_code=400, detail="Неизвестный контейнер")
     
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
@@ -949,10 +989,8 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
     
     gain = get_upgrade_item_price(item["name"])
     if gain == 0:
-        if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-            gain = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-        elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-            gain = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+            gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
     
     new_balance = user_info["balance"] + gain
     async with aiosqlite.connect(DB_NAME) as db:
@@ -971,10 +1009,8 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     for item in inventory:
         gain = get_upgrade_item_price(item["name"])
         if gain == 0:
-            if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-                gain = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-            elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-                gain = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+            if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+                gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
         total_gain += gain
     new_balance = user_info["balance"] + total_gain
     async with aiosqlite.connect(DB_NAME) as db:
@@ -982,7 +1018,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД (БЕСПЛАТНЫЙ, СЛОЖНЫЙ, МИН. ШАНС 0.01%) ==========
+# ========== АПГРЕЙД ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -997,10 +1033,8 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     
     current_price = get_upgrade_item_price(item["name"])
     if current_price == 0:
-        if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-            current_price = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-        elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-            current_price = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+            current_price = CONTAINER_DROPS[item["case"]][item["id"]][1]
     
     if current_price == 0:
         raise HTTPException(status_code=400, detail="Нельзя улучшить")
@@ -1014,22 +1048,18 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     
     upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
     
-    # ⚡ АПГРЕЙД БЕСПЛАТНЫЙ
-    
     is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
     
     if is_success:
         new_item = None
         
-        # Ищем в пуле апгрейда
-        for up_item in UPGRADE_ITEMS_POOL:
+        for up_item in METRO_LOOT_POOL:
             if up_item["price"] == req.target_price:
                 new_item = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                 break
         
-        # Ищем в кейсах
         if not new_item:
-            all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
+            all_drops = {**CONTAINER_DROPS}
             for ct, drops in all_drops.items():
                 for did, (dname, dprice) in drops.items():
                     if dprice == req.target_price:
@@ -1041,16 +1071,15 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         if new_item:
             inventory[req.item_index] = new_item
         else:
-            # Ищем ближайшую цену
             all_prices = []
-            for up_item in UPGRADE_ITEMS_POOL:
+            for up_item in METRO_LOOT_POOL:
                 all_prices.append(up_item["price"])
             for drops in all_drops.values():
                 for _, (_, price) in drops.items():
                     all_prices.append(price)
             closest_price = min(all_prices, key=lambda x: abs(x - req.target_price))
             
-            for up_item in UPGRADE_ITEMS_POOL:
+            for up_item in METRO_LOOT_POOL:
                 if up_item["price"] == closest_price:
                     inventory[req.item_index] = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
                     break
@@ -1083,7 +1112,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         
         return {
             "success": False,
-            "message": f"💥 Сгорел!",
+            "message": f"💥 Предмет сгорел!",
             "new_balance": user_info["balance"],
             "upgrade_cost": 0,
             "chance": int(upgrade_chance * 100)
@@ -1093,9 +1122,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
 @app.get("/api/upgrade/prices")
 async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
     prices = []
-    for item in UPGRADE_ITEMS_POOL:
+    for item in METRO_LOOT_POOL:
         prices.append(item["price"])
-    all_drops = {**STAR_CASE_DROPS, **NFT_CASE_DROPS}
+    all_drops = {**CONTAINER_DROPS}
     for drops in all_drops.values():
         for _, (_, price) in drops.items():
             prices.append(price)
