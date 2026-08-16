@@ -8,33 +8,19 @@ import time
 import uuid
 import asyncio
 import math
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import aiosqlite
 import httpx
 import socketio
 
-# ============================================================
-#  ДЛЯ RENDER — БЕРЁМ ПОРТ ИЗ ПЕРЕМЕННЫХ
-# ============================================================
-PORT = int(os.getenv("PORT", 8000))
-
 app = FastAPI()
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', ping_timeout=10, ping_interval=5)
 socket_app = socketio.ASGIApp(sio, app)
 
-# ============================================================
-#  CORS — РАЗРЕШАЕМ ВСЁ (для Netlify)
-# ============================================================
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID")
@@ -42,212 +28,133 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
 # ============================================================
-#  КОНТЕЙНЕРЫ PUBG METRO
+#  PUBG METRO — КОНТЕЙНЕРЫ
 # ============================================================
 CONTAINER_PRICES = {
-    "container_1": 50, "container_2": 150, "container_3": 400,
-    "container_4": 750, "container_5": 1500, "container_6": 2500,
-    "container_7": 4000, "container_8": 6000, "container_9": 9000,
-    "container_10": 15000
+    "container_1": 50,
+    "container_2": 150,
+    "container_3": 400,
+    "container_4": 750,
+    "container_5": 1500,
+    "container_6": 2500,
 }
 
 CONTAINER_DROPS = {
     "container_1": {
-        "c1_1": ("📦 Ящик с припасами", 12),
-        "c1_2": ("🔫 M416", 29),
-        "c1_3": ("🎒 Рюкзак Ур.2", 46),
-        "c1_4": ("🛡️ Бронежилет Ур.2", 69),
-        "c1_5": ("💊 Адреналин", 115),
-        "c1_6": ("💰 Слиток золота", 230)
+        "c1_1": ("🔫 M416", 12),
+        "c1_2": ("🎒 Рюкзак Ур.2", 29),
+        "c1_3": ("🛡️ Бронежилет Ур.2", 46),
+        "c1_4": ("💊 Аптечка", 69),
+        "c1_5": ("💰 Слиток золота", 115),
+        "c1_6": ("📡 Портативная рация", 230),
     },
     "container_2": {
         "c2_1": ("🔫 M762", 35),
         "c2_2": ("🎒 Рюкзак Ур.3", 86),
         "c2_3": ("🛡️ Бронежилет Ур.3", 138),
-        "c2_4": ("📡 Портативная рация", 230),
+        "c2_4": ("💊 Адреналин", 230),
         "c2_5": ("💰 Слиток золота", 403),
-        "c2_6": ("💎 Легендарный артефакт", 690)
+        "c2_6": ("💎 Артефакт", 690),
     },
     "container_3": {
         "c3_1": ("🔫 AUG", 92),
-        "c3_2": ("🎒 Рюкзак Ур.4", 230),
+        "c3_2": ("🎒 Тактический рюкзак", 230),
         "c3_3": ("🛡️ Бронежилет Ур.4", 403),
         "c3_4": ("📡 Портативная рация", 575),
         "c3_5": ("💰 Слиток золота", 920),
-        "c3_6": ("💎 Легендарный артефакт", 1725)
+        "c3_6": ("💎 Легендарный артефакт", 1725),
     },
     "container_4": {
         "c4_1": ("🔫 MK14", 173),
         "c4_2": ("🎒 Тактический рюкзак", 460),
         "c4_3": ("🛡️ Бронежилет Ур.5", 748),
-        "c4_4": ("📡 Портативная рация", 1150),
+        "c4_4": ("📡 Секретная рация", 1150),
         "c4_5": ("💰 Слиток золота", 2070),
-        "c4_6": ("💎 Легендарный артефакт", 3450)
+        "c4_6": ("💎 Легендарный артефакт", 3450),
     },
     "container_5": {
         "c5_1": ("🔫 Groza", 345),
         "c5_2": ("🎒 Тактический рюкзак", 920),
         "c5_3": ("🛡️ Бронежилет Ур.5", 1495),
-        "c5_4": ("📡 Портативная рация", 2300),
+        "c5_4": ("📡 Секретная рация", 2300),
         "c5_5": ("💰 Слиток золота", 4025),
-        "c5_6": ("💎 Легендарный артефакт", 6900)
+        "c5_6": ("💎 Легендарный артефакт", 6900),
     },
     "container_6": {
         "c6_1": ("🔫 AWM", 575),
         "c6_2": ("🎒 Тактический рюкзак", 1495),
         "c6_3": ("🛡️ Бронежилет Ур.5", 2530),
-        "c6_4": ("📡 Портативная рация", 4025),
+        "c6_4": ("📡 Секретная рация", 4025),
         "c6_5": ("💰 Слиток золота", 6325),
-        "c6_6": ("💎 Легендарный артефакт", 11500)
+        "c6_6": ("💎 Легендарный артефакт", 11500),
     },
-    "container_7": {
-        "c7_1": ("🔫 M249", 920),
-        "c7_2": ("🎒 Тактический рюкзак", 1725),
-        "c7_3": ("🛡️ Бронежилет Ур.5", 2875),
-        "c7_4": ("📡 Портативная рация", 4600),
-        "c7_5": ("💰 Слиток золота", 8050),
-        "c7_6": ("💎 Легендарный артефакт", 13800)
-    },
-    "container_8": {
-        "c8_1": ("🔫 MG3", 1380),
-        "c8_2": ("🎒 Тактический рюкзак", 2530),
-        "c8_3": ("🛡️ Бронежилет Ур.5", 4370),
-        "c8_4": ("📡 Портативная рация", 6900),
-        "c8_5": ("💰 Слиток золота", 11500),
-        "c8_6": ("💎 Легендарный артефакт", 20700)
-    },
-    "container_9": {
-        "c9_1": ("🔫 P90", 2070),
-        "c9_2": ("🎒 Тактический рюкзак", 4025),
-        "c9_3": ("🛡️ Бронежилет Ур.5", 6900),
-        "c9_4": ("📡 Портативная рация", 10350),
-        "c9_5": ("💰 Слиток золота", 17250),
-        "c9_6": ("💎 Легендарный артефакт", 28750)
-    },
-    "container_10": {
-        "c10_1": ("🔫 FAMAS", 3450),
-        "c10_2": ("🎒 Тактический рюкзак", 6325),
-        "c10_3": ("🛡️ Бронежилет Ур.5", 10350),
-        "c10_4": ("📡 Портативная рация", 17250),
-        "c10_5": ("💰 Слиток золота", 28750),
-        "c10_6": ("💎 Легендарный артефакт", 46000)
-    }
 }
 
-CONTAINER_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
+# ============================================================
+#  NFT / РЕДКИЙ ЛУТ
+# ============================================================
+NFT_CONTAINER_PRICES = {
+    "nft_container_1": 100,
+    "nft_container_2": 250,
+    "nft_container_3": 500,
+    "nft_container_4": 1000,
+    "nft_container_5": 1750,
+    "nft_container_6": 3000,
+}
 
-# ============================================================
-#  ЛУТ МЕТРО
-# ============================================================
-METRO_LOOT_POOL = [
-    {"name": "💊 Аптечка", "price": 5},
-    {"name": "💊 Адреналин", "price": 8},
-    {"name": "🔫 M416", "price": 12},
-    {"name": "🔫 M762", "price": 18},
-    {"name": "🎒 Рюкзак Ур.2", "price": 25},
-    {"name": "🎒 Рюкзак Ур.3", "price": 35},
-    {"name": "🛡️ Бронежилет Ур.2", "price": 45},
-    {"name": "🛡️ Бронежилет Ур.3", "price": 55},
-    {"name": "💰 Слиток золота", "price": 70},
-    {"name": "📡 Портативная рация", "price": 90},
-    {"name": "🔫 AUG", "price": 110},
-    {"name": "🎒 Тактический рюкзак", "price": 140},
-    {"name": "🛡️ Бронежилет Ур.4", "price": 170},
-    {"name": "💎 Артефакт", "price": 200},
-    {"name": "🔫 MK14", "price": 240},
-    {"name": "🛡️ Бронежилет Ур.5", "price": 280},
-    {"name": "🔫 Groza", "price": 330},
-    {"name": "💎 Легендарный артефакт", "price": 380},
-    {"name": "🔫 AWM", "price": 440},
-    {"name": "📡 Секретный документ", "price": 500},
-    {"name": "🔫 M249", "price": 570},
-    {"name": "🎒 Экзоскелет", "price": 650},
-    {"name": "🛡️ Экзоскелет", "price": 740},
-    {"name": "🔫 MG3", "price": 840},
-    {"name": "💎 Артефакт Ур.2", "price": 950},
-    {"name": "🔫 P90", "price": 1070},
-    {"name": "🔫 FAMAS", "price": 1200},
-    {"name": "📡 Рация Ур.2", "price": 1340},
-    {"name": "💎 Артефакт Ур.3", "price": 1490},
-    {"name": "💰 Слиток золота", "price": 1650},
-    {"name": "🔫 Оружие будущего", "price": 1820},
-    {"name": "🎒 Легендарный рюкзак", "price": 2000},
-    {"name": "🛡️ Легендарный бронежилет", "price": 2200},
-    {"name": "📡 Секретная рация", "price": 2420},
-    {"name": "💎 Артефакт Ур.4", "price": 2660},
-    {"name": "🔫 Прототип", "price": 2920},
-    {"name": "🎒 Рюкзак Ур.6", "price": 3200},
-    {"name": "🛡️ Бронежилет Ур.6", "price": 3500},
-    {"name": "💰 Крупный слиток", "price": 3820},
-    {"name": "📡 Секретная рация", "price": 4160},
-    {"name": "💎 Артефакт Ур.5", "price": 4520},
-    {"name": "🔫 Оружие будущего", "price": 4900},
-    {"name": "🎒 Рюкзак Ур.7", "price": 5300},
-    {"name": "🛡️ Бронежилет Ур.7", "price": 5720},
-    {"name": "📡 Секретная рация", "price": 6160},
-    {"name": "💎 Артефакт Ур.6", "price": 6620},
-    {"name": "🔫 Прототип Ур.2", "price": 7100},
-    {"name": "🎒 Рюкзак Ур.8", "price": 7600},
-    {"name": "🛡️ Бронежилет Ур.8", "price": 8120},
-    {"name": "📡 Секретная рация", "price": 8660},
-    {"name": "💎 Артефакт Ур.7", "price": 9220},
-    {"name": "🔫 Оружие будущего Ур.3", "price": 9800},
-    {"name": "🎒 Рюкзак Ур.9", "price": 10400},
-    {"name": "🛡️ Бронежилет Ур.9", "price": 11020},
-    {"name": "📡 Секретная рация", "price": 11660},
-    {"name": "💎 Артефакт Ур.8", "price": 12320},
-    {"name": "🔫 Прототип Ур.3", "price": 13000},
-    {"name": "🎒 Рюкзак Ур.10", "price": 13700},
-    {"name": "🛡️ Бронежилет Ур.10", "price": 14420},
-    {"name": "📡 Секретная рация", "price": 15160},
-    {"name": "💎 Артефакт Ур.9", "price": 15920},
-    {"name": "🔫 Оружие будущего Ур.4", "price": 16700},
-    {"name": "🎒 Рюкзак Ур.11", "price": 17500},
-    {"name": "🛡️ Бронежилет Ур.11", "price": 18320},
-    {"name": "📡 Секретная рация", "price": 19160},
-    {"name": "💎 Артефакт Ур.10", "price": 20020},
-    {"name": "🔫 Прототип Ур.4", "price": 20900},
-    {"name": "🎒 Рюкзак Ур.12", "price": 21800},
-    {"name": "🛡️ Бронежилет Ур.12", "price": 22720},
-    {"name": "📡 Секретная рация", "price": 23660},
-    {"name": "💎 Артефакт Ур.11", "price": 24620},
-    {"name": "🔫 Оружие будущего Ур.5", "price": 25600},
-    {"name": "🎒 Рюкзак Ур.13", "price": 26600},
-    {"name": "🛡️ Бронежилет Ур.13", "price": 27620},
-    {"name": "📡 Секретная рация", "price": 28660},
-    {"name": "💎 Артефакт Ур.12", "price": 29720},
-    {"name": "🔫 Прототип Ур.5", "price": 30800},
-    {"name": "🎒 Рюкзак Ур.14", "price": 31900},
-    {"name": "🛡️ Бронежилет Ур.14", "price": 33020},
-    {"name": "📡 Секретная рация", "price": 34160},
-    {"name": "💎 Артефакт Ур.13", "price": 35320},
-    {"name": "🔫 Оружие будущего Ур.6", "price": 36500},
-    {"name": "🎒 Рюкзак Ур.15", "price": 37700},
-    {"name": "🛡️ Бронежилет Ур.15", "price": 38920},
-    {"name": "📡 Секретная рация", "price": 40160},
-    {"name": "💎 Артефакт Ур.14", "price": 41420},
-    {"name": "🔫 Прототип Ур.6", "price": 42700},
-    {"name": "🎒 Рюкзак Ур.16", "price": 44000},
-    {"name": "🛡️ Бронежилет Ур.16", "price": 45320},
-    {"name": "📡 Секретная рация", "price": 46660},
-    {"name": "💎 Артефакт Ур.15", "price": 48020},
-    {"name": "🔫 Оружие будущего Ур.7", "price": 49400},
-    {"name": "🎒 Рюкзак Ур.17", "price": 50800},
-    {"name": "🛡️ Бронежилет Ур.17", "price": 52220},
-    {"name": "📡 Секретная рация", "price": 53660},
-    {"name": "💎 Артефакт Ур.16", "price": 55120},
-    {"name": "🔫 Прототип Ур.7", "price": 56600},
-    {"name": "🎒 Рюкзак Ур.18", "price": 58100},
-    {"name": "🛡️ Бронежилет Ур.18", "price": 59620},
-    {"name": "📡 Секретная рация", "price": 61160},
-    {"name": "💎 Артефакт Ур.17", "price": 62720},
-    {"name": "🔫 Оружие будущего Ур.8", "price": 64300},
-    {"name": "🎒 Рюкзак Ур.19", "price": 65900},
-    {"name": "🛡️ Бронежилет Ур.19", "price": 67520},
-    {"name": "📡 Секретная рация", "price": 69160},
-    {"name": "💎 Артефакт Ур.18", "price": 70820},
-    {"name": "🔫 Прототип Ур.8", "price": 72500}
-]
+NFT_CONTAINER_DROPS = {
+    "nft_container_1": {
+        "n1_1": ("💎 Кристалл крови", 23),
+        "n1_2": ("🔮 Амулет удачи", 40),
+        "n1_3": ("👑 Золотая маска", 63),
+        "n1_4": ("🗡️ Клинок теней", 92),
+        "n1_5": ("🛡️ Щит судьбы", 150),
+        "n1_6": ("⚡ Энергетический кристалл", 288),
+    },
+    "nft_container_2": {
+        "n2_1": ("🐱 Кот-призрак", 52),
+        "n2_2": ("👻 Дух пустоши", 86),
+        "n2_3": ("🦇 Крыло ночи", 138),
+        "n2_4": ("🧛 Клык вампира", 219),
+        "n2_5": ("👾 Техно-артефакт", 345),
+        "n2_6": ("💀 Череп легенды", 575),
+    },
+    "nft_container_3": {
+        "n3_1": ("🔵 Глаз пустоты", 104),
+        "n3_2": ("🟢 Глаз природы", 173),
+        "n3_3": ("🔴 Глаз войны", 276),
+        "n3_4": ("🟡 Глаз бога", 437),
+        "n3_5": ("⚫ Глаз хаоса", 690),
+        "n3_6": ("💎 Глаз бессмертия", 1150),
+    },
+    "nft_container_4": {
+        "n4_1": ("🍑 Персик бессмертия", 207),
+        "n4_2": ("🍑 Золотой персик", 345),
+        "n4_3": ("🍑 Алмазный персик", 552),
+        "n4_4": ("🍑 Королевский персик", 863),
+        "n4_5": ("🍑 Мистический персик", 1380),
+        "n4_6": ("🍑 Легендарный персик", 2300),
+    },
+    "nft_container_5": {
+        "n5_1": ("🧢 Каска командира", 368),
+        "n5_2": ("⚪ Серебряная каска", 610),
+        "n5_3": ("⚫ Чёрная каска", 978),
+        "n5_4": ("🟡 Золотая каска", 1553),
+        "n5_5": ("⭐ Каска основателя", 2415),
+        "n5_6": ("👑 Королевская каска", 4025),
+    },
+    "nft_container_6": {
+        "n6_1": ("🐸 Плюшевый Пепе", 690),
+        "n6_2": ("😊 Улыбка Пепе", 1150),
+        "n6_3": ("😎 Пепе-чилл", 1840),
+        "n6_4": ("🤨 Редкий Пепе", 2875),
+        "n6_5": ("✨ Золотой Пепе", 4600),
+        "n6_6": ("👑 Мифический Пепе", 8050),
+    },
+}
+
+STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
+NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
 
 # ============================================================
 #  БЕСПЛАТНЫЙ КЕЙС
@@ -261,7 +168,7 @@ FREE_CASE_DROPS = [
     {"name": "💰 Слиток золота", "price": 15.0, "weight": 2.5},
     {"name": "📡 Портативная рация", "price": 35.0, "weight": 1.0},
     {"name": "💎 Артефакт", "price": 60.0, "weight": 0.4},
-    {"name": "📡 Секретный документ", "price": 100.0, "weight": 0.1}
+    {"name": "📡 Секретный документ", "price": 100.0, "weight": 0.1},
 ]
 
 # ============================================================
@@ -271,8 +178,52 @@ CRASH_MIN_BET = 25
 CRASH_MAX_BET = 5000
 CRASH_BETTING_TIME = 6
 CRASH_COOLDOWN = 3
-CRASH_HOUSE_EDGE = 0.05
+CRASH_HOUSE_EDGE = 0.04
 CRASH_SPEED = 0.08
+
+# ============================================================
+#  MINES
+# ============================================================
+MINES_GRID_SIZE = 4
+MINES_MIN_COUNT = 1
+MINES_MAX_COUNT = 15
+MINES_HOUSE_EDGE = 0.05
+active_mines_games = {}
+
+def generate_mines_grid(mines_count):
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    grid = [0] * total_cells
+    mine_positions = random.sample(range(total_cells), mines_count)
+    for pos in mine_positions:
+        grid[pos] = 1
+    return grid
+
+def calculate_mines_multiplier(mines_count, opened):
+    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
+    safe_cells = total_cells - mines_count
+    if opened >= safe_cells:
+        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
+    probability = 1.0
+    for i in range(opened):
+        probability *= (safe_cells - i) / (total_cells - i)
+    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
+    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
+    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
+    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
+
+# ============================================================
+#  НАСТРОЙКИ
+# ============================================================
+REFERRAL_PERCENT = 7
+MAX_WITHDRAW_AMOUNT = 50000
+WITHDRAW_FEE = 0.05
+WITHDRAW_COOLDOWN_HOURS = 24
+MIN_DEPOSIT_FOR_REFERRAL = 50
+
+UPGRADE_CHANCES = {50: 0.60, 100: 0.50, 200: 0.40, 500: 0.30, 1000: 0.20, 2000: 0.10, 5000: 0.05}
+TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
+TOP_MIN_PLAYERS = 100
+TOP_RESET_DAYS = 14
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -291,7 +242,7 @@ crash_state = {
     "timer_ends": 0,
     "connected_users": set(),
     "current_multiplier": 1.0,
-    "crashed": False
+    "crashed": False,
 }
 
 def bet_key(tg_id, round_id):
@@ -420,125 +371,6 @@ async def crash_game_loop():
         await asyncio.sleep(CRASH_COOLDOWN)
 
 # ============================================================
-#  MINES
-# ============================================================
-MINES_GRID_SIZE = 4
-MINES_MIN_COUNT = 1
-MINES_MAX_COUNT = 15
-MINES_HOUSE_EDGE = 0.05
-active_mines_games = {}
-
-def generate_mines_grid(mines_count):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    grid = [0] * total_cells
-    mine_positions = random.sample(range(total_cells), mines_count)
-    for pos in mine_positions:
-        grid[pos] = 1
-    return grid
-
-def calculate_mines_multiplier(mines_count, opened):
-    total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
-    safe_cells = total_cells - mines_count
-    if opened >= safe_cells:
-        return round((1 - MINES_HOUSE_EDGE) * 100, 2)
-    probability = 1.0
-    for i in range(opened):
-        probability *= (safe_cells - i) / (total_cells - i)
-    multiplier = ((1 - MINES_HOUSE_EDGE) / probability)
-    max_multiplier = {1: 5.0, 2: 10.0, 3: 20.0, 5: 50.0, 7: 100.0, 10: 300.0, 12: 500.0, 14: 1000.0, 15: 2000.0}
-    closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
-    return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
-
-# ============================================================
-#  REFERRAL
-# ============================================================
-REFERRAL_PERCENT = 7
-MAX_WITHDRAW_AMOUNT = 50000
-WITHDRAW_FEE = 0.05
-WITHDRAW_COOLDOWN_HOURS = 24
-MIN_DEPOSIT_FOR_REFERRAL = 50
-
-# ============================================================
-#  UPGRADE
-# ============================================================
-def calculate_upgrade_chance(current_price, target_price, chance_bonus=0):
-    diff = target_price - current_price
-    ratio = current_price / target_price
-    
-    if ratio >= 0.98:
-        base = 70
-    elif ratio >= 0.95:
-        base = 60
-    elif ratio >= 0.90:
-        base = 50
-    elif ratio >= 0.80:
-        base = 38
-    elif ratio >= 0.70:
-        base = 28
-    elif ratio >= 0.55:
-        base = 18
-    elif ratio >= 0.40:
-        base = 10
-    elif ratio >= 0.25:
-        base = 5
-    else:
-        base = 2
-    
-    if diff <= 10:
-        base += 8
-    elif diff <= 25:
-        base += 5
-    elif diff <= 50:
-        base += 2
-    elif diff <= 100:
-        base += 0
-    elif diff <= 300:
-        base -= 3
-    elif diff <= 500:
-        base -= 6
-    elif diff <= 1000:
-        base -= 10
-    elif diff <= 2000:
-        base -= 15
-    elif diff <= 5000:
-        base -= 22
-    elif diff <= 10000:
-        base -= 30
-    elif diff <= 20000:
-        base -= 40
-    elif diff <= 50000:
-        base -= 50
-    else:
-        base -= 60
-    
-    if target_price >= 50000:
-        base -= 15
-    elif target_price >= 30000:
-        base -= 10
-    elif target_price >= 15000:
-        base -= 6
-    elif target_price >= 8000:
-        base -= 3
-    elif target_price >= 3000:
-        base -= 1
-    
-    base += chance_bonus
-    random_factor = random.randint(-2, 2)
-    base += random_factor
-    
-    return min(max(round(base, 2), 0.01), 70)
-
-def get_upgrade_item_price(item_name):
-    for item in METRO_LOOT_POOL:
-        if item["name"] == item_name:
-            return item["price"]
-    return 0
-
-TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
-TOP_MIN_PLAYERS = 100
-TOP_RESET_DAYS = 14
-
-# ============================================================
 #  MODELS
 # ============================================================
 class OpenCaseRequest(BaseModel):
@@ -558,10 +390,6 @@ class AdminGiveStarsRequest(BaseModel):
     target_tg_id: int
     amount: int
 
-class AdminChanceRequest(BaseModel):
-    target_tg_id: int
-    chance_percent: int
-
 class MinesStartRequest(BaseModel):
     bet_amount: int
     mines_count: int
@@ -576,8 +404,6 @@ class MinesCashoutRequest(BaseModel):
 class UpgradeItemRequest(BaseModel):
     item_index: int
     target_price: int
-    success: bool = False
-    free_upgrade: bool = False
 
 class PromoCreateRequest(BaseModel):
     code: str
@@ -712,7 +538,7 @@ async def cashout(sid, data):
 @app.on_event("startup")
 async def startup():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Игрок', balance INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]')")
+        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Игрок', balance INTEGER DEFAULT 20, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]')")
         await db.execute("CREATE TABLE IF NOT EXISTS withdraws (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, requisites TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, total_earned INTEGER DEFAULT 0)")
         await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
@@ -721,7 +547,6 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS promos (code TEXT PRIMARY KEY, reward_type TEXT, case_type TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER)")
         await db.execute("CREATE TABLE IF NOT EXISTS top_rewards (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, place INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_uses (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS user_chances (tg_id INTEGER PRIMARY KEY, chance_bonus INTEGER DEFAULT 0)")
         await db.commit()
     asyncio.create_task(crash_game_loop())
 
@@ -747,9 +572,6 @@ def verify_telegram_data(authorization: str = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Parsing error")
 
-# ============================================================
-#  USER
-# ============================================================
 async def get_or_create_user(tg_id: int, username: str = "Игрок"):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance, total_spent, inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -759,10 +581,10 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 await db.commit()
                 return {"balance": row[0], "total_spent": row[1], "inventory": json.loads(row[2])}
             else:
-                start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 0
+                start_balance = 10000 if (ADMIN_TG_ID and tg_id == ADMIN_TG_ID) else 20
                 await db.execute(
-                    "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,'[]')",
-                    (tg_id, username, start_balance)
+                    "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,?,0,?)",
+                    (tg_id, username, start_balance, '[]')
                 )
                 await db.commit()
                 return {"balance": start_balance, "total_spent": 0, "inventory": []}
@@ -789,9 +611,6 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
                 user_info["free_case_available"] = (time.time() - last_ts) >= 86400
             else:
                 user_info["free_case_available"] = True
-        async with db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,)) as cursor:
-            row = await cursor.fetchone()
-            user_info["chance_bonus"] = row[0] if row else 0
     return user_info
 
 # ============================================================
@@ -820,51 +639,12 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         raise HTTPException(status_code=400, detail="Макс 1M ⭐️")
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,0,0,'[]')",
+            "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,20,0,'[]')",
             (req.target_tg_id, f"Player_{req.target_tg_id}")
         )
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
     return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
-
-@app.post("/api/admin/remove_stars")
-async def admin_remove_stars(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.amount < 1:
-        raise HTTPException(status_code=400, detail="Сумма > 0")
-    
-    async with aiosqlite.connect(DB_NAME) as db:
-        row = await (await db.execute("SELECT balance FROM users WHERE tg_id=?", (req.target_tg_id,))).fetchone()
-        if not row:
-            raise HTTPException(status_code=400, detail="Игрок не найден")
-        if row[0] < req.amount:
-            raise HTTPException(status_code=400, detail=f"У игрока только {row[0]} ⭐️")
-        
-        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, req.target_tg_id))
-        await db.commit()
-    
-    return {"success": True, "message": f"✅ Забрано {req.amount} ⭐️ у игрока {req.target_tg_id}"}
-
-@app.post("/api/admin/add_chance")
-async def admin_add_chance(req: AdminChanceRequest, user: dict = Depends(verify_telegram_data)):
-    tg_id = user.get('id')
-    if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    if req.target_tg_id <= 0:
-        raise HTTPException(status_code=400, detail="Неверный ID")
-    if req.chance_percent < 1 or req.chance_percent > 100:
-        raise HTTPException(status_code=400, detail="Процент от 1 до 100")
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO user_chances (tg_id, chance_bonus) VALUES (?, ?)",
-            (req.target_tg_id, req.chance_percent)
-        )
-        await db.commit()
-    return {"success": True, "message": f"✅ Игроку {req.target_tg_id} добавлен шанс +{req.chance_percent}%"}
 
 # ============================================================
 #  PROMO
@@ -900,8 +680,14 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
         reward_name = None
         if promo[1] == "case":
             ct = promo[2]
-            pool = CONTAINER_DROPS[ct] if ct in CONTAINER_PRICES else CONTAINER_DROPS[ct]
-            weights = CONTAINER_DROP_WEIGHTS if ct in CONTAINER_PRICES else CONTAINER_DROP_WEIGHTS
+            if ct in CONTAINER_DROPS:
+                pool = CONTAINER_DROPS[ct]
+                weights = STAR_DROP_WEIGHTS
+            elif ct in NFT_CONTAINER_DROPS:
+                pool = NFT_CONTAINER_DROPS[ct]
+                weights = NFT_DROP_WEIGHTS
+            else:
+                raise HTTPException(status_code=400, detail="Неизвестный кейс")
             reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
             reward_name = pool[reward_id][0]
             async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cursor:
@@ -984,14 +770,18 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     return {"success": True, "reward": reward_name, "price": reward_price}
 
 # ============================================================
-#  CASES (КОНТЕЙНЕРЫ)
+#  CASES
 # ============================================================
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
-    if req.case_type in CONTAINER_PRICES:
+    if req.case_type in CONTAINER_DROPS:
         price = CONTAINER_PRICES[req.case_type]
         pool = CONTAINER_DROPS[req.case_type]
-        weights = CONTAINER_DROP_WEIGHTS
+        weights = STAR_DROP_WEIGHTS
+    elif req.case_type in NFT_CONTAINER_DROPS:
+        price = NFT_CONTAINER_PRICES[req.case_type]
+        pool = NFT_CONTAINER_DROPS[req.case_type]
+        weights = NFT_DROP_WEIGHTS
     else:
         raise HTTPException(status_code=400, detail="Неизвестный контейнер")
     
@@ -1025,12 +815,10 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
         raise HTTPException(status_code=400, detail="Предмет не найден")
     item = inventory.pop(req.item_index)
     gain = 0
-    
-    gain = get_upgrade_item_price(item["name"])
-    if gain == 0:
-        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-            gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
-    
+    if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+        gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
+    elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
+        gain = NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
     new_balance = user_info["balance"] + gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
@@ -1046,132 +834,77 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
         raise HTTPException(status_code=400, detail="Инвентарь пуст")
     total_gain = 0
     for item in inventory:
-        gain = get_upgrade_item_price(item["name"])
-        if gain == 0:
-            if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-                gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
-        total_gain += gain
+        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+            total_gain += CONTAINER_DROPS[item["case"]][item["id"]][1]
+        elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
+            total_gain += NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
     new_balance = user_info["balance"] + total_gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory='[]' WHERE tg_id=?", (new_balance, tg_id))
         await db.commit()
     return {"gain": total_gain, "balance": new_balance}
 
-# ============================================================
-#  UPGRADE
-# ============================================================
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
     inventory = user_info["inventory"]
-    
     if req.item_index < 0 or req.item_index >= len(inventory):
         raise HTTPException(status_code=400, detail="Предмет не найден")
-    
     item = inventory[req.item_index]
     current_price = 0
-    
-    current_price = get_upgrade_item_price(item["name"])
-    if current_price == 0:
-        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-            current_price = CONTAINER_DROPS[item["case"]][item["id"]][1]
-    
+    if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
+        current_price = CONTAINER_DROPS[item["case"]][item["id"]][1]
+    elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
+        current_price = NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
     if current_price == 0:
         raise HTTPException(status_code=400, detail="Нельзя улучшить")
-    
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже текущей")
     
+    upgrade_chance = UPGRADE_CHANCES.get(req.target_price, 0.10)
+    upgrade_cost = int(req.target_price * 0.1)
+    
+    if user_info["balance"] < upgrade_cost:
+        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
+    
+    new_balance = user_info["balance"] - upgrade_cost
+    
     async with aiosqlite.connect(DB_NAME) as db:
-        row = await (await db.execute("SELECT chance_bonus FROM user_chances WHERE tg_id=?", (tg_id,))).fetchone()
-        chance_bonus = row[0] if row else 0
+        await db.execute("UPDATE users SET balance=? WHERE tg_id=?", (new_balance, tg_id))
+        await db.commit()
     
-    upgrade_chance = calculate_upgrade_chance(current_price, req.target_price, chance_bonus) / 100
-    
-    is_success = req.success if hasattr(req, 'success') else random.random() < upgrade_chance
-    
-    if is_success:
+    if random.random() < upgrade_chance:
         new_item = None
-        
-        for up_item in METRO_LOOT_POOL:
-            if up_item["price"] == req.target_price:
-                new_item = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
-                break
-        
-        if not new_item:
-            all_drops = {**CONTAINER_DROPS}
-            for ct, drops in all_drops.items():
-                for did, (dname, dprice) in drops.items():
-                    if dprice == req.target_price:
-                        new_item = {"id": did, "name": dname, "case": ct}
-                        break
-                if new_item:
+        for ct, drops in {**CONTAINER_DROPS, **NFT_CONTAINER_DROPS}.items():
+            for did, (dname, dprice) in drops.items():
+                if dprice == req.target_price:
+                    new_item = {"id": did, "name": dname, "case": ct}
                     break
-        
+            if new_item:
+                break
         if new_item:
             inventory[req.item_index] = new_item
-        else:
-            all_prices = []
-            for up_item in METRO_LOOT_POOL:
-                all_prices.append(up_item["price"])
-            for drops in all_drops.values():
-                for _, (_, price) in drops.items():
-                    all_prices.append(price)
-            closest_price = min(all_prices, key=lambda x: abs(x - req.target_price))
-            
-            for up_item in METRO_LOOT_POOL:
-                if up_item["price"] == closest_price:
-                    inventory[req.item_index] = {"id": f"up_{up_item['name']}", "name": up_item["name"], "case": "upgrade"}
-                    break
-            if not inventory[req.item_index]:
-                for ct, drops in all_drops.items():
-                    for did, (dname, dprice) in drops.items():
-                        if dprice == closest_price:
-                            inventory[req.item_index] = {"id": did, "name": dname, "case": ct}
-                            break
-                    if inventory[req.item_index]:
-                        break
-        
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
             await db.commit()
-        
         return {
             "success": True,
             "message": f"✅ Успех! Улучшено до {req.target_price}⭐️",
-            "new_balance": user_info["balance"],
-            "upgrade_cost": 0,
-            "new_item": inventory[req.item_index]["name"],
-            "chance": int(upgrade_chance * 100)
+            "new_balance": new_balance,
+            "upgrade_cost": upgrade_cost
         }
     else:
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
             await db.commit()
-        
         return {
             "success": False,
-            "message": f"💥 Предмет сгорел!",
-            "new_balance": user_info["balance"],
-            "upgrade_cost": 0,
-            "chance": int(upgrade_chance * 100)
+            "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️",
+            "new_balance": new_balance,
+            "upgrade_cost": upgrade_cost
         }
-
-# ============================================================
-#  UPGRADE PRICES
-# ============================================================
-@app.get("/api/upgrade/prices")
-async def get_upgrade_prices(user: dict = Depends(verify_telegram_data)):
-    prices = []
-    for item in METRO_LOOT_POOL:
-        prices.append(item["price"])
-    all_drops = {**CONTAINER_DROPS}
-    for drops in all_drops.values():
-        for _, (_, price) in drops.items():
-            prices.append(price)
-    return {"prices": sorted(list(set(prices)))}
 
 # ============================================================
 #  LEADERBOARD
@@ -1473,9 +1206,7 @@ async def verify_crash(server_seed: str, nonce: int):
         cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
     return {"verified": True, "crash_point": min(cp, 50.0), "hash": hash_hex}
 
-# ============================================================
-#  ЗАПУСК
-# ============================================================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=PORT)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(socket_app, host="0.0.0.0", port=port)
