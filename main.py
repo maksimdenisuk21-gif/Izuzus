@@ -181,9 +181,10 @@ MINES_MIN_COUNT = 1
 MINES_MAX_COUNT = 15
 MINES_HOUSE_EDGE = 0.05
 
-active_mines_games: dict = {}
+active_mines_games = {}
 
-def generate_mines_grid(mines_count: int) -> list:
+def generate_mines_grid(mines_count):
+    """Генерация минного поля"""
     total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
     grid = [0] * total_cells
     mine_positions = random.sample(range(total_cells), mines_count)
@@ -191,7 +192,8 @@ def generate_mines_grid(mines_count: int) -> list:
         grid[pos] = 1
     return grid
 
-def calculate_mines_multiplier(mines_count: int, opened: int) -> float:
+def calculate_mines_multiplier(mines_count, opened):
+    """Расчёт множителя для мин"""
     total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
     safe_cells = total_cells - mines_count
     if opened >= safe_cells:
@@ -207,23 +209,34 @@ def calculate_mines_multiplier(mines_count: int, opened: int) -> float:
     closest = min(max_multiplier.keys(), key=lambda k: abs(k - mines_count))
     return round(min(multiplier, max_multiplier.get(closest, 50.0)), 2)
 
-# ========== REFERRAL SYSTEM ==========
+# ========== НАСТРОЙКИ ==========
 REFERRAL_PERCENT = 7
 MAX_WITHDRAW_AMOUNT = 50000
 WITHDRAW_FEE = 0.05
 WITHDRAW_COOLDOWN_HOURS = 24
 MIN_DEPOSIT_FOR_REFERRAL = 50
-
-# ========== ITEM UPGRADE SYSTEM ==========
-UPGRADE_CHANCES = {
-    50: 0.60, 100: 0.50, 200: 0.40, 500: 0.30,
-    1000: 0.20, 2000: 0.10, 5000: 0.05
-}
-
-# ========== TOP PRIZES ==========
 TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
 TOP_RESET_DAYS = 14
+
+# ========== АПГРЕЙД-РУЛЕТКА ==========
+def get_upgrade_chance(current_price, target_price):
+    """Шанс апгрейда зависит от соотношения цен"""
+    ratio = target_price / current_price
+    if ratio >= 20:
+        return 0.01  # 1%
+    elif ratio >= 10:
+        return 0.03  # 3%
+    elif ratio >= 5:
+        return 0.08  # 8%
+    elif ratio >= 3:
+        return 0.15  # 15%
+    elif ratio >= 2:
+        return 0.30  # 30%
+    elif ratio >= 1.5:
+        return 0.50  # 50%
+    else:
+        return 0.70  # 70%
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -245,10 +258,12 @@ crash_state = {
     "crashed": False
 }
 
-def bet_key(tg_id: int, round_id: str) -> str:
+def bet_key(tg_id, round_id):
+    """Ключ ставки"""
     return f"{tg_id}:{round_id}"
 
-def generate_crash_point() -> tuple:
+def generate_crash_point():
+    """Provably Fair генерация точки краша"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     crash_nonce += 1
     rounds_since_seed_change += 1
@@ -262,22 +277,23 @@ def generate_crash_point() -> tuple:
     h = int(hash_hex[:16], 16)
     r = h / (2**64)
     if r < 0.30:
-        crash_point = round(1.01 + (r / 0.30) * 0.09, 2)
+        cp = round(1.01 + (r / 0.30) * 0.09, 2)
     elif r < 0.60:
-        crash_point = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
+        cp = round(1.10 + ((r - 0.30) / 0.30) * 0.20, 2)
     elif r < 0.82:
-        crash_point = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
+        cp = round(1.30 + ((r - 0.60) / 0.22) * 0.50, 2)
     elif r < 0.94:
-        crash_point = round(1.80 + ((r - 0.82) / 0.12) * 1.20, 2)
+        cp = round(1.80 + ((r - 0.82) / 0.12) * 1.20, 2)
     elif r < 0.98:
-        crash_point = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
+        cp = round(3.00 + ((r - 0.94) / 0.04) * 5.00, 2)
     elif r < 0.995:
-        crash_point = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
+        cp = round(8.00 + ((r - 0.98) / 0.015) * 12.00, 2)
     else:
-        crash_point = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
-    return min(crash_point, 50.0), hash_hex
+        cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
+    return min(cp, 50.0), hash_hex
 
 async def crash_game_loop():
+    """Главный цикл краш-игры"""
     global crash_state
     while True:
         crash_state["status"] = "betting"
@@ -370,7 +386,7 @@ async def crash_game_loop():
         })
         await asyncio.sleep(CRASH_COOLDOWN)
 
-# ========== MODELS ==========
+# ========== МОДЕЛИ ==========
 class OpenCaseRequest(BaseModel):
     case_type: str
 
@@ -410,7 +426,7 @@ class PromoCreateRequest(BaseModel):
     stars: int = 0
     max_uses: int = 1
 
-# ========== SOCKET.IO EVENTS ==========
+# ========== SOCKET.IO ==========
 @sio.event
 async def connect(sid, environ):
     crash_state["connected_users"].add(sid)
@@ -430,29 +446,23 @@ async def disconnect(sid):
 async def place_bet(sid, data):
     try:
         tg_id = int(data.get('tg_id', 0))
-    except (TypeError, ValueError):
-        await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
-        return
+    except:
+        return await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
     if tg_id <= 0:
-        await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
     try:
         bet = int(data.get('bet_amount', 0))
-    except (TypeError, ValueError):
-        await sio.emit('error', {'message': 'Неверная сумма'}, to=sid)
-        return
+    except:
+        return await sio.emit('error', {'message': 'Неверная сумма'}, to=sid)
     
     if crash_state["status"] != "betting":
-        await sio.emit('error', {'message': 'Ставки закрыты!'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Ставки закрыты!'}, to=sid)
     if bet < CRASH_MIN_BET or bet > CRASH_MAX_BET:
-        await sio.emit('error', {'message': f'Ставка {CRASH_MIN_BET}-{CRASH_MAX_BET} UC'}, to=sid)
-        return
+        return await sio.emit('error', {'message': f'Ставка {CRASH_MIN_BET}-{CRASH_MAX_BET} UC'}, to=sid)
     
     key = bet_key(tg_id, crash_state["round_id"])
     if key in crash_state["bets"]:
-        await sio.emit('error', {'message': 'Уже есть ставка'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Уже есть ставка'}, to=sid)
     
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
@@ -461,8 +471,7 @@ async def place_bet(sid, data):
         )
         await db.commit()
         if cursor.rowcount == 0:
-            await sio.emit('error', {'message': 'Недостаточно UC'}, to=sid)
-            return
+            return await sio.emit('error', {'message': 'Недостаточно UC'}, to=sid)
         async with db.execute("SELECT balance FROM users WHERE tg_id = ?", (tg_id,)) as cursor:
             new_balance = (await cursor.fetchone())[0]
     
@@ -492,33 +501,25 @@ async def place_bet(sid, data):
 async def cashout(sid, data):
     try:
         tg_id = int(data.get('tg_id', 0))
-    except (TypeError, ValueError):
-        await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
-        return
+    except:
+        return await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
     if tg_id <= 0:
-        await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
-        return
-    
+        return await sio.emit('error', {'message': 'Неверный ID'}, to=sid)
     if crash_state["crashed"]:
-        await sio.emit('error', {'message': 'Парашют не раскрылся!'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Парашют не раскрылся!'}, to=sid)
     if crash_state["status"] != "flying":
-        await sio.emit('error', {'message': 'Не время'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Не время'}, to=sid)
     
     key = bet_key(tg_id, crash_state["round_id"])
     bet_data = crash_state["bets"].get(key)
     if not bet_data:
-        await sio.emit('error', {'message': 'Нет ставки'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Нет ставки'}, to=sid)
     if bet_data["cashed_out"]:
-        await sio.emit('error', {'message': 'Уже забрали'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Уже забрали'}, to=sid)
     
     current_mult = crash_state["current_multiplier"]
     if current_mult >= crash_state["crash_point"]:
-        await sio.emit('error', {'message': 'Поздно!'}, to=sid)
-        return
+        return await sio.emit('error', {'message': 'Поздно!'}, to=sid)
     
     win_amount = int(bet_data["bet"] * current_mult)
     bet_data["cashed_out"] = True
@@ -544,7 +545,7 @@ async def cashout(sid, data):
         'win': win_amount
     })
 
-# ========== STARTUP ==========
+# ========== СТАРТ ==========
 @app.on_event("startup")
 async def startup():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -558,10 +559,9 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS top_rewards (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, place INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_uses (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.commit()
-    
     asyncio.create_task(crash_game_loop())
 
-# ========== AUTH ==========
+# ========== АВТОРИЗАЦИЯ ==========
 def verify_telegram_data(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
@@ -599,7 +599,7 @@ async def get_or_create_user(tg_id: int, username: str = "Игрок"):
                 await db.commit()
                 return {"balance": start_balance, "total_spent": 0, "inventory": []}
 
-# ========== PROFILE ==========
+# ========== ПРОФИЛЬ ==========
 @app.get("/api/profile")
 async def get_profile(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -624,7 +624,7 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
     
     return user_info
 
-# ========== ADMIN ==========
+# ========== АДМИН ==========
 @app.post("/api/admin/give_stars")
 async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -657,7 +657,7 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
     
     return {"success": True, "message": f"✅ Выдано {req.amount} UC"}
 
-# ========== PROMO ==========
+# ========== ПРОМОКОДЫ ==========
 @app.post("/api/admin/promo/create")
 async def create_promo(req: PromoCreateRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -712,7 +712,7 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "message": f"🎉 Промокод {code} активирован!", "reward": reward_name}
 
-# ========== TOP REWARDS ==========
+# ========== ПРИЗЫ ТОПА ==========
 @app.post("/api/admin/top/reward")
 async def reward_top_players(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -746,7 +746,7 @@ async def get_top_rewards(user: dict = Depends(verify_telegram_data)):
             rows = await cursor.fetchall()
         return [{"tg_id": r[0], "amount": r[1], "place": r[2], "date": r[3]} for r in rows]
 
-# ========== FREE CASE ==========
+# ========== БЕСПЛАТНЫЙ ЯЩИК ==========
 @app.post("/api/free_case/claim")
 async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -776,7 +776,7 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "reward": reward_name}
 
-# ========== CASES ==========
+# ========== ОТКРЫТИЕ ЯЩИКА ==========
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
     if req.case_type in STAR_CASE_PRICES:
@@ -811,7 +811,7 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
     
     return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
 
-# ========== INVENTORY ==========
+# ========== ИНВЕНТАРЬ ==========
 @app.post("/api/inventory/sell_item")
 async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -857,6 +857,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     
     return {"gain": total_gain, "balance": new_balance}
 
+# ========== АПГРЕЙД-РУЛЕТКА ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -878,17 +879,11 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель дороже")
     
-    upgrade_chance = UPGRADE_CHANCES.get(req.target_price, 0.10)
-    upgrade_cost = int(req.target_price * 0.1)
-    if user_info["balance"] < upgrade_cost:
-        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} UC")
+    # Шанс зависит от соотношения цен
+    chance = get_upgrade_chance(current_price, req.target_price)
     
-    new_balance = user_info["balance"] - upgrade_cost
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance = ? WHERE tg_id = ?", (new_balance, tg_id))
-        await db.commit()
-    
-    if random.random() < upgrade_chance:
+    if random.random() < chance:
+        # УСПЕХ
         new_item = None
         for ct, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
             for did, (dname, dprice) in drops.items():
@@ -902,15 +897,16 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
-        return {"success": True, "message": f"✅ Успех! Улучшено до {req.target_price} UC", "new_balance": new_balance, "upgrade_cost": upgrade_cost}
+        return {"success": True, "chance": chance, "message": f"✅ Успех! Улучшено до {req.target_price} UC (шанс был {int(chance*100)}%)"}
     else:
+        # ПРОВАЛ
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
-        return {"success": False, "message": f"💥 Сгорел! Потеряно: {upgrade_cost} UC", "new_balance": new_balance, "upgrade_cost": upgrade_cost}
+        return {"success": False, "chance": chance, "message": f"💥 Сгорел! Потерян предмет за {current_price} UC (шанс был {int(chance*100)}%)"}
 
-# ========== LEADERBOARD ==========
+# ========== ЛИДЕРБОРД ==========
 @app.get("/api/leaderboard")
 async def get_leaderboard(user: dict = Depends(verify_telegram_data)):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -929,7 +925,7 @@ async def get_spent_leaderboard(user: dict = Depends(verify_telegram_data)):
             total = (await cursor.fetchone())[0]
     return {"players": [{"username": r[0], "total_spent": r[1]} for r in rows], "total_players": total, "min_for_prizes": TOP_MIN_PLAYERS, "prizes": TOP_PRIZES, "reset_days": TOP_RESET_DAYS}
 
-# ========== STARS SHOP (UC) ==========
+# ========== ПОПОЛНЕНИЕ UC ==========
 @app.post("/api/stars/buy")
 async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
     if stars_amount < 50:
@@ -962,7 +958,7 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
         else:
             raise HTTPException(status_code=500, detail="Ошибка Telegram Invoice")
 
-# ========== WITHDRAW ==========
+# ========== ВЫВОД ==========
 @app.post("/api/withdraw")
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1020,7 +1016,7 @@ async def update_withdraw_status(req: UpdateWithdrawStatusRequest, user: dict = 
         await db.commit()
     return {"success": True, "new_status": req.status}
 
-# ========== REFERRAL ==========
+# ========== РЕФЕРАЛЫ ==========
 @app.post("/api/referral/activate")
 async def activate_referral(req: ReferralActivateRequest, user: dict = Depends(verify_telegram_data)):
     user_id = user.get('id')
@@ -1048,9 +1044,14 @@ async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
         count = await (await db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (tg_id,))).fetchone()
         history = await (await db.execute("SELECT referral_id, deposit_amount, earned, created_at FROM referral_earnings WHERE referrer_id = ? ORDER BY created_at DESC LIMIT 20", (tg_id,))).fetchall()
     
-    return {"total_earned": earned[0] if earned else 0, "referrals_count": count[0] if count else 0, "percent": REFERRAL_PERCENT, "history": [{"referral_id": r[0], "deposit": r[1], "earned": r[2], "date": r[3]} for r in history]}
+    return {
+        "total_earned": earned[0] if earned else 0,
+        "referrals_count": count[0] if count else 0,
+        "percent": REFERRAL_PERCENT,
+        "history": [{"referral_id": r[0], "deposit": r[1], "earned": r[2], "date": r[3]} for r in history]
+    }
 
-# ========== MINES ==========
+# ========== МИНЫ ==========
 @app.post("/api/mines/start")
 async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -1085,7 +1086,14 @@ async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegr
         "current_multiplier": 1.0
     }
     
-    return {"game_id": game_id, "bet": req.bet_amount, "mines_count": req.mines_count, "balance": new_balance, "total_cells": 16, "safe_cells": 16 - req.mines_count}
+    return {
+        "game_id": game_id,
+        "bet": req.bet_amount,
+        "mines_count": req.mines_count,
+        "balance": new_balance,
+        "total_cells": 16,
+        "safe_cells": 16 - req.mines_count
+    }
 
 @app.post("/api/mines/open")
 async def mines_open_cell(req: MinesOpenRequest, user: dict = Depends(verify_telegram_data)):
@@ -1108,13 +1116,26 @@ async def mines_open_cell(req: MinesOpenRequest, user: dict = Depends(verify_tel
         game["cashed_out"] = True
         mines = [i for i, v in enumerate(game["grid"]) if v == 1]
         del active_mines_games[tg_id]
-        return {"status": "bomb", "cell_index": req.cell_index, "opened": game["opened"], "mines": mines, "win_amount": 0, "balance": (await get_or_create_user(tg_id))["balance"]}
+        return {
+            "status": "bomb",
+            "cell_index": req.cell_index,
+            "opened": game["opened"],
+            "mines": mines,
+            "win_amount": 0,
+            "balance": (await get_or_create_user(tg_id))["balance"]
+        }
     
     game["opened"].append(req.cell_index)
     multiplier = calculate_mines_multiplier(game["mines_count"], len(game["opened"]))
     game["current_multiplier"] = multiplier
     
-    return {"status": "safe", "cell_index": req.cell_index, "opened": game["opened"], "opened_count": len(game["opened"]), "current_multiplier": multiplier}
+    return {
+        "status": "safe",
+        "cell_index": req.cell_index,
+        "opened": game["opened"],
+        "opened_count": len(game["opened"]),
+        "current_multiplier": multiplier
+    }
 
 @app.post("/api/mines/cashout")
 async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_telegram_data)):
@@ -1142,7 +1163,15 @@ async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_te
     mines = [i for i, v in enumerate(game["grid"]) if v == 1]
     del active_mines_games[tg_id]
     
-    return {"status": "cashed_out", "multiplier": game["current_multiplier"], "win_amount": win_amount, "profit": win_amount - game["bet"], "balance": new_balance, "opened": game["opened"], "mines": mines}
+    return {
+        "status": "cashed_out",
+        "multiplier": game["current_multiplier"],
+        "win_amount": win_amount,
+        "profit": win_amount - game["bet"],
+        "balance": new_balance,
+        "opened": game["opened"],
+        "mines": mines
+    }
 
 @app.get("/api/mines/state")
 async def mines_get_state(user: dict = Depends(verify_telegram_data)):
@@ -1152,8 +1181,18 @@ async def mines_get_state(user: dict = Depends(verify_telegram_data)):
         return {"active": False}
     game = active_mines_games[tg_id]
     
-    return {"active": True, "game_id": game["game_id"], "bet": game["bet"], "mines_count": game["mines_count"], "opened": game["opened"], "current_multiplier": game["current_multiplier"], "cashed_out": game["cashed_out"], "total_cells": 16}
+    return {
+        "active": True,
+        "game_id": game["game_id"],
+        "bet": game["bet"],
+        "mines_count": game["mines_count"],
+        "opened": game["opened"],
+        "current_multiplier": game["current_multiplier"],
+        "cashed_out": game["cashed_out"],
+        "total_cells": 16
+    }
 
+# ========== CRASH HTTP ==========
 @app.get("/api/crash/history")
 async def crash_history():
     return {"history": crash_state["history"][:15], "server_seed_hash": SERVER_SEED_HASH}
