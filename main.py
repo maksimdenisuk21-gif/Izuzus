@@ -1,962 +1,967 @@
-import os
-import random
-import asyncio
-import sqlite3
-import time
-import json
-from typing import Optional, Dict, List, Any
-from fastapi import FastAPI, HTTPException, Header, Request, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
-import socketio
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-
-# ==========================================
-# 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ЭКОНОМИКА
-# ==========================================
-
-START_BALANCE: int = 5
-CRASH_HOUSE_EDGE: float = 0.08
-MINES_HOUSE_EDGE: float = 0.10
-UPGRADE_HOUSE_EDGE: float = 0.10
-COINFLIP_HOUSE_EDGE: float = 0.05
-WITHDRAW_FEE: float = 0.05
-MIN_WITHDRAW: int = 100
-MAX_WITHDRAW: int = 50000
-
-# Множители для Mines (5x5 поле)
-MINES_MULTIPLIERS: Dict[int, List[float]] = {
-    1: [1.03, 1.12, 1.23, 1.35, 1.50, 1.68, 1.90, 2.18, 2.54, 3.00, 3.50, 4.00, 4.50, 5.00],
-    2: [1.08, 1.25, 1.45, 1.70, 2.00, 2.40, 2.90, 3.50, 4.20, 5.00, 6.00, 7.50, 9.00],
-    3: [1.15, 1.40, 1.75, 2.25, 2.95, 4.00, 5.60, 8.00, 10.00, 13.00, 17.00, 22.00],
-    4: [1.25, 1.60, 2.10, 2.85, 4.00, 5.80, 8.50, 12.50, 18.00, 25.00, 35.00],
-    5: [1.30, 1.80, 2.60, 3.90, 6.00, 9.80, 16.00, 20.00, 28.00, 40.00],
-    7: [1.50, 2.50, 4.50, 8.50, 17.00, 30.00, 50.00, 80.00],
-    10: [2.00, 5.00, 15.00, 45.00, 100.00, 200.00]
-}
-
-# ==========================================
-# 2. ДАННЫЕ ЯЩИКОВ (18 штук)
-# ==========================================
-
-CASE_PRICES: Dict[str, Dict[str, Any]] = {
-    # UC Ящики (8 шт)
-    "star_case_1": {
-        "id": "star_case_1",
-        "name": "Бронзовый Ящик",
-        "price": 30,
-        "items": [
-            {"id": "s1_1", "name": "⭐ 12 UC", "price": 12, "rarity": "common"},
-            {"id": "s1_2", "name": "⭐ 29 UC", "price": 29, "rarity": "common"},
-            {"id": "s1_3", "name": "⭐ 46 UC", "price": 46, "rarity": "rare"},
-            {"id": "s1_4", "name": "⭐ 69 UC", "price": 69, "rarity": "rare"},
-            {"id": "s1_5", "name": "⭐ 115 UC", "price": 115, "rarity": "epic"},
-            {"id": "s1_6", "name": "⭐ 230 UC", "price": 230, "rarity": "epic"}
-        ]
-    },
-    "star_case_2": {
-        "id": "star_case_2",
-        "name": "Серебряный Ящик",
-        "price": 100,
-        "items": [
-            {"id": "s2_1", "name": "⭐ 35 UC", "price": 35, "rarity": "common"},
-            {"id": "s2_2", "name": "⭐ 86 UC", "price": 86, "rarity": "common"},
-            {"id": "s2_3", "name": "⭐ 138 UC", "price": 138, "rarity": "rare"},
-            {"id": "s2_4", "name": "⭐ 230 UC", "price": 230, "rarity": "rare"},
-            {"id": "s2_5", "name": "⭐ 403 UC", "price": 403, "rarity": "epic"},
-            {"id": "s2_6", "name": "⭐ 690 UC", "price": 690, "rarity": "epic"}
-        ]
-    },
-    "star_case_3": {
-        "id": "star_case_3",
-        "name": "Золотой Ящик",
-        "price": 250,
-        "items": [
-            {"id": "s3_1", "name": "⭐ 92 UC", "price": 92, "rarity": "common"},
-            {"id": "s3_2", "name": "⭐ 230 UC", "price": 230, "rarity": "rare"},
-            {"id": "s3_3", "name": "⭐ 403 UC", "price": 403, "rarity": "rare"},
-            {"id": "s3_4", "name": "⭐ 575 UC", "price": 575, "rarity": "epic"},
-            {"id": "s3_5", "name": "⭐ 920 UC", "price": 920, "rarity": "legendary"},
-            {"id": "s3_6", "name": "⭐ 1725 UC", "price": 1725, "rarity": "legendary"}
-        ]
-    },
-    "star_case_4": {
-        "id": "star_case_4",
-        "name": "Платиновый Ящик",
-        "price": 500,
-        "items": [
-            {"id": "s4_1", "name": "⭐ 173 UC", "price": 173, "rarity": "common"},
-            {"id": "s4_2", "name": "⭐ 460 UC", "price": 460, "rarity": "rare"},
-            {"id": "s4_3", "name": "⭐ 748 UC", "price": 748, "rarity": "epic"},
-            {"id": "s4_4", "name": "⭐ 1150 UC", "price": 1150, "rarity": "epic"},
-            {"id": "s4_5", "name": "⭐ 2070 UC", "price": 2070, "rarity": "legendary"},
-            {"id": "s4_6", "name": "⭐ 3450 UC", "price": 3450, "rarity": "mythic"}
-        ]
-    },
-    "star_case_5": {
-        "id": "star_case_5",
-        "name": "Алмазный Ящик",
-        "price": 1000,
-        "items": [
-            {"id": "s5_1", "name": "⭐ 345 UC", "price": 345, "rarity": "common"},
-            {"id": "s5_2", "name": "⭐ 920 UC", "price": 920, "rarity": "rare"},
-            {"id": "s5_3", "name": "⭐ 1495 UC", "price": 1495, "rarity": "epic"},
-            {"id": "s5_4", "name": "⭐ 2300 UC", "price": 2300, "rarity": "legendary"},
-            {"id": "s5_5", "name": "⭐ 4025 UC", "price": 4025, "rarity": "legendary"},
-            {"id": "s5_6", "name": "⭐ 6900 UC", "price": 6900, "rarity": "mythic"}
-        ]
-    },
-    "star_case_6": {
-        "id": "star_case_6",
-        "name": "Мифический Ящик",
-        "price": 2000,
-        "items": [
-            {"id": "s6_1", "name": "⭐ 575 UC", "price": 575, "rarity": "rare"},
-            {"id": "s6_2", "name": "⭐ 1495 UC", "price": 1495, "rarity": "epic"},
-            {"id": "s6_3", "name": "⭐ 2530 UC", "price": 2530, "rarity": "epic"},
-            {"id": "s6_4", "name": "⭐ 4025 UC", "price": 4025, "rarity": "legendary"},
-            {"id": "s6_5", "name": "⭐ 6325 UC", "price": 6325, "rarity": "mythic"},
-            {"id": "s6_6", "name": "⭐ 11500 UC", "price": 11500, "rarity": "mythic"}
-        ]
-    },
-    "star_case_7": {
-        "id": "star_case_7",
-        "name": "Божественный Ящик",
-        "price": 5000,
-        "items": [
-            {"id": "s7_1", "name": "⭐ 1000 UC", "price": 1000, "rarity": "rare"},
-            {"id": "s7_2", "name": "⭐ 2500 UC", "price": 2500, "rarity": "epic"},
-            {"id": "s7_3", "name": "⭐ 5000 UC", "price": 5000, "rarity": "legendary"},
-            {"id": "s7_4", "name": "⭐ 7500 UC", "price": 7500, "rarity": "legendary"},
-            {"id": "s7_5", "name": "⭐ 10000 UC", "price": 10000, "rarity": "mythic"},
-            {"id": "s7_6", "name": "⭐ 25000 UC", "price": 25000, "rarity": "mythic"}
-        ]
-    },
-    "star_case_8": {
-        "id": "star_case_8",
-        "name": "Космический Ящик",
-        "price": 10000,
-        "items": [
-            {"id": "s8_1", "name": "⭐ 250 UC", "price": 250, "rarity": "common"},
-            {"id": "s8_2", "name": "⭐ 750 UC", "price": 750, "rarity": "rare"},
-            {"id": "s8_3", "name": "⭐ 1500 UC", "price": 1500, "rarity": "epic"},
-            {"id": "s8_4", "name": "⭐ 3000 UC", "price": 3000, "rarity": "legendary"},
-            {"id": "s8_5", "name": "⭐ 5000 UC", "price": 5000, "rarity": "legendary"},
-            {"id": "s8_6", "name": "⭐ 15000 UC", "price": 15000, "rarity": "mythic"}
-        ]
-    },
-    # NFT Скины (8 шт)
-    "nft_case_1": {
-        "id": "nft_case_1",
-        "name": "Basic Skins",
-        "price": 80,
-        "items": [
-            {"id": "n1_1", "name": "🎽 Brown Shirt", "price": 23, "rarity": "common"},
-            {"id": "n1_2", "name": "🧢 Grey Cap", "price": 40, "rarity": "common"},
-            {"id": "n1_3", "name": "👖 Cargo Pants", "price": 63, "rarity": "common"},
-            {"id": "n1_4", "name": "🎒 Level 1 Backpack", "price": 92, "rarity": "rare"},
-            {"id": "n1_5", "name": "🪖 Steel Helmet", "price": 150, "rarity": "rare"},
-            {"id": "n1_6", "name": "🥾 Military Boots", "price": 288, "rarity": "epic"}
-        ]
-    },
-    "nft_case_2": {
-        "id": "nft_case_2",
-        "name": "Tactical Skins",
-        "price": 200,
-        "items": [
-            {"id": "n2_1", "name": "🧣 Red Scarf", "price": 52, "rarity": "common"},
-            {"id": "n2_2", "name": "🧤 Tactical Gloves", "price": 86, "rarity": "rare"},
-            {"id": "n2_3", "name": "🦺 Police Vest", "price": 138, "rarity": "rare"},
-            {"id": "n2_4", "name": "🎽 Sports Top", "price": 219, "rarity": "epic"},
-            {"id": "n2_5", "name": "👒 Straw Hat", "price": 345, "rarity": "epic"},
-            {"id": "n2_6", "name": "🪖 Level 2 Helmet", "price": 575, "rarity": "legendary"}
-        ]
-    },
-    "nft_case_3": {
-        "id": "nft_case_3",
-        "name": "Urban Skins",
-        "price": 400,
-        "items": [
-            {"id": "n3_1", "name": "🧥 Leather Jacket", "price": 104, "rarity": "rare"},
-            {"id": "n3_2", "name": "👖 Jeans", "price": 173, "rarity": "rare"},
-            {"id": "n3_3", "name": "👟 Sneakers", "price": 276, "rarity": "epic"},
-            {"id": "n3_4", "name": "🎒 Level 2 Backpack", "price": 437, "rarity": "epic"},
-            {"id": "n3_5", "name": "🛡️ Riot Shield", "price": 690, "rarity": "legendary"},
-            {"id": "n3_6", "name": "🪖 Level 3 Helmet", "price": 1150, "rarity": "legendary"}
-        ]
-    },
-    "nft_case_4": {
-        "id": "nft_case_4",
-        "name": "Military Skins",
-        "price": 800,
-        "items": [
-            {"id": "n4_1", "name": "🥋 Martial Arts", "price": 207, "rarity": "rare"},
-            {"id": "n4_2", "name": "🦺 Ghillie Suit", "price": 345, "rarity": "epic"},
-            {"id": "n4_3", "name": "🪖 Spetsnaz Helmet", "price": 552, "rarity": "epic"},
-            {"id": "n4_4", "name": "🎒 Level 3 Backpack", "price": 863, "rarity": "legendary"},
-            {"id": "n4_5", "name": "🔫 M416 Skin", "price": 1380, "rarity": "legendary"},
-            {"id": "n4_6", "name": "🎯 AWM Skin", "price": 2300, "rarity": "mythic"}
-        ]
-    },
-    "nft_case_5": {
-        "id": "nft_case_5",
-        "name": "Elite Skins",
-        "price": 1500,
-        "items": [
-            {"id": "n5_1", "name": "👑 Crown", "price": 368, "rarity": "epic"},
-            {"id": "n5_2", "name": "🦅 Eagle Mask", "price": 610, "rarity": "epic"},
-            {"id": "n5_3", "name": "🐯 Tiger Suit", "price": 978, "rarity": "legendary"},
-            {"id": "n5_4", "name": "🤖 Robot Suit", "price": 1553, "rarity": "legendary"},
-            {"id": "n5_5", "name": "🔥 Flame Jacket", "price": 2415, "rarity": "mythic"},
-            {"id": "n5_6", "name": "💎 Diamond Helmet", "price": 4025, "rarity": "mythic"}
-        ]
-    },
-    "nft_case_6": {
-        "id": "nft_case_6",
-        "name": "Legendary Skins",
-        "price": 2500,
-        "items": [
-            {"id": "n6_1", "name": "🦺 Golden Ghillie", "price": 690, "rarity": "epic"},
-            {"id": "n6_2", "name": "🔫 Golden AKM", "price": 1150, "rarity": "legendary"},
-            {"id": "n6_3", "name": "🎯 Golden AWM", "price": 1840, "rarity": "legendary"},
-            {"id": "n6_4", "name": "👑 Royal Crown", "price": 2875, "rarity": "mythic"},
-            {"id": "n6_5", "name": "🐲 Dragon Suit", "price": 4600, "rarity": "mythic"},
-            {"id": "n6_6", "name": "⭐ Legendary Set", "price": 8050, "rarity": "mythic"}
-        ]
-    },
-    "nft_case_7": {
-        "id": "nft_case_7",
-        "name": "Halloween Skins",
-        "price": 500,
-        "items": [
-            {"id": "n7_1", "name": "🧛 Vampire Cape", "price": 150, "rarity": "rare"},
-            {"id": "n7_2", "name": "🦇 Bat Mask", "price": 300, "rarity": "epic"},
-            {"id": "n7_3", "name": "🎃 Pumpkin Head", "price": 500, "rarity": "epic"},
-            {"id": "n7_4", "name": "👻 Ghost Suit", "price": 800, "rarity": "legendary"},
-            {"id": "n7_5", "name": "🧟 Zombie Skin", "price": 1200, "rarity": "legendary"},
-            {"id": "n7_6", "name": "🕷️ Spider Set", "price": 2000, "rarity": "mythic"}
-        ]
-    },
-    "nft_case_8": {
-        "id": "nft_case_8",
-        "name": "Wild West Skins",
-        "price": 1000,
-        "items": [
-            {"id": "n8_1", "name": "🤠 Cowboy Hat", "price": 200, "rarity": "rare"},
-            {"id": "n8_2", "name": "🐴 Horse Mask", "price": 400, "rarity": "epic"},
-            {"id": "n8_3", "name": "🔫 Sheriff Revolver", "price": 700, "rarity": "epic"},
-            {"id": "n8_4", "name": "👢 Boots", "price": 1000, "rarity": "legendary"},
-            {"id": "n8_5", "name": "⭐ Star Badge", "price": 1800, "rarity": "legendary"},
-            {"id": "n8_6", "name": "🔥 Blazing Set", "price": 3500, "rarity": "mythic"}
-        ]
-    }
-}
-
-# ==========================================
-# 3. ИНИЦИАЛИЗАЦИЯ FASTAPI
-# ==========================================
-
-limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(
-    title="PUBG Cases WebApp Engine",
-    version="2.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc"
-)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Socket.IO сервер
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-socket_app = socketio.ASGIApp(sio, app)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-DB_NAME = "database.db"
-
-# ==========================================
-# 4. PYDANTIC МОДЕЛИ
-# ==========================================
-
-class DepositRequest(BaseModel):
-    amount: int = Field(..., ge=10)
-
-class WithdrawRequest(BaseModel):
-    amount: int = Field(..., ge=100)
-    wallet: str = Field(..., min_length=5)
-
-class CaseOpenRequest(BaseModel):
-    case_type: str
-
-class UpgradeRequest(BaseModel):
-    item_index: int = Field(..., ge=0)
-    target_price: int = Field(..., ge=1)
-
-class CoinFlipRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5)
-    choice: str = Field(..., regex="^(heads|tails)$")
-
-class MinesStartRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5)
-    mines_count: int = Field(..., ge=1, le=10)
-
-class MinesOpenRequest(BaseModel):
-    game_id: str
-    cell_index: int = Field(..., ge=0, le=24)
-
-class MinesCashoutRequest(BaseModel):
-    game_id: str
-
-class CrashBetRequest(BaseModel):
-    bet_amount: int = Field(..., ge=5)
-
-class SellItemRequest(BaseModel):
-    item_index: int = Field(..., ge=0)
-
-# ==========================================
-# 5. РАБОТА С БАЗОЙ ДАННЫХ
-# ==========================================
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PUBG ELITE</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        tg_id INTEGER PRIMARY KEY,
-        username TEXT NOT NULL,
-        balance INTEGER DEFAULT 5,
-        total_spent INTEGER DEFAULT 0,
-        inventory TEXT DEFAULT '[]',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        amount INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(tg_id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS deposits (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        amount INTEGER NOT NULL,
-        status TEXT DEFAULT 'success',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(tg_id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS withdraws (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        amount INTEGER NOT NULL,
-        wallet TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(tg_id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS daily_quests (
-        user_id INTEGER NOT NULL,
-        quest_type TEXT NOT NULL,
-        progress INTEGER DEFAULT 0,
-        target INTEGER NOT NULL,
-        completed BOOLEAN DEFAULT FALSE,
-        PRIMARY KEY (user_id, quest_type),
-        FOREIGN KEY(user_id) REFERENCES users(tg_id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS withdraw_cooldowns (
-        user_id INTEGER PRIMARY KEY,
-        last_withdraw_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(tg_id)
-    )''')
-    
-    conn.commit()
-    conn.close()
-
-init_db()
-
-def db_get_user(tg_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
-    row = c.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def db_create_user_if_not_exists(tg_id: int, username: str) -> Dict[str, Any]:
-    user = db_get_user(tg_id)
-    if not user:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?, ?, ?, ?, ?)",
-            (tg_id, username, START_BALANCE, 0, json.dumps([]))
-        )
-        c.execute("INSERT INTO daily_quests (user_id, quest_type, target) VALUES (?, 'open_cases', 3)", (tg_id,))
-        c.execute("INSERT INTO daily_quests (user_id, quest_type, target) VALUES (?, 'play_mines', 5)", (tg_id,))
-        conn.commit()
-        conn.close()
-        return db_get_user(tg_id)
-    return user
-
-def db_update_balance(tg_id: int, amount: int, tx_type: str):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (amount, tg_id))
-    c.execute("INSERT INTO transactions (user_id, type, amount) VALUES (?, ?, ?)", (tg_id, tx_type, amount))
-    conn.commit()
-    conn.close()
-
-def db_update_inventory(tg_id: int, inventory_list: List[Dict[str, Any]]):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory_list), tg_id))
-    conn.commit()
-    conn.close()
-
-# ==========================================
-# 6. ХРАНИЛИЩА СОСТОЯНИЙ
-# ==========================================
-
-active_mines_games: Dict[str, Dict[str, Any]] = {}
-
-crash_state: Dict[str, Any] = {
-    "multiplier": 1.0,
-    "status": "waiting",
-    "crash_point": 1.0,
-    "bets": {}
-}
-
-# ==========================================
-# 7. CRASH ENGINE (WEBSOCKET LOOP)
-# ==========================================
-
-async def crash_loop():
-    global crash_state
-    while True:
-        crash_state["status"] = "waiting"
-        crash_state["multiplier"] = 1.0
-        
-        e = random.uniform(0.01, 1.0)
-        crash_point = max(1.0, round((1.0 - CRASH_HOUSE_EDGE) / e, 2))
-        if crash_point > 100.0:
-            crash_point = 100.0
-        crash_state["crash_point"] = crash_point
-
-        for t in range(5, 0, -1):
-            await sio.emit('crash_state', {'timer': t, 'status': 'waiting'})
-            await asyncio.sleep(1)
-
-        crash_state["status"] = "running"
-        await sio.emit('crash_start', {})
-        
-        current = 1.0
-        while current < crash_state["crash_point"]:
-            await asyncio.sleep(0.1)
-            current = round(current + 0.02 + (current * 0.015), 2)
-            crash_state["multiplier"] = current
-            await sio.emit('crash_multiplier', {'multiplier': current})
-
-        crash_state["status"] = "crashed"
-        await sio.emit('crash_end', {'crash_point': crash_state["crash_point"]})
-        crash_state["bets"].clear()
-        await asyncio.sleep(4)
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(crash_loop())
-
-# ==========================================
-# 8. SOCKET.IO СОБЫТИЯ
-# ==========================================
-
-@sio.event
-async def connect(sid, environ):
-    await sio.emit('crash_state', {
-        'status': crash_state["status"],
-        'multiplier': crash_state["multiplier"]
-    }, to=sid)
-
-@sio.event
-async def place_bet(sid, data):
-    tg_id = data.get('tg_id')
-    bet_amount = data.get('bet_amount', 0)
-    
-    if crash_state["status"] != "running":
-        await sio.emit('error', {'message': 'Игра не запущена'}, to=sid)
-        return
-    
-    if bet_amount < 5:
-        await sio.emit('error', {'message': 'Минимальная ставка 5 UC'}, to=sid)
-        return
-    
-    user = db_get_user(tg_id)
-    if not user or user['balance'] < bet_amount:
-        await sio.emit('error', {'message': 'Недостаточно средств'}, to=sid)
-        return
-    
-    db_update_balance(tg_id, -bet_amount, "crash_bet")
-    crash_state["bets"][tg_id] = bet_amount
-    await sio.emit('bet_placed', {'tg_id': tg_id, 'amount': bet_amount})
-
-@sio.event
-async def cashout(sid, data):
-    tg_id = data.get('tg_id')
-    
-    if crash_state["status"] != "running":
-        await sio.emit('error', {'message': 'Игра не запущена'}, to=sid)
-        return
-    
-    if tg_id not in crash_state["bets"]:
-        await sio.emit('error', {'message': 'Ставка не найдена'}, to=sid)
-        return
-    
-    bet = crash_state["bets"][tg_id]
-    win_amount = int(bet * crash_state["multiplier"])
-    
-    db_update_balance(tg_id, win_amount, "crash_win")
-    del crash_state["bets"][tg_id]
-    
-    await sio.emit('cashout_success', {
-        'tg_id': tg_id,
-        'amount': win_amount,
-        'multiplier': crash_state["multiplier"]
-    })
-
-# ==========================================
-# 9. API ENDPOINTS
-# ==========================================
-
-@app.get("/api/profile")
-async def get_profile_api(authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_create_user_if_not_exists(tg_id, "Survivor_Player")
-    user_data = dict(user)
-    user_data['inventory'] = json.loads(user_data['inventory'])
-    return user_data
-
-@app.post("/api/case/open")
-@limiter.limit("15/minute")
-async def open_case_api(req: Request, data: CaseOpenRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    case = CASE_PRICES.get(data.case_type)
-    if not case:
-        raise HTTPException(status_code=400, detail="Ящик не существует")
-    
-    if user['balance'] < case['price']:
-        raise HTTPException(status_code=400, detail="Недостаточно UC")
-    
-    db_update_balance(tg_id, -case['price'], "case_open")
-    
-    win_item = random.choice(case['items'])
-    inv = json.loads(user['inventory'])
-    inv.append(win_item)
-    
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET inventory = ?, total_spent = total_spent + ? WHERE tg_id = ?", 
-              (json.dumps(inv), case['price'], tg_id))
-    c.execute("UPDATE daily_quests SET progress = progress + 1 WHERE user_id = ? AND quest_type = 'open_cases'", 
-              (tg_id,))
-    conn.commit()
-    conn.close()
-    
-    return {
-        "reward_name": win_item['name'],
-        "balance": user['balance'] - case['price']
-    }
-
-@app.post("/api/inventory/sell_item")
-async def sell_item_api(data: SellItemRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    inv = json.loads(user['inventory'])
-    if data.item_index < 0 or data.item_index >= len(inv):
-        raise HTTPException(status_code=400, detail="Предмет не найден")
-    
-    item = inv.pop(data.item_index)
-    sell_price = int(item['price'] * 0.5)  # Продажа за 50% цены
-    
-    db_update_balance(tg_id, sell_price, "sell_item")
-    db_update_inventory(tg_id, inv)
-    
-    return {"gain": sell_price, "balance": user['balance'] + sell_price}
-
-@app.post("/api/inventory/sell_all")
-async def sell_all_items_api(authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    inv = json.loads(user['inventory'])
-    total_gain = sum(int(item['price'] * 0.5) for item in inv)
-    
-    db_update_balance(tg_id, total_gain, "sell_all")
-    db_update_inventory(tg_id, [])
-    
-    return {"gain": total_gain, "balance": user['balance'] + total_gain}
-
-@app.post("/api/inventory/upgrade")
-async def upgrade_item_api(data: UpgradeRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    inv = json.loads(user['inventory'])
-    if data.item_index < 0 or data.item_index >= len(inv):
-        raise HTTPException(status_code=400, detail="Предмет не найден")
-    
-    item = inv.pop(data.item_index)
-    current_price = item['price']
-    target_price = data.target_price
-    
-    if target_price <= current_price:
-        inv.append(item)
-        raise HTTPException(status_code=400, detail="Цель должна быть дороже текущего предмета")
-    
-    # Шанс зависит от соотношения цен
-    ratio = target_price / current_price
-    if ratio >= 20:
-        chance = 0.01
-    elif ratio >= 10:
-        chance = 0.03
-    elif ratio >= 5:
-        chance = 0.08
-    elif ratio >= 3:
-        chance = 0.15
-    elif ratio >= 2:
-        chance = 0.30
-    elif ratio >= 1.5:
-        chance = 0.50
-    else:
-        chance = 0.70
-    
-    chance = chance * (1 - UPGRADE_HOUSE_EDGE)
-    is_success = random.random() < chance
-    
-    if is_success:
-        # Успех — улучшаем предмет
-        win_item = {
-            "id": f"upgraded_{int(time.time())}",
-            "name": f"★ {item['name']}",
-            "price": target_price,
-            "rarity": "mythic" if target_price >= 2000 else "legendary" if target_price >= 800 else "epic"
+    <style>
+        :root {
+            --bg-main: #0a0b10;
+            --card-bg: rgba(18, 22, 34, 0.85);
+            --card-border: rgba(255, 255, 255, 0.06);
+            --gold: #ffb703;
+            --gold-glow: rgba(255, 183, 3, 0.25);
+            --red: #ff4d4d;
+            --green: #2ecc71;
+            --text: #f1f2f6;
+            --text2: #8c98a9;
         }
-        inv.append(win_item)
-        message = f"✅ Успех! Улучшено до {target_price} UC (шанс был {int(chance*100)}%)"
-    else:
-        # Провал — предмет сгорает
-        win_item = None
-        message = f"💥 Провал! Предмет {item['name']} сгорел (шанс был {int(chance*100)}%)"
-    
-    db_update_inventory(tg_id, inv)
-    
-    return {
-        "success": is_success,
-        "chance": round(chance * 100, 2),
-        "message": message,
-        "win_item": win_item
-    }
 
-@app.post("/api/mines/start")
-@limiter.limit("15/minute")
-async def mines_start_api(req: Request, data: MinesStartRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    if user['balance'] < data.bet_amount:
-        raise HTTPException(status_code=400, detail="Недостаточно UC")
-    
-    db_update_balance(tg_id, -data.bet_amount, "mines_bet")
-    
-    grid = [False] * 25
-    mine_positions = random.sample(range(25), data.mines_count)
-    for pos in mine_positions:
-        grid[pos] = True
-    
-    game_id = f"mines_{tg_id}_{int(time.time() * 1000)}"
-    active_mines_games[game_id] = {
-        "user_id": tg_id,
-        "bet": data.bet_amount,
-        "mines_count": data.mines_count,
-        "grid": grid,
-        "opened_cells": [],
-        "step": 0
-    }
-    
-    return {
-        "game_id": game_id,
-        "mines_count": data.mines_count,
-        "bet": data.bet_amount,
-        "balance": user['balance'] - data.bet_amount
-    }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg-main); color: var(--text); padding-bottom: 80px; }
 
-@app.post("/api/mines/open")
-@limiter.limit("60/minute")
-async def mines_open_api(req: Request, data: MinesOpenRequest, authorization: Optional[str] = Header(None)):
-    game = active_mines_games.get(data.game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="Активная игра не найдена")
-    
-    if data.cell_index in game["opened_cells"]:
-        raise HTTPException(status_code=400, detail="Ячейка уже открыта")
-    
-    if game["grid"][data.cell_index]:
-        del active_mines_games[data.game_id]
-        return {
-            "status": "bomb",
-            "cell_index": data.cell_index,
-            "opened": game["opened_cells"],
-            "mines": [i for i, v in enumerate(game["grid"]) if v]
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(10, 11, 16, 0.9);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--card-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-    
-    game["opened_cells"].append(data.cell_index)
-    game["step"] += 1
-    
-    mults = MINES_MULTIPLIERS.get(game["mines_count"], [1.05 * game["step"]])
-    step_idx = min(game["step"] - 1, len(mults) - 1)
-    current_mult = mults[step_idx]
-    
-    return {
-        "status": "safe",
-        "cell_index": data.cell_index,
-        "opened": game["opened_cells"],
-        "opened_count": game["step"],
-        "current_multiplier": current_mult
-    }
 
-@app.post("/api/mines/cashout")
-async def mines_cashout_api(data: MinesCashoutRequest, authorization: Optional[str] = Header(None)):
-    game = active_mines_games.get(data.game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="Активная игра не найдена")
-    
-    if game["step"] == 0:
-        raise HTTPException(status_code=400, detail="Откройте хотя бы одну клетку")
-    
-    mults = MINES_MULTIPLIERS.get(game["mines_count"], [1.05 * game["step"]])
-    step_idx = min(game["step"] - 1, len(mults) - 1)
-    final_mult = mults[step_idx]
-    win_amount = int(game["bet"] * final_mult)
-    
-    db_update_balance(game["user_id"], win_amount, "mines_win")
-    
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute(
-        "UPDATE daily_quests SET progress = progress + 1 WHERE user_id = ? AND quest_type = 'play_mines'",
-        (game["user_id"],)
-    )
-    conn.commit()
-    conn.close()
-    
-    del active_mines_games[data.game_id]
-    
-    return {
-        "success": True,
-        "win_amount": win_amount,
-        "multiplier": final_mult,
-        "profit": win_amount - game["bet"]
-    }
+        .logo {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .logo i { color: var(--gold); filter: drop-shadow(0 0 8px var(--gold-glow)); }
 
-@app.post("/api/coinflip")
-@limiter.limit("30/minute")
-async def play_coinflip_api(req: Request, data: CoinFlipRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    if user['balance'] < data.bet_amount:
-        raise HTTPException(status_code=400, detail="Недостаточно UC")
-    
-    db_update_balance(tg_id, -data.bet_amount, "coinflip_bet")
-    
-    result = random.choice(['heads', 'tails'])
-    win = (result == data.choice)
-    win_amount = 0
-    
-    if win:
-        win_amount = int(data.bet_amount * (2.0 - COINFLIP_HOUSE_EDGE))
-        db_update_balance(tg_id, win_amount, "coinflip_win")
-    
-    return {
-        "win": win,
-        "result": result,
-        "win_amount": win_amount,
-        "balance": user['balance'] - data.bet_amount + win_amount
-    }
+        .balance-box {
+            background: rgba(255, 183, 3, 0.08);
+            border: 1px solid rgba(255, 183, 3, 0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .balance-amount { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 16px; color: var(--gold); }
+        .balance-currency { font-size: 11px; font-weight: 800; opacity: 0.7; }
 
-@app.post("/api/free_case/claim")
-async def claim_free_case_api(authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Проверяем, не использовал ли уже сегодня
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT created_at FROM transactions WHERE user_id = ? AND type = 'free_case' ORDER BY created_at DESC LIMIT 1", (tg_id,))
-    row = c.fetchone()
-    conn.close()
-    
-    if row:
-        last_used = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
-        if time.time() - last_used < 86400:
-            raise HTTPException(status_code=400, detail="Бесплатный ящик доступен раз в 24 часа")
-    
-    # Даём бесплатный предмет из бронзового ящика
-    case = CASE_PRICES["star_case_1"]
-    win_item = random.choice(case['items'])
-    
-    inv = json.loads(user['inventory'])
-    inv.append(win_item)
-    db_update_inventory(tg_id, inv)
-    db_update_balance(tg_id, 0, "free_case")
-    
-    return {"success": True, "reward": win_item['name']}
+        .container { padding: 14px; max-width: 460px; margin: 0 auto; }
+        .page { display: none; animation: fadeIn 0.3s ease; }
+        .page.active { display: block; }
 
-@app.post("/api/stars/buy")
-async def buy_stars_api(stars_amount: int, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    if stars_amount < 50:
-        raise HTTPException(status_code=400, detail="Минимальная покупка 50 UC")
-    
-    # Имитация оплаты через Telegram Stars
-    db_update_balance(tg_id, stars_amount, "deposit")
-    
-    return {"status": "success", "amount": stars_amount, "balance": db_get_user(tg_id)['balance']}
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-@app.post("/api/withdraw")
-async def request_withdraw_api(data: WithdrawRequest, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    user = db_get_user(tg_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    if data.amount < MIN_WITHDRAW:
-        raise HTTPException(status_code=400, detail=f"Минимальный вывод {MIN_WITHDRAW} UC")
-    if data.amount > MAX_WITHDRAW:
-        raise HTTPException(status_code=400, detail=f"Максимальный вывод {MAX_WITHDRAW} UC")
-    if user['balance'] < data.amount:
-        raise HTTPException(status_code=400, detail="Недостаточно средств")
-    
-    # Проверка кулдауна
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT last_withdraw_at FROM withdraw_cooldowns WHERE user_id = ?", (tg_id,))
-    row = c.fetchone()
-    if row:
-        last_ts = time.mktime(time.strptime(row[0], "%Y-%m-%d %H:%M:%S"))
-        if time.time() - last_ts < 86400:
-            hours_left = int((86400 - (time.time() - last_ts)) / 3600)
-            raise HTTPException(status_code=400, detail=f"Следующий вывод через {hours_left} ч.")
-    
-    fee = int(data.amount * WITHDRAW_FEE)
-    payout = data.amount - fee
-    new_balance = user['balance'] - data.amount
-    
-    db_update_balance(tg_id, -data.amount, "withdraw_request")
-    
-    c.execute("INSERT INTO withdraws (user_id, amount, wallet) VALUES (?, ?, ?)", (tg_id, data.amount, data.wallet))
-    c.execute("INSERT OR REPLACE INTO withdraw_cooldowns (user_id, last_withdraw_at) VALUES (?, CURRENT_TIMESTAMP)", (tg_id,))
-    conn.commit()
-    conn.close()
-    
-    return {
-        "status": "pending",
-        "payout": payout,
-        "fee": fee,
-        "new_balance": new_balance
-    }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            backdrop-filter: blur(10px);
+        }
 
-@app.post("/api/promo/activate")
-async def activate_promo_api(code: str, authorization: Optional[str] = Header(None)):
-    tg_id = 12345678
-    # Простая реализация промокодов (можно расширить)
-    if code.upper() == "PUBG2024":
-        db_update_balance(tg_id, 100, "promo")
-        return {"success": True, "message": "Промокод активирован! +100 UC", "reward": "100 UC"}
-    else:
-        raise HTTPException(status_code=400, detail="Неверный промокод")
+        .card-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .card-title i { color: var(--gold); }
 
-@app.get("/api/admin/stats")
-async def get_admin_stats_api():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*), SUM(balance) FROM users")
-    users_cnt, total_bal = c.fetchone()
-    c.execute("SELECT SUM(amount) FROM deposits")
-    deposits = c.fetchone()[0] or 0
-    c.execute("SELECT SUM(amount) FROM withdraws WHERE status = 'pending'")
-    pending_withdraws = c.fetchone()[0] or 0
-    conn.close()
-    
-    return {
-        "total_users": users_cnt,
-        "total_balance": total_bal or 0,
-        "total_deposits": deposits,
-        "pending_withdraws": pending_withdraws
-    }
+        .input-field {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 8px;
+        }
+        .input-field:focus { border-color: var(--gold); }
 
-@app.get("/api/leaderboard")
-async def get_leaderboard_api():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT username, balance FROM users ORDER BY balance DESC LIMIT 10")
-    rows = c.fetchall()
-    conn.close()
-    return {"players": [{"username": row[0], "balance": row[1]} for row in rows]}
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 800;
+            font-size: 13px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:active { transform: scale(0.96); }
 
-@app.get("/api/crash/history")
-async def get_crash_history_api():
-    return {"history": []}
+        .btn-gold { background: linear-gradient(135deg, #ffb703, #fb8500); color: #000; box-shadow: 0 4px 15px var(--gold-glow); }
+        .btn-red { background: linear-gradient(135deg, #ff4d4d, #c0392b); color: #fff; }
+        .btn-black { background: linear-gradient(135deg, #2c3e50, #1a252f); color: #fff; border: 1px solid rgba(255,255,255,0.05); }
+        .btn-green { background: linear-gradient(135deg, #2ecc71, #27ae60); color: #fff; }
+        .btn-outline { background: transparent; border: 2px solid var(--card-border); color: var(--text2); }
 
-# ==========================================
-# 10. РАЗДАЧА HTML
-# ==========================================
+        .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    if not os.path.exists("index.html"):
-        return HTMLResponse("<h2>Ошибка: index.html не найден</h2>", status_code=404)
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
+        /* ===== DICE ===== */
+        .dice-display {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 12px;
+            border: 1px solid var(--card-border);
+        }
+        .dice-icon { font-size: 44px; display: inline-block; transition: transform 0.3s; }
+        .dice-status { font-size: 12px; color: var(--text2); font-weight: 600; margin-top: 4px; }
 
-# ==========================================
-# 11. ЗАПУСК
-# ==========================================
+        /* ===== MINES ===== */
+        .mines-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .mine-cell {
+            aspect-ratio: 1;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .mine-cell:active { transform: scale(0.92); }
+        .mine-cell.open { background: rgba(46, 204, 113, 0.15); border-color: var(--green); }
+        .mine-cell.bomb { background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; animation: shake 0.3s; }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .mines-stats {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .mines-stats .stat {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            padding: 6px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--card-border);
+        }
+        .mines-stats .stat .label { font-size: 7px; text-transform: uppercase; color: var(--text2); }
+        .mines-stats .stat .value { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; }
+
+        /* ===== CRASH ===== */
+        .crash-display {
+            background: radial-gradient(circle, rgba(20,28,48,0.8), rgba(10,11,16,0.95));
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--card-border);
+            margin-bottom: 12px;
+        }
+        .crash-mult {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 44px;
+            font-weight: 700;
+            color: var(--gold);
+            text-shadow: 0 0 30px var(--gold-glow);
+        }
+        .crash-status { font-size: 11px; color: var(--text2); font-weight: 600; }
+
+        /* ===== CASES ===== */
+        .cases-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .case-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 12px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .case-card:active { transform: scale(0.95); }
+        .case-card .icon { font-size: 24px; display: block; }
+        .case-card .name { font-size: 11px; font-weight: 700; margin-top: 2px; }
+        .case-card .price { font-size: 10px; color: var(--gold); font-weight: 700; }
+
+        /* ===== INVENTORY ===== */
+        .inv-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .inv-item {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 6px;
+            text-align: center;
+            font-size: 9px;
+        }
+        .inv-item .inv-icon { font-size: 18px; }
+        .inv-item .inv-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .inv-item .inv-price { color: var(--gold); font-weight: 700; }
+        .inv-item .inv-sell {
+            background: var(--red);
+            color: #fff;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 7px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 2px;
+        }
+
+        .rarity-common { border-color: rgba(140,152,169,0.3); }
+        .rarity-rare { border-color: rgba(52,152,219,0.4); }
+        .rarity-epic { border-color: rgba(168,85,247,0.4); }
+        .rarity-legendary { border-color: var(--gold); }
+        .rarity-mythic { border-color: #ff6b6b; animation: mythicGlow 1.5s infinite; }
+
+        @keyframes mythicGlow {
+            0%,100% { box-shadow: 0 0 10px rgba(255,107,107,0.1); }
+            50% { box-shadow: 0 0 25px rgba(255,107,107,0.3); }
+        }
+
+        /* ===== TOAST ===== */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 10px 18px;
+            z-index: 3000;
+            font-weight: 600;
+            font-size: 13px;
+            max-width: 90%;
+            display: none;
+            backdrop-filter: blur(10px);
+        }
+        .toast.show { display: block; animation: toastIn 0.3s; }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        .toast.success { border-color: var(--green); color: var(--green); }
+        .toast.error { border-color: #ff4d4d; color: #ff4d4d; }
+        .toast.info { border-color: var(--gold); color: var(--gold); }
+
+        /* ===== NAV ===== */
+        .nav-bar {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 66px;
+            background: rgba(10, 11, 16, 0.95);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            z-index: 100;
+        }
+        .nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            color: var(--text2);
+            font-size: 9px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .nav-item i { font-size: 18px; }
+        .nav-item.active { color: var(--gold); }
+        .nav-item:active { transform: scale(0.92); }
+
+        @media (max-width: 400px) {
+            .cases-grid { grid-template-columns: 1fr 1fr; }
+            .inv-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo"><i class="fa-solid fa-crosshairs"></i> PUBG ELITE</div>
+        <div class="balance-box">
+            <i class="fa-solid fa-coins" style="color: var(--gold);"></i>
+            <span class="balance-amount" id="balance">0</span>
+            <span class="balance-currency">UC</span>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- TOAST -->
+        <div class="toast" id="toast"></div>
+
+        <!-- ===== PAGE 1: GAMES ===== -->
+        <div id="page-games" class="page active">
+
+            <!-- COLOR DICE -->
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-dice-d6" style="color: #e74c3c;"></i> Color Dice</div>
+                <div class="dice-display">
+                    <div class="dice-icon" id="diceIcon">🎲</div>
+                    <div class="dice-status" id="diceStatus">Сделайте ставку</div>
+                </div>
+                <input type="number" id="diceBet" class="input-field" placeholder="Сумма ставки UC" value="10">
+                <div class="row-2">
+                    <button class="btn btn-red" onclick="rollDice('red')">Красное <span style="font-size:10px;">1.9x</span></button>
+                    <button class="btn btn-black" onclick="rollDice('black')">Черное <span style="font-size:10px;">1.9x</span></button>
+                </div>
+                <button class="btn btn-green" onclick="rollDice('green')" style="margin-top:6px;">Зеленое <span style="font-size:10px;">(23.75x)</span></button>
+            </div>
+
+            <!-- MINES -->
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-bomb" style="color: var(--gold);"></i> Сапер</div>
+                
+                <div class="mines-stats">
+                    <div class="stat"><div class="label">Множитель</div><div class="value" id="minesMult" style="color:var(--gold);">1.00x</div></div>
+                    <div class="stat"><div class="label">Открыто</div><div class="value" id="minesOpened" style="color:var(--green);">0</div></div>
+                    <div class="stat"><div class="label">Выигрыш</div><div class="value" id="minesWin" style="color:var(--gold);">0 UC</div></div>
+                </div>
+
+                <div class="mines-grid" id="minesGrid"></div>
+
+                <div class="row-2">
+                    <input type="number" id="minesBet" class="input-field" placeholder="Ставка UC" value="10" style="margin:0;">
+                    <input type="number" id="minesCount" class="input-field" placeholder="Мины (1-15)" value="3" style="margin:0;">
+                </div>
+
+                <button class="btn btn-gold" id="minesStartBtn" onclick="startMines()"><i class="fa-solid fa-play"></i> Начать</button>
+                <button class="btn btn-green" id="minesCashoutBtn" onclick="cashoutMines()" style="display:none;margin-top:6px;">
+                    <i class="fa-solid fa-hand-holding-dollar"></i> Забрать
+                </button>
+            </div>
+
+            <!-- CRASH -->
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-rocket" style="color: var(--green);"></i> Crash</div>
+                <div class="crash-display">
+                    <div class="crash-mult" id="crashMult">1.00x</div>
+                    <div class="crash-status" id="crashStatus">⏳ Ожидание...</div>
+                </div>
+                <input type="number" id="crashBet" class="input-field" placeholder="Ставка UC" value="10">
+                <button class="btn btn-gold" onclick="placeCrashBet()"><i class="fa-solid fa-ticket"></i> Поставить</button>
+                <button class="btn btn-green" id="crashCashoutBtn" onclick="cashoutCrash()" style="display:none;margin-top:6px;">
+                    <i class="fa-solid fa-hand-holding-dollar"></i> Забрать
+                </button>
+            </div>
+
+        </div>
+
+        <!-- ===== PAGE 2: CASES ===== -->
+        <div id="page-cases" class="page">
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-box-open" style="color: var(--gold);"></i> UC Ящики</div>
+                <div class="cases-grid" id="starCases"></div>
+            </div>
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-gun" style="color: var(--gold);"></i> Скины</div>
+                <div class="cases-grid" id="nftCases"></div>
+            </div>
+            <button class="btn btn-gold" onclick="claimFreeCase()" style="margin-top:4px;">
+                <i class="fa-solid fa-gift"></i> Бесплатный ящик
+            </button>
+        </div>
+
+        <!-- ===== PAGE 3: PROFILE ===== -->
+        <div id="page-profile" class="page">
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-user"></i> Профиль</div>
+                <div style="font-size:13px;">ID: <span id="userId" style="color:var(--gold);font-weight:700;">---</span></div>
+                <div style="font-size:13px;">Потрачено: <span id="totalSpent" style="color:var(--gold);font-weight:700;">0</span> UC</div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn btn-green" onclick="openModal('depositModal')"><i class="fa-solid fa-wallet"></i> Пополнить</button>
+                    <button class="btn btn-red" onclick="openModal('withdrawModal')"><i class="fa-solid fa-money-bill-transfer"></i> Вывести</button>
+                </div>
+                <button class="btn btn-outline" onclick="sellAllInventory()" style="margin-top:6px;">
+                    <i class="fa-solid fa-dollar-sign"></i> Продать всё
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-box"></i> Инвентарь <span id="invCount" style="font-size:11px;color:var(--text2);"></span></div>
+                <div class="inv-grid" id="inventoryContainer"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODALS -->
+    <div class="modal" id="depositModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(6px);">
+        <div class="modal-content" style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:16px;padding:20px;width:90%;max-width:380px;">
+            <div class="card-title"><i class="fa-solid fa-wallet"></i> Пополнение</div>
+            <input type="number" id="depositAmount" class="input-field" placeholder="Сумма UC" value="100">
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-green" onclick="processDeposit()">Пополнить</button>
+                <button class="btn btn-outline" onclick="closeModal('depositModal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="withdrawModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(6px);">
+        <div class="modal-content" style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:16px;padding:20px;width:90%;max-width:380px;">
+            <div class="card-title"><i class="fa-solid fa-money-bill-transfer"></i> Вывод</div>
+            <p style="font-size:11px;color:var(--text2);margin-bottom:8px;">Мин. 60 UC</p>
+            <input type="number" id="withdrawAmount" class="input-field" placeholder="Сумма UC" value="100">
+            <input type="text" id="withdrawWallet" class="input-field" placeholder="Реквизиты (ID/кошелёк)">
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-green" onclick="processWithdraw()">Вывести</button>
+                <button class="btn btn-outline" onclick="closeModal('withdrawModal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NAV -->
+    <div class="nav-bar">
+        <div class="nav-item active" onclick="switchTab('games', this)"><i class="fa-solid fa-gamepad"></i> Игры</div>
+        <div class="nav-item" onclick="switchTab('cases', this)"><i class="fa-solid fa-cubes"></i> Кейсы</div>
+        <div class="nav-item" onclick="switchTab('profile', this)"><i class="fa-solid fa-user"></i> Профиль</div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. ИНИЦИАЛИЗАЦИЯ
+        // ==========================================
+        const tg = window.Telegram ? Telegram.WebApp : null;
+        if (tg) { tg.expand(); tg.ready(); }
+
+        let socket = null;
+        let activeMinesId = null;
+        let minesOpened = 0;
+        let minesMult = 1.0;
+        let minesBetAmount = 0;
+        let isFlipping = false;
+
+        // ==========================================
+        // 2. ДАННЫЕ КЕЙСОВ
+        // ==========================================
+        const CASE_ICONS = {
+            'star_case_1':'⭐','star_case_2':'⭐⭐','star_case_3':'💫',
+            'star_case_4':'🌟','star_case_5':'✨','star_case_6':'👑',
+            'star_case_7':'🔥','star_case_8':'💎','star_case_9':'🌈','star_case_10':'🌌',
+            'nft_case_1':'🎽','nft_case_2':'🧢','nft_case_3':'👖',
+            'nft_case_4':'🛡️','nft_case_5':'🐯','nft_case_6':'🐲',
+            'nft_case_7':'⚡','nft_case_8':'❄️','nft_case_9':'🔥','nft_case_10':'🌌'
+        };
+
+        const CASE_NAMES = {
+            'star_case_1':'Бронзовый','star_case_2':'Серебряный',
+            'star_case_3':'Золотой','star_case_4':'Платиновый',
+            'star_case_5':'Алмазный','star_case_6':'Мифический',
+            'star_case_7':'Божественный','star_case_8':'Космический',
+            'star_case_9':'Галактический','star_case_10':'Бесконечный',
+            'nft_case_1':'Basic','nft_case_2':'Tactical',
+            'nft_case_3':'Urban','nft_case_4':'Military',
+            'nft_case_5':'Elite','nft_case_6':'Legendary',
+            'nft_case_7':'Cyber','nft_case_8':'Frost',
+            'nft_case_9':'Inferno','nft_case_10':'Cosmic'
+        };
+
+        const CASE_PRICES = {
+            'star_case_1':25,'star_case_2':75,'star_case_3':200,
+            'star_case_4':450,'star_case_5':900,'star_case_6':1800,
+            'star_case_7':3500,'star_case_8':6000,'star_case_9':10000,'star_case_10':25000,
+            'nft_case_1':50,'nft_case_2':150,'nft_case_3':350,
+            'nft_case_4':800,'nft_case_5':1500,'nft_case_6':3000,
+            'nft_case_7':5500,'nft_case_8':9000,'nft_case_9':15000,'nft_case_10':30000
+        };
+
+        // ==========================================
+        // 3. TOAST
+        // ==========================================
+        let toastTimer = null;
+
+        function showToast(msg, type = 'info') {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast ' + type + ' show';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+        }
+
+        // ==========================================
+        // 4. NAVIGATION
+        // ==========================================
+        function switchTab(tab, el) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('page-' + tab).classList.add('active');
+            if (el) el.classList.add('active');
+            if (tab === 'profile') loadProfile();
+            if (tab === 'cases') loadCases();
+        }
+
+        // ==========================================
+        // 5. MODALS
+        // ==========================================
+        function openModal(id) { 
+            document.getElementById(id).style.display = 'flex'; 
+        }
+        function closeModal(id) { 
+            document.getElementById(id).style.display = 'none'; 
+        }
+
+        // ==========================================
+        // 6. SOCKET (CRASH)
+        // ==========================================
+        function initSocket() {
+            socket = io();
+
+            socket.on('connect', () => showToast('✅ Соединение установлено', 'success'));
+            socket.on('disconnect', () => showToast('❌ Соединение потеряно', 'error'));
+            socket.on('error', (d) => showToast('❌ ' + (d.message || 'Ошибка'), 'error'));
+
+            socket.on('crash_state', (d) => {
+                const s = document.getElementById('crashStatus');
+                if (d.status === 'betting') {
+                    s.textContent = `⏳ До старта: ${d.timer} сек...`;
+                    document.getElementById('crashCashoutBtn').style.display = 'none';
+                } else if (d.status === 'flying') {
+                    s.textContent = '🚀 Взлёт!';
+                } else {
+                    s.textContent = '⏳ Ожидание...';
+                }
+            });
+
+            socket.on('crash_multiplier', (d) => {
+                document.getElementById('crashMult').textContent = d.multiplier.toFixed(2) + 'x';
+            });
+
+            socket.on('crash_end', (d) => {
+                document.getElementById('crashStatus').textContent = `💥 КРАШ на ${d.crash_point.toFixed(2)}x!`;
+                document.getElementById('crashCashoutBtn').style.display = 'none';
+                loadProfile();
+            });
+
+            socket.on('bet_placed', () => {
+                document.getElementById('crashCashoutBtn').style.display = 'block';
+                loadProfile();
+                showToast('✅ Ставка принята!', 'success');
+            });
+
+            socket.on('cashout_success', (d) => {
+                document.getElementById('crashCashoutBtn').style.display = 'none';
+                loadProfile();
+                showToast(`💰 Забрал ${d.win_amount} UC (x${d.multiplier.toFixed(2)})`, 'success');
+            });
+        }
+
+        // ==========================================
+        // 7. CRASH
+        // ==========================================
+        function placeCrashBet() {
+            if (!socket) return showToast('❌ Нет соединения', 'error');
+            const bet = parseInt(document.getElementById('crashBet').value);
+            if (!bet || bet < 5) return showToast('❌ Мин. 5 UC', 'error');
+            if (bet > 5000) return showToast('❌ Макс. 5000 UC', 'error');
+            socket.emit('place_bet', { bet_amount: bet });
+        }
+
+        function cashoutCrash() {
+            if (!socket) return showToast('❌ Нет соединения', 'error');
+            socket.emit('cashout', {});
+        }
+
+        // ==========================================
+        // 8. COLOR DICE
+        // ==========================================
+        async function rollDice(color) {
+            if (isFlipping) return;
+            const bet = parseInt(document.getElementById('diceBet').value);
+            if (!bet || bet < 10) return showToast('❌ Мин. 10 UC', 'error');
+
+            const icon = document.getElementById('diceIcon');
+            const status = document.getElementById('diceStatus');
+            isFlipping = true;
+            icon.style.transform = 'scale(1.3) rotate(360deg)';
+            status.textContent = '🎰 ...';
+
+            try {
+                const r = await fetch('/api/color_dice/roll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bet_amount: bet, color: color })
+                });
+                const d = await r.json();
+                
+                setTimeout(() => {
+                    icon.style.transform = 'scale(1) rotate(0deg)';
+                    if (r.ok) {
+                        status.textContent = `Выпало: ${d.dropped_color.toUpperCase()}`;
+                        if (d.win) {
+                            showToast(`🎉 Win: +${d.win_amount} UC`, 'success');
+                        } else {
+                            showToast(`❌ Проигрыш`, 'error');
+                        }
+                        document.getElementById('balance').textContent = d.new_balance;
+                    } else {
+                        status.textContent = '❌ Ошибка';
+                        showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+                    }
+                    isFlipping = false;
+                    loadProfile();
+                }, 400);
+
+            } catch (e) {
+                showToast('❌ Ошибка сервера', 'error');
+                isFlipping = false;
+            }
+        }
+
+        // ==========================================
+        // 9. MINES
+        // ==========================================
+        function initMinesGrid() {
+            const g = document.getElementById('minesGrid');
+            g.innerHTML = '';
+            for (let i = 0; i < 16; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'mine-cell';
+                cell.dataset.index = i;
+                cell.dataset.opened = 'false';
+                cell.textContent = '?';
+                cell.onclick = () => openMineCell(i);
+                g.appendChild(cell);
+            }
+            document.getElementById('minesMult').textContent = '1.00x';
+            document.getElementById('minesOpened').textContent = '0';
+            document.getElementById('minesWin').textContent = '0 UC';
+            minesOpened = 0;
+            minesMult = 1.0;
+        }
+
+        async function startMines() {
+            const bet = parseInt(document.getElementById('minesBet').value);
+            const cnt = parseInt(document.getElementById('minesCount').value);
+            if (!bet || bet < 5) return showToast('❌ Мин. 5 UC', 'error');
+            if (!cnt || cnt < 1 || cnt > 15) return showToast('❌ Мины 1-15', 'error');
+
+            try {
+                const r = await fetch('/api/mines/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bet_amount: bet, mines_count: cnt })
+                });
+                const d = await r.json();
+                if (!r.ok) return showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+
+                activeMinesId = d.game_id;
+                minesBetAmount = bet;
+                initMinesGrid();
+                document.getElementById('minesStartBtn').style.display = 'none';
+                document.getElementById('minesCashoutBtn').style.display = 'block';
+                document.getElementById('minesCashoutBtn').innerHTML = '<i class="fa-solid fa-hand-holding-dollar"></i> Забрать';
+                showToast('💣 Игра началась!', 'info');
+                loadProfile();
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        async function openMineCell(idx) {
+            const cell = document.querySelector(`.mine-cell[data-index="${idx}"]`);
+            if (!cell || cell.dataset.opened === 'true' || !activeMinesId) return;
+
+            try {
+                const r = await fetch('/api/mines/open', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ game_id: activeMinesId, cell_index: idx })
+                });
+                const d = await r.json();
+
+                if (d.game_over || d.hit_mine) {
+                    cell.classList.add('bomb');
+                    cell.textContent = '💣';
+                    showToast('💥 Взрыв!', 'error');
+                    resetMines();
+                    loadProfile();
+                    return;
+                }
+
+                cell.classList.add('open');
+                cell.dataset.opened = 'true';
+                cell.textContent = '💎';
+                minesOpened++;
+                minesMult = d.current_multiplier || 1.0;
+
+                document.getElementById('minesMult').textContent = minesMult.toFixed(2) + 'x';
+                document.getElementById('minesOpened').textContent = minesOpened;
+                document.getElementById('minesWin').textContent = Math.floor(minesBetAmount * minesMult) + ' UC';
+                document.getElementById('minesCashoutBtn').innerHTML = 
+                    `<i class="fa-solid fa-hand-holding-dollar"></i> Забрать ${Math.floor(minesBetAmount * minesMult)} UC (${minesMult.toFixed(2)}x)`;
+
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        async function cashoutMines() {
+            if (!activeMinesId) return;
+            try {
+                const r = await fetch('/api/mines/cashout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ game_id: activeMinesId })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showToast(`💰 +${d.win_amount} UC`, 'success');
+                    resetMines();
+                    loadProfile();
+                }
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        function resetMines() {
+            activeMinesId = null;
+            document.getElementById('minesStartBtn').style.display = 'block';
+            document.getElementById('minesCashoutBtn').style.display = 'none';
+            initMinesGrid();
+        }
+
+        // ==========================================
+        // 10. CASES
+        // ==========================================
+        function loadCases() {
+            const starContainer = document.getElementById('starCases');
+            const nftContainer = document.getElementById('nftCases');
+            
+            starContainer.innerHTML = '';
+            nftContainer.innerHTML = '';
+
+            const starTypes = Object.keys(CASE_PRICES).filter(k => k.startsWith('star'));
+            const nftTypes = Object.keys(CASE_PRICES).filter(k => k.startsWith('nft'));
+
+            starTypes.forEach(id => {
+                const div = document.createElement('div');
+                div.className = 'case-card';
+                div.onclick = () => openCase(id);
+                div.innerHTML = `
+                    <span class="icon">${CASE_ICONS[id] || '📦'}</span>
+                    <div class="name">${CASE_NAMES[id] || id}</div>
+                    <div class="price">${CASE_PRICES[id]} UC</div>
+                `;
+                starContainer.appendChild(div);
+            });
+
+            nftTypes.forEach(id => {
+                const div = document.createElement('div');
+                div.className = 'case-card';
+                div.onclick = () => openCase(id);
+                div.innerHTML = `
+                    <span class="icon">${CASE_ICONS[id] || '🎁'}</span>
+                    <div class="name">${CASE_NAMES[id] || id}</div>
+                    <div class="price">${CASE_PRICES[id]} UC</div>
+                `;
+                nftContainer.appendChild(div);
+            });
+        }
+
+        async function openCase(caseType) {
+            try {
+                const r = await fetch('/api/case/open', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ case_type: caseType })
+                });
+                const d = await r.json();
+                if (!r.ok) return showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+                
+                showToast(`🎉 Выиграл: ${d.reward_name}!`, 'success');
+                loadProfile();
+            } catch (e) {
+                showToast('❌ Ошибка соединения', 'error');
+            }
+        }
+
+        async function claimFreeCase() {
+            try {
+                const r = await fetch('/api/free_case/claim', { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok) return showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+                showToast(`🎁 Бесплатно: ${d.reward}!`, 'success');
+                loadProfile();
+            } catch (e) {
+                showToast('❌ Ошибка', 'error');
+            }
+        }
+
+        // ==========================================
+        // 11. PROFILE & INVENTORY
+        // ==========================================
+        async function loadProfile() {
+            try {
+                const r = await fetch('/api/profile');
+                const d = await r.json();
+                document.getElementById('balance').textContent = d.balance || 0;
+                document.getElementById('userId').textContent = d.tg_id || '---';
+                document.getElementById('totalSpent').textContent = d.total_spent || 0;
+                renderInventory(d.inventory || []);
+            } catch (e) {
+                console.error('Profile error:', e);
+            }
+        }
+
+        function renderInventory(items) {
+            const c = document.getElementById('inventoryContainer');
+            const cnt = document.getElementById('invCount');
+            c.innerHTML = '';
+            if (!items || !items.length) {
+                cnt.textContent = '(0)';
+                c.innerHTML = '<div style="grid-column:1/-1;color:var(--text2);font-size:12px;text-align:center;padding:8px;">Инвентарь пуст</div>';
+                return;
+            }
+            cnt.textContent = '(' + items.length + ')';
+            items.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = 'inv-item';
+                let rarity = 'common';
+                if (item.price >= 2000) rarity = 'mythic';
+                else if (item.price >= 800) rarity = 'legendary';
+                else if (item.price >= 300) rarity = 'epic';
+                else if (item.price >= 100) rarity = 'rare';
+                div.classList.add('rarity-' + rarity);
+
+                let icon = '🎁';
+                if (item.name.includes('⭐')) icon = '⭐';
+                else if (item.name.includes('🎽')) icon = '🎽';
+                else if (item.name.includes('🧢')) icon = '🧢';
+                else if (item.name.includes('👑')) icon = '👑';
+                else if (item.name.includes('🔥')) icon = '🔥';
+                else if (item.name.includes('💎')) icon = '💎';
+
+                div.innerHTML = `
+                    <div class="inv-icon">${icon}</div>
+                    <div class="inv-name">${item.name}</div>
+                    <div class="inv-price">${item.price} UC</div>
+                    <button class="inv-sell" onclick="sellItem(${idx})">Продать</button>
+                `;
+                c.appendChild(div);
+            });
+        }
+
+        async function sellItem(idx) {
+            try {
+                const r = await fetch('/api/inventory/sell', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_index: idx })
+                });
+                const d = await r.json();
+                if (r.ok) {
+                    showToast(`💰 +${d.sold_for} UC`, 'success');
+                    loadProfile();
+                } else {
+                    showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+                }
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        async function sellAllInventory() {
+            if (!confirm('Продать все предметы?')) return;
+            const inv = document.querySelectorAll('.inv-item');
+            for (let i = inv.length - 1; i >= 0; i--) {
+                await sellItem(i);
+            }
+        }
+
+        // ==========================================
+        // 12. DEPOSIT & WITHDRAW
+        // ==========================================
+        async function processDeposit() {
+            const amt = parseInt(document.getElementById('depositAmount').value);
+            if (!amt || amt < 10) return showToast('❌ Мин. 10 UC', 'error');
+            try {
+                const r = await fetch('/api/deposit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amt })
+                });
+                if (r.ok) {
+                    showToast(`💰 +${amt} UC`, 'success');
+                    closeModal('depositModal');
+                    loadProfile();
+                }
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        async function processWithdraw() {
+            const amt = parseInt(document.getElementById('withdrawAmount').value);
+            const wallet = document.getElementById('withdrawWallet').value.trim();
+            if (!amt || amt < 60) return showToast('❌ Мин. 60 UC', 'error');
+            if (!wallet) return showToast('❌ Введите реквизиты', 'error');
+            try {
+                const r = await fetch('/api/withdraw/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amt, requisites: wallet })
+                });
+                const d = await r.json();
+                if (r.ok) {
+                    showToast('✅ Заявка отправлена!', 'success');
+                    closeModal('withdrawModal');
+                    loadProfile();
+                } else {
+                    showToast('❌ ' + (d.detail || 'Ошибка'), 'error');
+                }
+            } catch (e) { showToast('❌ Ошибка', 'error'); }
+        }
+
+        // ==========================================
+        // 13. START
+        // ==========================================
+        initMinesGrid();
+        loadProfile();
+        loadCases();
+        initSocket();
+        setInterval(loadProfile, 10000);
+    </script>
+</body>
+</html>
