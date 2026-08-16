@@ -28,147 +28,139 @@ ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
 DB_NAME = "database.db"
 
 # ============================================================
-#  PUBG METRO — КОНТЕЙНЕРЫ
+#  PUBG METRO — ВАЛЮТА: METROCOIN (MC)
+# ============================================================
+
+# ============================================================
+#  КОНТЕЙНЕРЫ (КЕЙСЫ)
 # ============================================================
 CONTAINER_PRICES = {
-    "container_1": 50,
-    "container_2": 150,
-    "container_3": 400,
-    "container_4": 750,
-    "container_5": 1500,
-    "container_6": 2500,
+    "container_1": 50,   # Базовый
+    "container_2": 150,  # Продвинутый
+    "container_3": 400,  # Элитный
+    "container_4": 750,  # Легендарный
+    "container_5": 1500, # Мифический
+    "container_6": 3000, # Божественный
 }
 
 CONTAINER_DROPS = {
+    # ===== КОНТЕЙНЕР 1 (Базовый) =====
     "container_1": {
-        "c1_1": ("🔫 M416", 12),
-        "c1_2": ("🎒 Рюкзак Ур.2", 29),
-        "c1_3": ("🛡️ Бронежилет Ур.2", 46),
-        "c1_4": ("💊 Аптечка", 69),
-        "c1_5": ("💰 Слиток золота", 115),
-        "c1_6": ("📡 Портативная рация", 230),
+        "c1_1": ("🛡️ Броник Ур.1", 8),
+        "c1_2": ("⛑️ Шлем Ур.1", 12),
+        "c1_3": ("🎒 Рюкзак Ур.1", 10),
+        "c1_4": ("🔫 M416", 25),
+        "c1_5": ("💊 Аптечка", 5),
+        "c1_6": ("💰 MetroCoin", 15),
     },
+    # ===== КОНТЕЙНЕР 2 (Продвинутый) =====
     "container_2": {
-        "c2_1": ("🔫 M762", 35),
-        "c2_2": ("🎒 Рюкзак Ур.3", 86),
-        "c2_3": ("🛡️ Бронежилет Ур.3", 138),
-        "c2_4": ("💊 Адреналин", 230),
-        "c2_5": ("💰 Слиток золота", 403),
-        "c2_6": ("💎 Артефакт", 690),
+        "c2_1": ("🛡️ Броник Ур.2", 35),
+        "c2_2": ("⛑️ Шлем Ур.2", 40),
+        "c2_3": ("🎒 Рюкзак Ур.2", 38),
+        "c2_4": ("🔫 M762", 55),
+        "c2_5": ("💊 Адреналин", 20),
+        "c2_6": ("💰 MetroCoin", 45),
     },
+    # ===== КОНТЕЙНЕР 3 (Элитный) =====
     "container_3": {
-        "c3_1": ("🔫 AUG", 92),
-        "c3_2": ("🎒 Тактический рюкзак", 230),
-        "c3_3": ("🛡️ Бронежилет Ур.4", 403),
-        "c3_4": ("📡 Портативная рация", 575),
-        "c3_5": ("💰 Слиток золота", 920),
-        "c3_6": ("💎 Легендарный артефакт", 1725),
+        "c3_1": ("🛡️ Броник Ур.3", 80),
+        "c3_2": ("⛑️ Шлем Ур.3", 90),
+        "c3_3": ("🎒 Рюкзак Ур.3", 85),
+        "c3_4": ("🔫 AUG", 120),
+        "c3_5": ("💊 Адреналин", 30),
+        "c3_6": ("💰 MetroCoin", 100),
     },
+    # ===== КОНТЕЙНЕР 4 (Легендарный) =====
     "container_4": {
-        "c4_1": ("🔫 MK14", 173),
-        "c4_2": ("🎒 Тактический рюкзак", 460),
-        "c4_3": ("🛡️ Бронежилет Ур.5", 748),
-        "c4_4": ("📡 Секретная рация", 1150),
-        "c4_5": ("💰 Слиток золота", 2070),
-        "c4_6": ("💎 Легендарный артефакт", 3450),
+        "c4_1": ("🛡️ Броник Ур.4", 180),
+        "c4_2": ("⛑️ Шлем Ур.4", 200),
+        "c4_3": ("🎒 Рюкзак Ур.4", 190),
+        "c4_4": ("🔫 MK14", 250),
+        "c4_5": ("⚔️ Золотой меч", 350),
+        "c4_6": ("💰 MetroCoin", 220),
     },
+    # ===== КОНТЕЙНЕР 5 (Мифический) =====
     "container_5": {
-        "c5_1": ("🔫 Groza", 345),
-        "c5_2": ("🎒 Тактический рюкзак", 920),
-        "c5_3": ("🛡️ Бронежилет Ур.5", 1495),
-        "c5_4": ("📡 Секретная рация", 2300),
-        "c5_5": ("💰 Слиток золота", 4025),
-        "c5_6": ("💎 Легендарный артефакт", 6900),
+        "c5_1": ("🛡️ Броник Ур.5", 400),
+        "c5_2": ("⛑️ Шлем Ур.5", 450),
+        "c5_3": ("🎒 Рюкзак Ур.5", 420),
+        "c5_4": ("🔫 Groza", 550),
+        "c5_5": ("🍥 Артефакт Наруто", 700),
+        "c5_6": ("💰 MetroCoin", 500),
     },
+    # ===== КОНТЕЙНЕР 6 (Божественный) =====
     "container_6": {
-        "c6_1": ("🔫 AWM", 575),
-        "c6_2": ("🎒 Тактический рюкзак", 1495),
-        "c6_3": ("🛡️ Бронежилет Ур.5", 2530),
-        "c6_4": ("📡 Секретная рация", 4025),
-        "c6_5": ("💰 Слиток золота", 6325),
-        "c6_6": ("💎 Легендарный артефакт", 11500),
+        "c6_1": ("🛡️ Броник Ур.6", 900),
+        "c6_2": ("⛑️ Шлем Ур.6", 1000),
+        "c6_3": ("🎒 Рюкзак Ур.6", 950),
+        "c6_4": ("🔫 AWM", 1200),
+        "c6_5": ("🗡️ Керамбит", 1800),
+        "c6_6": ("🦋 Бабочка", 3000),  # САМОЕ РЕДКОЕ!
     },
 }
 
 # ============================================================
-#  NFT / РЕДКИЙ ЛУТ
+#  ЗОЛОТЫЕ КОНТЕЙНЕРЫ (ДОПОЛНИТЕЛЬНЫЕ)
 # ============================================================
-NFT_CONTAINER_PRICES = {
-    "nft_container_1": 100,
-    "nft_container_2": 250,
-    "nft_container_3": 500,
-    "nft_container_4": 1000,
-    "nft_container_5": 1750,
-    "nft_container_6": 3000,
+GOLD_CONTAINER_PRICES = {
+    "gold_container_1": 500,
+    "gold_container_2": 1000,
+    "gold_container_3": 2000,
 }
 
-NFT_CONTAINER_DROPS = {
-    "nft_container_1": {
-        "n1_1": ("💎 Кристалл крови", 23),
-        "n1_2": ("🔮 Амулет удачи", 40),
-        "n1_3": ("👑 Золотая маска", 63),
-        "n1_4": ("🗡️ Клинок теней", 92),
-        "n1_5": ("🛡️ Щит судьбы", 150),
-        "n1_6": ("⚡ Энергетический кристалл", 288),
+GOLD_CONTAINER_DROPS = {
+    "gold_container_1": {
+        "g1_1": ("⭐ Золотая M416", 600),
+        "g1_2": ("⭐ Золотой AUG", 700),
+        "g1_3": ("⭐ Золотой броник", 500),
+        "g1_4": ("⭐ Золотой шлем", 550),
+        "g1_5": ("⭐ Золотая аптечка", 300),
+        "g1_6": ("💰 MetroCoin", 400),
     },
-    "nft_container_2": {
-        "n2_1": ("🐱 Кот-призрак", 52),
-        "n2_2": ("👻 Дух пустоши", 86),
-        "n2_3": ("🦇 Крыло ночи", 138),
-        "n2_4": ("🧛 Клык вампира", 219),
-        "n2_5": ("👾 Техно-артефакт", 345),
-        "n2_6": ("💀 Череп легенды", 575),
+    "gold_container_2": {
+        "g2_1": ("⭐ Золотая Groza", 1200),
+        "g2_2": ("⭐ Золотой MK14", 1300),
+        "g2_3": ("⭐ Золотой рюкзак", 1000),
+        "g2_4": ("⚔️ Золотой меч", 800),
+        "g2_5": ("🍥 Артефакт Наруто", 700),
+        "g2_6": ("💰 MetroCoin", 900),
     },
-    "nft_container_3": {
-        "n3_1": ("🔵 Глаз пустоты", 104),
-        "n3_2": ("🟢 Глаз природы", 173),
-        "n3_3": ("🔴 Глаз войны", 276),
-        "n3_4": ("🟡 Глаз бога", 437),
-        "n3_5": ("⚫ Глаз хаоса", 690),
-        "n3_6": ("💎 Глаз бессмертия", 1150),
-    },
-    "nft_container_4": {
-        "n4_1": ("🍑 Персик бессмертия", 207),
-        "n4_2": ("🍑 Золотой персик", 345),
-        "n4_3": ("🍑 Алмазный персик", 552),
-        "n4_4": ("🍑 Королевский персик", 863),
-        "n4_5": ("🍑 Мистический персик", 1380),
-        "n4_6": ("🍑 Легендарный персик", 2300),
-    },
-    "nft_container_5": {
-        "n5_1": ("🧢 Каска командира", 368),
-        "n5_2": ("⚪ Серебряная каска", 610),
-        "n5_3": ("⚫ Чёрная каска", 978),
-        "n5_4": ("🟡 Золотая каска", 1553),
-        "n5_5": ("⭐ Каска основателя", 2415),
-        "n5_6": ("👑 Королевская каска", 4025),
-    },
-    "nft_container_6": {
-        "n6_1": ("🐸 Плюшевый Пепе", 690),
-        "n6_2": ("😊 Улыбка Пепе", 1150),
-        "n6_3": ("😎 Пепе-чилл", 1840),
-        "n6_4": ("🤨 Редкий Пепе", 2875),
-        "n6_5": ("✨ Золотой Пепе", 4600),
-        "n6_6": ("👑 Мифический Пепе", 8050),
+    "gold_container_3": {
+        "g3_1": ("⭐ Золотая AWM", 2500),
+        "g3_2": ("⭐ Золотой Керамбит", 2800),
+        "g3_3": ("🦋 Бабочка", 3000),
+        "g3_4": ("🗡️ Керамбит", 1800),
+        "g3_5": ("🍥 Артефакт Наруто", 700),
+        "g3_6": ("💰 MetroCoin", 1500),
     },
 }
 
-STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
-NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
+# ============================================================
+#  ВЕСА ДЛЯ ВЫПАДЕНИЯ
+# ============================================================
+DROP_WEIGHTS = {
+    "container_1": [25.0, 25.0, 25.0, 15.0, 5.0, 5.0],
+    "container_2": [20.0, 20.0, 20.0, 20.0, 10.0, 10.0],
+    "container_3": [18.0, 18.0, 18.0, 18.0, 14.0, 14.0],
+    "container_4": [15.0, 15.0, 15.0, 20.0, 20.0, 15.0],
+    "container_5": [12.0, 12.0, 12.0, 18.0, 25.0, 21.0],
+    "container_6": [10.0, 10.0, 10.0, 15.0, 25.0, 30.0],
+    "gold_container_1": [18.0, 18.0, 18.0, 18.0, 13.0, 15.0],
+    "gold_container_2": [15.0, 15.0, 15.0, 20.0, 20.0, 15.0],
+    "gold_container_3": [10.0, 10.0, 20.0, 20.0, 20.0, 20.0],
+}
 
 # ============================================================
 #  БЕСПЛАТНЫЙ КЕЙС
 # ============================================================
 FREE_CASE_DROPS = [
-    {"name": "🔫 M416", "price": 0.1, "weight": 35.0},
-    {"name": "🔫 M762", "price": 0.5, "weight": 25.0},
-    {"name": "🎒 Рюкзак Ур.2", "price": 1.0, "weight": 18.0},
-    {"name": "🛡️ Бронежилет Ур.2", "price": 2.5, "weight": 12.0},
-    {"name": "💊 Адреналин", "price": 5.0, "weight": 6.0},
-    {"name": "💰 Слиток золота", "price": 15.0, "weight": 2.5},
-    {"name": "📡 Портативная рация", "price": 35.0, "weight": 1.0},
-    {"name": "💎 Артефакт", "price": 60.0, "weight": 0.4},
-    {"name": "📡 Секретный документ", "price": 100.0, "weight": 0.1},
+    {"name": "🛡️ Броник Ур.1", "price": 8, "weight": 25.0},
+    {"name": "⛑️ Шлем Ур.1", "price": 12, "weight": 25.0},
+    {"name": "🎒 Рюкзак Ур.1", "price": 10, "weight": 25.0},
+    {"name": "🔫 M416", "price": 25, "weight": 15.0},
+    {"name": "💊 Аптечка", "price": 5, "weight": 5.0},
+    {"name": "💰 MetroCoin", "price": 15, "weight": 5.0},
 ]
 
 # ============================================================
@@ -386,7 +378,7 @@ class UpdateWithdrawStatusRequest(BaseModel):
 class ReferralActivateRequest(BaseModel):
     referrer_id: int
 
-class AdminGiveStarsRequest(BaseModel):
+class AdminGiveCoinsRequest(BaseModel):
     target_tg_id: int
     amount: int
 
@@ -409,7 +401,7 @@ class PromoCreateRequest(BaseModel):
     code: str
     reward_type: str
     case_type: str = None
-    stars: int = 0
+    coins: int = 0
     max_uses: int = 1
 
 # ============================================================
@@ -446,7 +438,7 @@ async def place_bet(sid, data):
     if crash_state["status"] != "betting":
         return await sio.emit('error', {'message': 'Ставки закрыты!'}, to=sid)
     if bet < CRASH_MIN_BET or bet > CRASH_MAX_BET:
-        return await sio.emit('error', {'message': f'Ставка {CRASH_MIN_BET}-{CRASH_MAX_BET}⭐️'}, to=sid)
+        return await sio.emit('error', {'message': f'Ставка {CRASH_MIN_BET}-{CRASH_MAX_BET} MC'}, to=sid)
     
     key = bet_key(tg_id, crash_state["round_id"])
     if key in crash_state["bets"]:
@@ -459,7 +451,7 @@ async def place_bet(sid, data):
         )
         await db.commit()
         if cursor.rowcount == 0:
-            return await sio.emit('error', {'message': 'Недостаточно монет'}, to=sid)
+            return await sio.emit('error', {'message': 'Недостаточно MetroCoin'}, to=sid)
         async with db.execute("SELECT balance FROM users WHERE tg_id=?", (tg_id,)) as cursor:
             new_balance = (await cursor.fetchone())[0]
     
@@ -544,7 +536,7 @@ async def startup():
         await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS withdraw_cooldowns (user_id INTEGER PRIMARY KEY, last_withdraw_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS promo_uses (user_id INTEGER, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, promo_code))")
-        await db.execute("CREATE TABLE IF NOT EXISTS promos (code TEXT PRIMARY KEY, reward_type TEXT, case_type TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER)")
+        await db.execute("CREATE TABLE IF NOT EXISTS promos (code TEXT PRIMARY KEY, reward_type TEXT, case_type TEXT, coins INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER)")
         await db.execute("CREATE TABLE IF NOT EXISTS top_rewards (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, place INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_uses (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.commit()
@@ -616,18 +608,18 @@ async def get_profile(user: dict = Depends(verify_telegram_data)):
 # ============================================================
 #  ADMIN
 # ============================================================
-@app.post("/api/admin/give_stars")
-async def admin_give_stars(user: dict = Depends(verify_telegram_data)):
+@app.post("/api/admin/give_coins")
+async def admin_give_coins(user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance+10000 WHERE tg_id=?", (tg_id,))
         await db.commit()
-    return {"success": True, "message": "✅ +10,000 Stars"}
+    return {"success": True, "message": "✅ +10,000 MetroCoin"}
 
-@app.post("/api/admin/give_stars_to_user")
-async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depends(verify_telegram_data)):
+@app.post("/api/admin/give_coins_to_user")
+async def admin_give_coins_to_user(req: AdminGiveCoinsRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     if not ADMIN_TG_ID or tg_id != ADMIN_TG_ID:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
@@ -636,7 +628,7 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
     if req.amount < 1:
         raise HTTPException(status_code=400, detail="Сумма > 0")
     if req.amount > 1000000:
-        raise HTTPException(status_code=400, detail="Макс 1M ⭐️")
+        raise HTTPException(status_code=400, detail="Макс 1M MC")
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             "INSERT OR IGNORE INTO users (tg_id, username, balance, total_spent, inventory) VALUES (?,?,20,0,'[]')",
@@ -644,7 +636,7 @@ async def admin_give_stars_to_user(req: AdminGiveStarsRequest, user: dict = Depe
         )
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.target_tg_id))
         await db.commit()
-    return {"success": True, "message": f"✅ Выдано {req.amount} ⭐️"}
+    return {"success": True, "message": f"✅ Выдано {req.amount} MetroCoin"}
 
 # ============================================================
 #  PROMO
@@ -659,8 +651,8 @@ async def create_promo(req: PromoCreateRequest, user: dict = Depends(verify_tele
         if await (await db.execute("SELECT code FROM promos WHERE code=?", (code,))).fetchone():
             raise HTTPException(status_code=400, detail="Такой код уже существует")
         await db.execute(
-            "INSERT INTO promos (code, reward_type, case_type, stars, max_uses, created_by) VALUES (?,?,?,?,?,?)",
-            (code, req.reward_type, req.case_type, req.stars, req.max_uses, tg_id)
+            "INSERT INTO promos (code, reward_type, case_type, coins, max_uses, created_by) VALUES (?,?,?,?,?,?)",
+            (code, req.reward_type, req.case_type, req.coins, req.max_uses, tg_id)
         )
         await db.commit()
     return {"success": True, "message": f"✅ Промокод {code} создан!"}
@@ -680,12 +672,13 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
         reward_name = None
         if promo[1] == "case":
             ct = promo[2]
+            all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
             if ct in CONTAINER_DROPS:
                 pool = CONTAINER_DROPS[ct]
-                weights = STAR_DROP_WEIGHTS
-            elif ct in NFT_CONTAINER_DROPS:
-                pool = NFT_CONTAINER_DROPS[ct]
-                weights = NFT_DROP_WEIGHTS
+                weights = DROP_WEIGHTS.get(ct, [20.0, 20.0, 20.0, 20.0, 10.0, 10.0])
+            elif ct in GOLD_CONTAINER_DROPS:
+                pool = GOLD_CONTAINER_DROPS[ct]
+                weights = DROP_WEIGHTS.get(ct, [18.0, 18.0, 18.0, 18.0, 13.0, 15.0])
             else:
                 raise HTTPException(status_code=400, detail="Неизвестный кейс")
             reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
@@ -694,9 +687,9 @@ async def activate_promo(code: str, user: dict = Depends(verify_telegram_data)):
                 inventory = json.loads((await cursor.fetchone())[0] or '[]')
             inventory.append({"id": reward_id, "name": reward_name, "case": ct})
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
-        elif promo[1] == "stars":
+        elif promo[1] == "coins":
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (promo[3], tg_id))
-            reward_name = f"⭐ {promo[3]} Stars"
+            reward_name = f"💰 {promo[3]} MetroCoin"
         await db.execute("INSERT INTO promo_uses (user_id, promo_code) VALUES (?,?)", (tg_id, code))
         await db.execute("UPDATE promos SET uses=uses+1 WHERE code=?", (code,))
         await db.commit()
@@ -774,21 +767,24 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
 # ============================================================
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
+    all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
+    all_prices = {**CONTAINER_PRICES, **GOLD_CONTAINER_PRICES}
+    
     if req.case_type in CONTAINER_DROPS:
         price = CONTAINER_PRICES[req.case_type]
         pool = CONTAINER_DROPS[req.case_type]
-        weights = STAR_DROP_WEIGHTS
-    elif req.case_type in NFT_CONTAINER_DROPS:
-        price = NFT_CONTAINER_PRICES[req.case_type]
-        pool = NFT_CONTAINER_DROPS[req.case_type]
-        weights = NFT_DROP_WEIGHTS
+        weights = DROP_WEIGHTS.get(req.case_type, [20.0, 20.0, 20.0, 20.0, 10.0, 10.0])
+    elif req.case_type in GOLD_CONTAINER_DROPS:
+        price = GOLD_CONTAINER_PRICES[req.case_type]
+        pool = GOLD_CONTAINER_DROPS[req.case_type]
+        weights = DROP_WEIGHTS.get(req.case_type, [18.0, 18.0, 18.0, 18.0, 13.0, 15.0])
     else:
         raise HTTPException(status_code=400, detail="Неизвестный контейнер")
     
     tg_id = user.get('id')
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < price:
-        raise HTTPException(status_code=400, detail="Недостаточно монет")
+        raise HTTPException(status_code=400, detail="Недостаточно MetroCoin")
     
     reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
     reward_name = pool[reward_id][0]
@@ -815,10 +811,11 @@ async def sell_single_item(req: SellItemRequest, user: dict = Depends(verify_tel
         raise HTTPException(status_code=400, detail="Предмет не найден")
     item = inventory.pop(req.item_index)
     gain = 0
-    if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-        gain = CONTAINER_DROPS[item["case"]][item["id"]][1]
-    elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
-        gain = NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
+    
+    all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
+    if item["case"] in all_drops and item["id"] in all_drops[item["case"]]:
+        gain = all_drops[item["case"]][item["id"]][1]
+    
     new_balance = user_info["balance"] + gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory=? WHERE tg_id=?", (new_balance, json.dumps(inventory), tg_id))
@@ -833,11 +830,10 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     if not inventory:
         raise HTTPException(status_code=400, detail="Инвентарь пуст")
     total_gain = 0
+    all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
     for item in inventory:
-        if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-            total_gain += CONTAINER_DROPS[item["case"]][item["id"]][1]
-        elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
-            total_gain += NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
+        if item["case"] in all_drops and item["id"] in all_drops[item["case"]]:
+            total_gain += all_drops[item["case"]][item["id"]][1]
     new_balance = user_info["balance"] + total_gain
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, inventory='[]' WHERE tg_id=?", (new_balance, tg_id))
@@ -853,10 +849,11 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         raise HTTPException(status_code=400, detail="Предмет не найден")
     item = inventory[req.item_index]
     current_price = 0
-    if item["case"] in CONTAINER_DROPS and item["id"] in CONTAINER_DROPS[item["case"]]:
-        current_price = CONTAINER_DROPS[item["case"]][item["id"]][1]
-    elif item["case"] in NFT_CONTAINER_DROPS and item["id"] in NFT_CONTAINER_DROPS[item["case"]]:
-        current_price = NFT_CONTAINER_DROPS[item["case"]][item["id"]][1]
+    
+    all_drops = {**CONTAINER_DROPS, **GOLD_CONTAINER_DROPS}
+    if item["case"] in all_drops and item["id"] in all_drops[item["case"]]:
+        current_price = all_drops[item["case"]][item["id"]][1]
+    
     if current_price == 0:
         raise HTTPException(status_code=400, detail="Нельзя улучшить")
     if req.target_price <= current_price:
@@ -866,7 +863,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     upgrade_cost = int(req.target_price * 0.1)
     
     if user_info["balance"] < upgrade_cost:
-        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} ⭐️")
+        raise HTTPException(status_code=400, detail=f"Нужно {upgrade_cost} MetroCoin")
     
     new_balance = user_info["balance"] - upgrade_cost
     
@@ -876,7 +873,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     
     if random.random() < upgrade_chance:
         new_item = None
-        for ct, drops in {**CONTAINER_DROPS, **NFT_CONTAINER_DROPS}.items():
+        for ct, drops in all_drops.items():
             for did, (dname, dprice) in drops.items():
                 if dprice == req.target_price:
                     new_item = {"id": did, "name": dname, "case": ct}
@@ -890,7 +887,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             await db.commit()
         return {
             "success": True,
-            "message": f"✅ Успех! Улучшено до {req.target_price}⭐️",
+            "message": f"✅ Успех! Улучшено до {req.target_price} MC",
             "new_balance": new_balance,
             "upgrade_cost": upgrade_cost
         }
@@ -901,7 +898,7 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             await db.commit()
         return {
             "success": False,
-            "message": f"💥 Сгорел! Потеряно: {upgrade_cost}⭐️",
+            "message": f"💥 Сгорел! Потеряно: {upgrade_cost} MC",
             "new_balance": new_balance,
             "upgrade_cost": upgrade_cost
         }
@@ -928,37 +925,37 @@ async def get_spent_leaderboard(user: dict = Depends(verify_telegram_data)):
     return {"players": [{"username": r[0], "total_spent": r[1]} for r in rows], "total_players": total, "min_for_prizes": TOP_MIN_PLAYERS, "prizes": TOP_PRIZES, "reset_days": TOP_RESET_DAYS}
 
 # ============================================================
-#  STARS SHOP
+#  SHOP (ПОКУПКА METROCOIN)
 # ============================================================
-@app.post("/api/stars/buy")
-async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data)):
-    if stars_amount < 50:
-        raise HTTPException(status_code=400, detail="Минимум 50 Stars")
+@app.post("/api/shop/buy_coins")
+async def buy_coins(coins_amount: int, user: dict = Depends(verify_telegram_data)):
+    if coins_amount < 50:
+        raise HTTPException(status_code=400, detail="Минимум 50 MetroCoin")
     tg_id = user.get('id')
     async with httpx.AsyncClient() as client:
         res = await client.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/createInvoiceLink",
             json={
-                "title": "Пополнение баланса",
-                "description": f"Покупка {stars_amount} Stars",
-                "payload": f"deposit_{tg_id}_{stars_amount}",
+                "title": "Пополнение MetroCoin",
+                "description": f"Покупка {coins_amount} MetroCoin",
+                "payload": f"deposit_{tg_id}_{coins_amount}",
                 "provider_token": "",
                 "currency": "XTR",
-                "prices": [{"label": "Stars", "amount": stars_amount}]
+                "prices": [{"label": "MetroCoin", "amount": coins_amount}]
             }
         )
         res_data = res.json()
         if res_data.get("ok"):
-            if stars_amount >= MIN_DEPOSIT_FOR_REFERRAL:
+            if coins_amount >= MIN_DEPOSIT_FOR_REFERRAL:
                 async with aiosqlite.connect(DB_NAME) as db:
                     ref = await (await db.execute("SELECT referrer_id FROM referrals WHERE user_id=?", (tg_id,))).fetchone()
                     if ref:
-                        earned = int(stars_amount * REFERRAL_PERCENT / 100)
+                        earned = int(coins_amount * REFERRAL_PERCENT / 100)
                         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (earned, ref[0]))
                         await db.execute("UPDATE referrals SET total_earned=total_earned+? WHERE user_id=?", (earned, tg_id))
                         await db.execute(
                             "INSERT INTO referral_earnings (referrer_id, referral_id, deposit_amount, earned) VALUES (?,?,?,?)",
-                            (ref[0], tg_id, stars_amount, earned)
+                            (ref[0], tg_id, coins_amount, earned)
                         )
                         await db.commit()
             return {"invoice_url": res_data["result"]}
@@ -972,12 +969,12 @@ async def buy_stars(stars_amount: int, user: dict = Depends(verify_telegram_data
 async def create_withdraw(amount: int, wallet: str, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     if amount < 100:
-        raise HTTPException(status_code=400, detail="Минимум 100 Stars")
+        raise HTTPException(status_code=400, detail="Минимум 100 MetroCoin")
     if amount > MAX_WITHDRAW_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Максимум {MAX_WITHDRAW_AMOUNT} Stars")
+        raise HTTPException(status_code=400, detail=f"Максимум {MAX_WITHDRAW_AMOUNT} MetroCoin")
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < amount:
-        raise HTTPException(status_code=400, detail="Недостаточно монет")
+        raise HTTPException(status_code=400, detail="Недостаточно MetroCoin")
     async with aiosqlite.connect(DB_NAME) as db:
         row = await (await db.execute("SELECT last_withdraw_at FROM withdraw_cooldowns WHERE user_id=?", (tg_id,))).fetchone()
         if row:
@@ -1059,16 +1056,16 @@ async def get_referral_stats(user: dict = Depends(verify_telegram_data)):
 async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     if req.bet_amount < 10:
-        raise HTTPException(status_code=400, detail="Мин. 10 ⭐️")
+        raise HTTPException(status_code=400, detail="Мин. 10 MC")
     if req.bet_amount > 50000:
-        raise HTTPException(status_code=400, detail="Макс. 50k ⭐️")
+        raise HTTPException(status_code=400, detail="Макс. 50k MC")
     if req.mines_count < MINES_MIN_COUNT or req.mines_count > MINES_MAX_COUNT:
         raise HTTPException(status_code=400, detail=f"Мины {MINES_MIN_COUNT}-{MINES_MAX_COUNT}")
     if tg_id in active_mines_games:
         raise HTTPException(status_code=400, detail="Завершите игру")
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < req.bet_amount:
-        raise HTTPException(status_code=400, detail="Недостаточно монет")
+        raise HTTPException(status_code=400, detail="Недостаточно MetroCoin")
     new_balance = user_info["balance"] - req.bet_amount
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=?, total_spent=total_spent+? WHERE tg_id=?", (new_balance, req.bet_amount, tg_id))
