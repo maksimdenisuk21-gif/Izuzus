@@ -164,10 +164,8 @@ NFT_CASE_DROPS = {
     }
 }
 
-# ========== НОВЫЕ ШАНСЫ ДЛЯ КЕЙСОВ (более щедрые) ==========
-# Для UC ящиков — смещение в сторону редких
+# ========== ШАНСЫ ДЛЯ КЕЙСОВ (более щедрые) ==========
 STAR_DROP_WEIGHTS = [25.0, 22.0, 18.0, 15.0, 12.0, 8.0]
-# Для скинов — тоже чуть щедрее
 NFT_DROP_WEIGHTS = [20.0, 18.0, 16.0, 14.0, 12.0, 10.0]
 
 # ========== CRASH (Парашют) ==========
@@ -187,7 +185,6 @@ MINES_HOUSE_EDGE = 0.05
 active_mines_games = {}
 
 def generate_mines_grid(mines_count):
-    """Генерация минного поля"""
     total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
     grid = [0] * total_cells
     mine_positions = random.sample(range(total_cells), mines_count)
@@ -196,7 +193,6 @@ def generate_mines_grid(mines_count):
     return grid
 
 def calculate_mines_multiplier(mines_count, opened):
-    """Расчёт множителя для мин"""
     total_cells = MINES_GRID_SIZE * MINES_GRID_SIZE
     safe_cells = total_cells - mines_count
     if opened >= safe_cells:
@@ -222,35 +218,6 @@ TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
 TOP_RESET_DAYS = 14
 
-# ========== АПГРЕЙД-РУЛЕТКА (НОВАЯ ЛОГИКА) ==========
-def get_upgrade_chance(current_price, target_price):
-    """Шанс апгрейда с жестким урезанием (House Edge ~15-20%)"""
-    ratio = target_price / current_price
-    
-    # Базовый шанс (было щедрее, теперь режем)
-    if ratio >= 20:
-        base_chance = 0.5   # было 1%
-    elif ratio >= 10:
-        base_chance = 1.5   # было 3%
-    elif ratio >= 5:
-        base_chance = 4.0   # было 8%
-    elif ratio >= 3:
-        base_chance = 8.0   # было 15%
-    elif ratio >= 2:
-        base_chance = 16.0  # было 30%
-    elif ratio >= 1.5:
-        base_chance = 30.0  # было 50%
-    else:
-        base_chance = 50.0  # было 70%
-    
-    # Жесткое урезание — дом всегда в плюсе
-    # Чем дороже цель, тем сильнее режем
-    cut_factor = 1.0 - (ratio / 30)  # максимальный рез ~30%
-    final_chance = max(base_chance * max(cut_factor, 0.7), 0.5)
-    
-    # Округляем до 2 знаков
-    return round(final_chance, 2)
-
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
 crash_nonce = 0
@@ -272,11 +239,9 @@ crash_state = {
 }
 
 def bet_key(tg_id, round_id):
-    """Ключ ставки"""
     return f"{tg_id}:{round_id}"
 
 def generate_crash_point():
-    """Provably Fair генерация точки краша"""
     global crash_nonce, rounds_since_seed_change, SERVER_SEED, SERVER_SEED_HASH
     crash_nonce += 1
     rounds_since_seed_change += 1
@@ -306,7 +271,6 @@ def generate_crash_point():
     return min(cp, 50.0), hash_hex
 
 async def crash_game_loop():
-    """Главный цикл краш-игры"""
     global crash_state
     while True:
         crash_state["status"] = "betting"
@@ -789,35 +753,31 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "reward": reward_name}
 
-# ========== ОТКРЫТИЕ ЯЩИКА (НОВАЯ ЛОГИКА) ==========
+# ========== ОТКРЫТИЕ ЯЩИКА ==========
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
     
-    # Определяем кейс
     if req.case_type in STAR_CASE_PRICES:
         price = STAR_CASE_PRICES[req.case_type]
         pool = STAR_CASE_DROPS[req.case_type]
-        weights = STAR_DROP_WEIGHTS  # уже обновлены (более щедрые)
+        weights = STAR_DROP_WEIGHTS
         is_star = True
     elif req.case_type in NFT_CASE_PRICES:
         price = NFT_CASE_PRICES[req.case_type]
         pool = NFT_CASE_DROPS[req.case_type]
-        weights = NFT_DROP_WEIGHTS  # уже обновлены (более щедрые)
+        weights = NFT_DROP_WEIGHTS
         is_star = False
     else:
         raise HTTPException(status_code=400, detail="Неизвестный ящик")
     
-    # Проверка баланса
     user_info = await get_or_create_user(tg_id)
     if user_info["balance"] < price:
         raise HTTPException(status_code=400, detail="Недостаточно UC")
     
-    # Выбор предмета с обновлёнными шансами
     reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
     reward_name = pool[reward_id][0]
     
-    # Обновляем баланс и инвентарь
     new_balance = user_info["balance"] - price
     user_info["inventory"].append({"id": reward_id, "name": reward_name, "case": req.case_type})
     
@@ -882,7 +842,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД-РУЛЕТКА (НОВАЯ ЛОГИКА) ==========
+# ========== АПГРЕЙД-РУЛЕТКА (КЛАССИЧЕСКАЯ) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -910,43 +870,33 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if req.target_price <= current_price:
         raise HTTPException(status_code=400, detail="Цель должна быть дороже")
     
-    # ========== НОВАЯ ФОРМУЛА ШАНСА (урезанная, сложнее) ==========
-    ratio = req.target_price / current_price
+    # ========== НОВАЯ ФОРМУЛА ШАНСА (ЖЁСТКОЕ УРЕЗАНИЕ) ==========
+    # Базовый шанс = (текущая цена / цена цели) * 100%
+    base_chance = (current_price / req.target_price) * 100
     
-    # Базовая формула с сильным урезанием
-    if ratio >= 20:
-        base_chance = 0.5   # 0.5%
-    elif ratio >= 15:
-        base_chance = 0.8   # 0.8%
-    elif ratio >= 10:
-        base_chance = 1.5   # 1.5%
-    elif ratio >= 7:
-        base_chance = 2.5   # 2.5%
-    elif ratio >= 5:
-        base_chance = 4.0   # 4%
-    elif ratio >= 3:
-        base_chance = 8.0   # 8%
-    elif ratio >= 2:
-        base_chance = 15.0  # 15%
-    elif ratio >= 1.5:
-        base_chance = 25.0  # 25%
-    else:
-        base_chance = 40.0  # 40%
+    # Жёсткое урезание (House Edge 25-30%)
+    house_edge = 0.75  # 75% от базового шанса
     
-    # Дополнительное урезание для дорогих предметов (house edge 20%)
-    house_edge = 0.20
-    final_chance = base_chance * (1 - house_edge)
-    
-    # Дополнительное урезание если цель > 5000 UC
+    # Дополнительное урезание для дорогих целей
     if req.target_price > 5000:
-        final_chance *= 0.7
+        house_edge *= 0.6
     elif req.target_price > 2000:
-        final_chance *= 0.85
+        house_edge *= 0.75
+    elif req.target_price > 1000:
+        house_edge *= 0.85
     
-    # Округляем до процентов для отображения
-    chance_percent = int(round(final_chance))
-    if chance_percent < 0.5:
-        chance_percent = 0.5
+    final_chance = base_chance * house_edge
+    
+    # Максимальный шанс не более 60%
+    if final_chance > 60:
+        final_chance = 60
+    
+    # Минимальный шанс не менее 0.5%
+    if final_chance < 0.5:
+        final_chance = 0.5
+    
+    # Округляем до 1 знака для отображения
+    chance_percent = round(final_chance, 1)
     
     # Проверяем существование цели
     target_item = None
@@ -961,42 +911,39 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
     if not target_item:
         raise HTTPException(status_code=400, detail="Предмет с такой ценой не найден")
     
-    # Вычисляем углы для анимации
     import random
     import math
     
-    # Генерируем случайное смещение для WIN сектора
-    sector_offset = random.randint(0, 360)
+    # Размер сектора победы в градусах
+    win_sector_degrees = (chance_percent / 100) * 360
     
-    # WIN сектор занимает chance_percent % от круга
-    win_sector_size = (chance_percent / 100) * 360
+    # Случайное смещение сектора (чтобы не всегда был в одном месте)
+    sector_offset = random.randint(0, 360)
     win_start_angle = sector_offset
-    win_end_angle = win_start_angle + win_sector_size
+    win_end_angle = win_start_angle + win_sector_degrees
     
     # Решаем: победа или провал
-    is_win = random.random() < (final_chance / 100)
+    # Шанс победы = chance_percent / 100
+    is_win = random.random() < (chance_percent / 100)
     
-    # Вычисляем угол, на который должна указать стрелка
+    # Вычисляем угол остановки стрелки
     if is_win:
         # Попадаем внутрь WIN сектора
-        target_angle = win_start_angle + random.random() * win_sector_size
+        target_angle = win_start_angle + random.random() * win_sector_degrees
     else:
-        # Попадаем в LOSE сектор (за пределами WIN)
-        lose_sector_size = 360 - win_sector_size
-        if lose_sector_size <= 0:
-            target_angle = win_start_angle
-        else:
-            lose_start = win_end_angle
-            target_angle = lose_start + random.random() * lose_sector_size
-            if target_angle >= 360:
-                target_angle -= 360
+        # Попадаем в LOSE сектор
+        lose_sector_size = 360 - win_sector_degrees
+        lose_start = win_end_angle
+        target_angle = lose_start + random.random() * lose_sector_size
+        if target_angle >= 360:
+            target_angle -= 360
     
-    # Добавляем несколько полных оборотов для красоты
-    rotations = 3 + random.randint(0, 3)
+    # Добавляем 3-6 полных оборотов для интриги
+    rotations = random.randint(3, 6)
     final_angle = rotations * 360 + target_angle
     
     if is_win:
-        # УСПЕХ — заменяем предмет
+        # УСПЕХ
         inventory[req.item_index] = target_item
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
@@ -1005,13 +952,13 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "success": True,
             "chance": chance_percent,
             "angle": final_angle,
-            "win_angle": target_angle,
             "win_sector_start": win_start_angle,
             "win_sector_end": win_end_angle,
+            "win_sector_degrees": win_sector_degrees,
             "message": f"Успех! {item['name']} → {target_item['name']}"
         }
     else:
-        # ПРОВАЛ — предмет сгорает
+        # ПРОВАЛ
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
@@ -1020,9 +967,9 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
             "success": False,
             "chance": chance_percent,
             "angle": final_angle,
-            "win_angle": target_angle,
             "win_sector_start": win_start_angle,
             "win_sector_end": win_end_angle,
+            "win_sector_degrees": win_sector_degrees,
             "message": f"Провал! {item['name']} сгорел"
         }
 
