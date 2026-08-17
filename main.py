@@ -164,8 +164,11 @@ NFT_CASE_DROPS = {
     }
 }
 
-STAR_DROP_WEIGHTS = [45.0, 28.0, 15.0, 8.0, 3.5, 0.5]
-NFT_DROP_WEIGHTS = [40.0, 28.0, 17.0, 10.0, 4.0, 1.0]
+# ========== НОВЫЕ ШАНСЫ ДЛЯ КЕЙСОВ (более щедрые) ==========
+# Для UC ящиков — смещение в сторону редких
+STAR_DROP_WEIGHTS = [25.0, 22.0, 18.0, 15.0, 12.0, 8.0]
+# Для скинов — тоже чуть щедрее
+NFT_DROP_WEIGHTS = [20.0, 18.0, 16.0, 14.0, 12.0, 10.0]
 
 # ========== CRASH (Парашют) ==========
 CRASH_MIN_BET = 25
@@ -219,24 +222,34 @@ TOP_PRIZES = {1: 1500, 2: 1000, 3: 500, 4: 100, 5: 50}
 TOP_MIN_PLAYERS = 100
 TOP_RESET_DAYS = 14
 
-# ========== АПГРЕЙД-РУЛЕТКА ==========
+# ========== АПГРЕЙД-РУЛЕТКА (НОВАЯ ЛОГИКА) ==========
 def get_upgrade_chance(current_price, target_price):
-    """Шанс апгрейда зависит от соотношения цен"""
+    """Шанс апгрейда с жестким урезанием (House Edge ~15-20%)"""
     ratio = target_price / current_price
+    
+    # Базовый шанс (было щедрее, теперь режем)
     if ratio >= 20:
-        return 0.01  # 1%
+        base_chance = 0.5   # было 1%
     elif ratio >= 10:
-        return 0.03  # 3%
+        base_chance = 1.5   # было 3%
     elif ratio >= 5:
-        return 0.08  # 8%
+        base_chance = 4.0   # было 8%
     elif ratio >= 3:
-        return 0.15  # 15%
+        base_chance = 8.0   # было 15%
     elif ratio >= 2:
-        return 0.30  # 30%
+        base_chance = 16.0  # было 30%
     elif ratio >= 1.5:
-        return 0.50  # 50%
+        base_chance = 30.0  # было 50%
     else:
-        return 0.70  # 70%
+        base_chance = 50.0  # было 70%
+    
+    # Жесткое урезание — дом всегда в плюсе
+    # Чем дороже цель, тем сильнее режем
+    cut_factor = 1.0 - (ratio / 30)  # максимальный рез ~30%
+    final_chance = max(base_chance * max(cut_factor, 0.7), 0.5)
+    
+    # Округляем до 2 знаков
+    return round(final_chance, 2)
 
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
@@ -776,29 +789,35 @@ async def claim_free_case(user: dict = Depends(verify_telegram_data)):
     
     return {"success": True, "reward": reward_name}
 
-# ========== ОТКРЫТИЕ ЯЩИКА ==========
+# ========== ОТКРЫТИЕ ЯЩИКА (НОВАЯ ЛОГИКА) ==========
 @app.post("/api/case/open")
 async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_data)):
+    tg_id = user.get('id')
+    
+    # Определяем кейс
     if req.case_type in STAR_CASE_PRICES:
         price = STAR_CASE_PRICES[req.case_type]
         pool = STAR_CASE_DROPS[req.case_type]
-        weights = STAR_DROP_WEIGHTS
+        weights = STAR_DROP_WEIGHTS  # уже обновлены (более щедрые)
+        is_star = True
     elif req.case_type in NFT_CASE_PRICES:
         price = NFT_CASE_PRICES[req.case_type]
         pool = NFT_CASE_DROPS[req.case_type]
-        weights = NFT_DROP_WEIGHTS
+        weights = NFT_DROP_WEIGHTS  # уже обновлены (более щедрые)
+        is_star = False
     else:
         raise HTTPException(status_code=400, detail="Неизвестный ящик")
     
-    tg_id = user.get('id')
+    # Проверка баланса
     user_info = await get_or_create_user(tg_id)
-    
     if user_info["balance"] < price:
         raise HTTPException(status_code=400, detail="Недостаточно UC")
     
+    # Выбор предмета с обновлёнными шансами
     reward_id = random.choices(list(pool.keys()), weights=weights, k=1)[0]
     reward_name = pool[reward_id][0]
     
+    # Обновляем баланс и инвентарь
     new_balance = user_info["balance"] - price
     user_info["inventory"].append({"id": reward_id, "name": reward_name, "case": req.case_type})
     
@@ -809,7 +828,13 @@ async def open_case(req: OpenCaseRequest, user: dict = Depends(verify_telegram_d
         )
         await db.commit()
     
-    return {"reward_id": reward_id, "reward_name": reward_name, "balance": new_balance}
+    return {
+        "reward_id": reward_id,
+        "reward_name": reward_name,
+        "balance": new_balance,
+        "case_type": req.case_type,
+        "price": price
+    }
 
 # ========== ИНВЕНТАРЬ ==========
 @app.post("/api/inventory/sell_item")
@@ -857,7 +882,7 @@ async def sell_all_items(user: dict = Depends(verify_telegram_data)):
     
     return {"gain": total_gain, "balance": new_balance}
 
-# ========== АПГРЕЙД-РУЛЕТКА ==========
+# ========== АПГРЕЙД-РУЛЕТКА (НОВАЯ ЛОГИКА) ==========
 @app.post("/api/inventory/upgrade")
 async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_telegram_data)):
     tg_id = user.get('id')
@@ -868,43 +893,138 @@ async def upgrade_item(req: UpgradeItemRequest, user: dict = Depends(verify_tele
         raise HTTPException(status_code=400, detail="Предмет не найден")
     
     item = inventory[req.item_index]
+    
+    # Находим текущую цену
     current_price = 0
-    if item["case"] in STAR_CASE_DROPS and item["id"] in STAR_CASE_DROPS[item["case"]]:
-        current_price = STAR_CASE_DROPS[item["case"]][item["id"]][1]
-    elif item["case"] in NFT_CASE_DROPS and item["id"] in NFT_CASE_DROPS[item["case"]]:
-        current_price = NFT_CASE_DROPS[item["case"]][item["id"]][1]
+    for ct, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
+        for did, (dname, dprice) in drops.items():
+            if dname == item["name"] and ct == item["case"]:
+                current_price = dprice
+                break
+        if current_price > 0:
+            break
     
     if current_price == 0:
         raise HTTPException(status_code=400, detail="Нельзя улучшить")
+    
     if req.target_price <= current_price:
-        raise HTTPException(status_code=400, detail="Цель дороже")
+        raise HTTPException(status_code=400, detail="Цель должна быть дороже")
     
-    # Шанс зависит от соотношения цен
-    chance = get_upgrade_chance(current_price, req.target_price)
+    # ========== НОВАЯ ФОРМУЛА ШАНСА (урезанная, сложнее) ==========
+    ratio = req.target_price / current_price
     
-    if random.random() < chance:
-        # УСПЕХ
-        new_item = None
-        for ct, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
-            for did, (dname, dprice) in drops.items():
-                if dprice == req.target_price:
-                    new_item = {"id": did, "name": dname, "case": ct}
-                    break
-            if new_item:
+    # Базовая формула с сильным урезанием
+    if ratio >= 20:
+        base_chance = 0.5   # 0.5%
+    elif ratio >= 15:
+        base_chance = 0.8   # 0.8%
+    elif ratio >= 10:
+        base_chance = 1.5   # 1.5%
+    elif ratio >= 7:
+        base_chance = 2.5   # 2.5%
+    elif ratio >= 5:
+        base_chance = 4.0   # 4%
+    elif ratio >= 3:
+        base_chance = 8.0   # 8%
+    elif ratio >= 2:
+        base_chance = 15.0  # 15%
+    elif ratio >= 1.5:
+        base_chance = 25.0  # 25%
+    else:
+        base_chance = 40.0  # 40%
+    
+    # Дополнительное урезание для дорогих предметов (house edge 20%)
+    house_edge = 0.20
+    final_chance = base_chance * (1 - house_edge)
+    
+    # Дополнительное урезание если цель > 5000 UC
+    if req.target_price > 5000:
+        final_chance *= 0.7
+    elif req.target_price > 2000:
+        final_chance *= 0.85
+    
+    # Округляем до процентов для отображения
+    chance_percent = int(round(final_chance))
+    if chance_percent < 0.5:
+        chance_percent = 0.5
+    
+    # Проверяем существование цели
+    target_item = None
+    for ct, drops in {**STAR_CASE_DROPS, **NFT_CASE_DROPS}.items():
+        for did, (dname, dprice) in drops.items():
+            if dprice == req.target_price:
+                target_item = {"id": did, "name": dname, "case": ct}
                 break
-        if new_item:
-            inventory[req.item_index] = new_item
+        if target_item:
+            break
+    
+    if not target_item:
+        raise HTTPException(status_code=400, detail="Предмет с такой ценой не найден")
+    
+    # Вычисляем углы для анимации
+    import random
+    import math
+    
+    # Генерируем случайное смещение для WIN сектора
+    sector_offset = random.randint(0, 360)
+    
+    # WIN сектор занимает chance_percent % от круга
+    win_sector_size = (chance_percent / 100) * 360
+    win_start_angle = sector_offset
+    win_end_angle = win_start_angle + win_sector_size
+    
+    # Решаем: победа или провал
+    is_win = random.random() < (final_chance / 100)
+    
+    # Вычисляем угол, на который должна указать стрелка
+    if is_win:
+        # Попадаем внутрь WIN сектора
+        target_angle = win_start_angle + random.random() * win_sector_size
+    else:
+        # Попадаем в LOSE сектор (за пределами WIN)
+        lose_sector_size = 360 - win_sector_size
+        if lose_sector_size <= 0:
+            target_angle = win_start_angle
+        else:
+            lose_start = win_end_angle
+            target_angle = lose_start + random.random() * lose_sector_size
+            if target_angle >= 360:
+                target_angle -= 360
+    
+    # Добавляем несколько полных оборотов для красоты
+    rotations = 3 + random.randint(0, 3)
+    final_angle = rotations * 360 + target_angle
+    
+    if is_win:
+        # УСПЕХ — заменяем предмет
+        inventory[req.item_index] = target_item
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
-        return {"success": True, "chance": chance, "message": f"✅ Успех! Улучшено до {req.target_price} UC (шанс был {int(chance*100)}%)"}
+        return {
+            "success": True,
+            "chance": chance_percent,
+            "angle": final_angle,
+            "win_angle": target_angle,
+            "win_sector_start": win_start_angle,
+            "win_sector_end": win_end_angle,
+            "message": f"Успех! {item['name']} → {target_item['name']}"
+        }
     else:
-        # ПРОВАЛ
+        # ПРОВАЛ — предмет сгорает
         inventory.pop(req.item_index)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory = ? WHERE tg_id = ?", (json.dumps(inventory), tg_id))
             await db.commit()
-        return {"success": False, "chance": chance, "message": f"💥 Сгорел! Потерян предмет за {current_price} UC (шанс был {int(chance*100)}%)"}
+        return {
+            "success": False,
+            "chance": chance_percent,
+            "angle": final_angle,
+            "win_angle": target_angle,
+            "win_sector_start": win_start_angle,
+            "win_sector_end": win_end_angle,
+            "message": f"Провал! {item['name']} сгорел"
+        }
 
 # ========== ЛИДЕРБОРД ==========
 @app.get("/api/leaderboard")
@@ -1218,3 +1338,8 @@ async def verify_crash(server_seed: str, nonce: int):
     else:
         cp = round(20.00 + ((r - 0.995) / 0.005) * 30.00, 2)
     return {"verified": True, "crash_point": min(cp, 50.0), "hash": hash_hex}
+
+# ========== ЗАПУСК ==========
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
