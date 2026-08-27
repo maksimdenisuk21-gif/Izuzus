@@ -138,19 +138,192 @@ def build_nft_gifts():
 
 NFT_GIFTS = build_nft_gifts()
 
+# category: free | stars | nft | brands | only_nft | allin | rich
 CASES = {
-    "free_daily": {"name":"🎁 FREE DAILY","price":0,"cooldown":86400,"rarities":["Common"],"weights":[100],"min_stars":1,"max_stars":20,"icon":"🎁","color":"free"},
-    "newbie": {"name":"🌱 NEWBIE","price":25,"rarities":["Common","Uncommon"],"weights":[70,30],"min_stars":5,"max_stars":40,"icon":"🌱","color":"c-starter"},
-    "tg_starter": {"name":"🚀 TG STARTER","price":50,"rarities":["Common","Uncommon"],"weights":[50,50],"min_stars":10,"max_stars":80,"icon":"🚀","color":"c-starter"},
-    "candy": {"name":"🍭 CANDY BOX","price":100,"rarities":["Common","Uncommon","Rare"],"weights":[40,40,20],"min_stars":20,"max_stars":150,"icon":"🍭","color":"c-pepe"},
-    "pepe_memes": {"name":"🐸 PEPE & MEMES","price":200,"rarities":["Uncommon","Rare"],"weights":[45,55],"min_stars":50,"max_stars":400,"icon":"🐸","color":"c-pepe"},
-    "love": {"name":"💘 LOVE BOX","price":300,"rarities":["Uncommon","Rare","Epic"],"weights":[40,40,20],"min_stars":60,"max_stars":600,"icon":"💘","color":"c-tg"},
-    "telegram_gifts": {"name":"✈️ TELEGRAM GIFTS","price":500,"rarities":["Rare","Epic"],"weights":[40,60],"min_stars":100,"max_stars":1200,"icon":"✈️","color":"c-tg"},
-    "magic": {"name":"🔮 MAGIC","price":800,"rarities":["Rare","Epic","Legendary"],"weights":[45,40,15],"min_stars":150,"max_stars":2000,"icon":"🔮","color":"c-frag"},
-    "fragment_nft": {"name":"💎 FRAGMENT NFT","price":1500,"rarities":["Epic","Legendary"],"weights":[45,55],"min_stars":300,"max_stars":4000,"icon":"💎","color":"c-frag"},
-    "gold": {"name":"👑 GOLD VAULT","price":3000,"rarities":["Epic","Legendary","Mythic"],"weights":[40,45,15],"min_stars":500,"max_stars":8000,"icon":"👑","color":"c-durov"},
-    "durov_selection": {"name":"🔥 DUROV'S PICK","price":5000,"rarities":["Legendary","Mythic"],"weights":[50,50],"min_stars":1000,"max_stars":30000,"icon":"🔥","color":"c-durov"},
-    "mythic": {"name":"☄️ MYTHIC ONLY","price":10000,"rarities":["Mythic"],"weights":[100],"min_stars":2000,"max_stars":50000,"icon":"☄️","color":"c-durov"},
+    # ===== FREE =====
+    "free_daily": {
+        "name": "🎁 FREE DAILY", "price": 0, "cooldown": 86400,
+        "category": "free", "icon": "🎁", "color": "free",
+        "rarities": ["Common"], "weights": [100],
+        "min_stars": 1, "max_stars": 50, "stars_bias_low": True,
+        "desc": "Раз в 24ч · чаще мало, иногда до 50⭐"
+    },
+    # ===== STARS CASES (только звёзды) =====
+    "star_case_1": {
+        "name": "⭐ STAR CASE I", "price": 50, "category": "stars",
+        "icon": "⭐", "color": "c-starter",
+        "star_drops": [5, 15, 25, 35, 40, 55, 70, 100],
+        "star_weights": [28, 22, 16, 12, 9, 7, 4, 2],
+        "desc": "8 дропов 5–100⭐ · EV чуть ниже цены"
+    },
+    "star_case_2": {
+        "name": "⭐ STAR CASE II", "price": 100, "category": "stars",
+        "icon": "✨", "color": "c-starter",
+        "star_drops": [10, 25, 40, 60, 80, 120, 180, 250],
+        "star_weights": [26, 22, 16, 12, 10, 7, 5, 2],
+        "desc": "10–250⭐"
+    },
+    "star_case_3": {
+        "name": "⭐ STAR CASE III", "price": 250, "category": "stars",
+        "icon": "🌟", "color": "c-pepe",
+        "star_drops": [25, 50, 100, 150, 200, 350, 500, 800],
+        "star_weights": [24, 20, 16, 14, 10, 8, 5, 3],
+        "desc": "25–800⭐"
+    },
+    "star_case_4": {
+        "name": "⭐ STAR CASE IV", "price": 500, "category": "stars",
+        "icon": "💫", "color": "c-tg",
+        "star_drops": [50, 100, 200, 300, 450, 700, 1000, 1500],
+        "star_weights": [22, 20, 16, 14, 12, 8, 5, 3],
+        "desc": "50–1500⭐"
+    },
+    # ===== NFT CASES =====
+    "nft_starter": {
+        "name": "🌱 NFT STARTER", "price": 200, "category": "nft",
+        "icon": "🌱", "color": "c-starter",
+        "rarities": ["Common", "Uncommon", "Rare"], "weights": [50, 35, 15],
+        "min_stars": 15, "max_stars": 80, "stars_chance": 0.25,
+        "desc": "Common–Rare + иногда ⭐"
+    },
+    "nft_candy": {
+        "name": "🍭 CANDY NFT", "price": 350, "category": "nft",
+        "icon": "🍭", "color": "c-pepe",
+        "rarities": ["Uncommon", "Rare", "Epic"], "weights": [45, 40, 15],
+        "min_stars": 30, "max_stars": 120, "stars_chance": 0.2,
+        "desc": "Uncommon–Epic"
+    },
+    "nft_pepe": {
+        "name": "🐸 PEPE BOX", "price": 600, "category": "nft",
+        "icon": "🐸", "color": "c-pepe",
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [50, 35, 15],
+        "min_stars": 50, "max_stars": 200, "stars_chance": 0.18,
+        "desc": "Шанс на Legendary"
+    },
+    "nft_magic": {
+        "name": "🔮 MAGIC VAULT", "price": 900, "category": "nft",
+        "icon": "🔮", "color": "c-frag",
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [40, 40, 20],
+        "min_stars": 80, "max_stars": 300, "stars_chance": 0.15,
+        "desc": "Magic & potions"
+    },
+    # ===== BRANDS =====
+    "brand_gucci": {
+        "name": "👜 GUCCI DROP", "price": 800, "category": "brands",
+        "icon": "👜", "color": "c-tg",
+        "rarities": ["Epic", "Legendary"], "weights": [70, 30],
+        "min_stars": 100, "max_stars": 400, "stars_chance": 0.22,
+        "force_names": ["Swag Bag", "Perfume Bottle", "Top Hat", "Swiss Watch", "Diamond Ring", "Nail Bracelet"],
+        "desc": "Бренд-стиль · сумки, часы, духи"
+    },
+    "brand_rolex": {
+        "name": "⌚ ROLEX CASE", "price": 1200, "category": "brands",
+        "icon": "⌚", "color": "c-frag",
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
+        "min_stars": 150, "max_stars": 500, "stars_chance": 0.2,
+        "force_names": ["Swiss Watch", "Signet Ring", "Diamond Ring", "Gem Signet", "Top Hat", "Vintage Cigar"],
+        "desc": "Часы и люкс"
+    },
+    "brand_snoop": {
+        "name": "🐕 SNOOP DROP", "price": 700, "category": "brands",
+        "icon": "🐕", "color": "c-pepe",
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [45, 40, 15],
+        "min_stars": 80, "max_stars": 350, "stars_chance": 0.2,
+        "force_names": ["Snoop Dogg", "Snoop Cigar", "Low Rider", "Vintage Cigar", "Swag Bag", "Westside Sign"],
+        "desc": "Snoop collab vibes"
+    },
+    # ===== ONLY NFT =====
+    "only_onyx": {
+        "name": "🖤 ONYX BLACK", "price": 1500, "category": "only_nft",
+        "icon": "🖤", "color": "c-durov",
+        "rarities": ["Epic", "Legendary"], "weights": [55, 45],
+        "stars_chance": 0.0,
+        "force_names": ["Onyx Black", "Electric Skull", "Skull Flower", "Voodoo Doll", "Evil Eye", "Neko Helmet", "Heroic Helmet"],
+        "desc": "Только NFT · тёмный стиль"
+    },
+    "only_crystal": {
+        "name": "💎 CRYSTAL VAULT", "price": 2000, "category": "only_nft",
+        "icon": "💎", "color": "c-frag",
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [50, 35, 15],
+        "stars_chance": 0.0,
+        "force_names": ["Astral Shard", "Ion Gem", "Crystal Ball", "Gem Signet", "Diamond Ring", "Perfume Bottle", "Mini Oscar"],
+        "desc": "Только NFT · кристаллы и гемы"
+    },
+    "only_durov": {
+        "name": "🧢 DUROV ONLY", "price": 3500, "category": "only_nft",
+        "icon": "🧢", "color": "c-durov",
+        "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
+        "stars_chance": 0.0,
+        "force_names": ["Durov's Cap", "Heroic Helmet", "Plush Pepe", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
+        "desc": "Топ-коллекции"
+    },
+    # ===== ALL-IN (хайл риск) =====
+    "allin_pepe": {
+        "name": "🐸 ALL-IN PEPE", "price": 40, "category": "allin",
+        "icon": "🐸", "color": "c-pepe",
+        "allin": True,
+        # 99.999% ничего (мелкие ⭐ или пусто), крошечный шанс на Pepe — но в коде Pepe НЕ падает
+        "lose_stars": [0, 1, 2, 3, 5],
+        "lose_weights": [50, 25, 15, 7, 3],
+        "jackpot_name": "Plush Pepe", "jackpot_value": 1000000, "jackpot_chance": 0.0,
+        "desc": "40⭐ · 99.99% ничего · «шанс» на Pepe 1M (не падает)"
+    },
+    "allin_rolex": {
+        "name": "⌚ ALL-IN ROLEX", "price": 25, "category": "allin",
+        "icon": "⌚", "color": "c-frag",
+        "allin": True,
+        "lose_stars": [0, 1, 2],
+        "lose_weights": [70, 20, 10],
+        "jackpot_name": "Swiss Watch", "jackpot_value": 50000, "jackpot_chance": 0.00001,
+        "desc": "25⭐ · почти всегда 0 · микрошанс на Rolex"
+    },
+    "allin_cap": {
+        "name": "🧢 ALL-IN CAP", "price": 60, "category": "allin",
+        "icon": "🧢", "color": "c-durov",
+        "allin": True,
+        "lose_stars": [0, 1, 2, 5],
+        "lose_weights": [55, 25, 12, 8],
+        "jackpot_name": "Durov's Cap", "jackpot_value": 200000, "jackpot_chance": 0.000005,
+        "desc": "60⭐ · микрошанс на Durov's Cap"
+    },
+    "allin_helmet": {
+        "name": "⛑️ ALL-IN HELMET", "price": 80, "category": "allin",
+        "icon": "⛑️", "color": "c-durov",
+        "allin": True,
+        "lose_stars": [0, 1, 3],
+        "lose_weights": [60, 25, 15],
+        "jackpot_name": "Heroic Helmet", "jackpot_value": 150000, "jackpot_chance": 0.000008,
+        "desc": "80⭐ · микрошанс на Heroic Helmet"
+    },
+    # ===== RICH =====
+    "rich_gold": {
+        "name": "👑 GOLD RICH", "price": 1200, "category": "rich",
+        "icon": "👑", "color": "c-durov",
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [45, 40, 15],
+        "min_stars": 200, "max_stars": 800, "stars_chance": 0.12,
+        "desc": "От 1200⭐ · жирные дропы"
+    },
+    "rich_diamond": {
+        "name": "💎 DIAMOND RICH", "price": 2500, "category": "rich",
+        "icon": "💎", "color": "c-frag",
+        "rarities": ["Legendary", "Mythic"], "weights": [60, 40],
+        "min_stars": 400, "max_stars": 1500, "stars_chance": 0.1,
+        "desc": "Legendary + Mythic"
+    },
+    "rich_mythic": {
+        "name": "☄️ MYTHIC RICH", "price": 5000, "category": "rich",
+        "icon": "☄️", "color": "c-durov",
+        "rarities": ["Legendary", "Mythic"], "weights": [40, 60],
+        "min_stars": 800, "max_stars": 3000, "stars_chance": 0.08,
+        "desc": "Топ-тир"
+    },
+    "rich_durov": {
+        "name": "🔥 DUROV RICH", "price": 8000, "category": "rich",
+        "icon": "🔥", "color": "c-durov",
+        "rarities": ["Mythic"], "weights": [100],
+        "min_stars": 1500, "max_stars": 8000, "stars_chance": 0.05,
+        "force_names": ["Plush Pepe", "Durov's Cap", "Heroic Helmet", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
+        "desc": "Только Mythic коллекция"
+    },
 }
 
 # ===== MODELS =====
@@ -186,7 +359,13 @@ def push_live(item: dict, username: str = "Player"):
 # ===== DB =====
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Player', balance INTEGER DEFAULT 50, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]', games_played INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Player', balance INTEGER DEFAULT 50, total_spent INTEGER DEFAULT 0, total_deposited INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]', games_played INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, cases_opened INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        # migrations for older DBs
+        for col, typ in [("total_deposited","INTEGER DEFAULT 0"),("cases_opened","INTEGER DEFAULT 0")]:
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+            except Exception:
+                pass
         await db.execute("CREATE TABLE IF NOT EXISTS withdrawals (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, wallet TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, total_earned INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
@@ -1491,17 +1670,41 @@ async def case_contents(case_id: str):
     if not c:
         raise HTTPException(404, "Case not found")
     items = []
-    total_w = sum(c["weights"]) or 1
-    for r, w in zip(c["rarities"], c["weights"]):
-        pool = NFT_GIFTS.get(r, [])
-        chance = round(100 * w / total_w, 1)
-        for g in pool:
-            items.append({**g, "drop_chance": chance, "rarity": r})
-    # превью-картинки для карточки кейса
-    preview = []
-    for r in c["rarities"]:
-        preview.extend(NFT_GIFTS.get(r, [])[:2])
-    return {"case": c, "items": items, "preview": preview[:6]}
+    if c.get("star_drops"):
+        total = sum(c.get("star_weights") or [1]*len(c["star_drops"])) or 1
+        for s, w in zip(c["star_drops"], c.get("star_weights") or [1]*len(c["star_drops"])):
+            items.append({"name": f"⭐ {s}", "value": s, "emoji": "⭐", "rarity": "Common", "drop_chance": round(100*w/total,1), "img": ""})
+        return {"case": c, "items": items, "preview": items[:6]}
+    if c.get("allin"):
+        items.append({"name": "Пусто / 0–5⭐", "value": 0, "emoji": "💀", "rarity": "Common", "drop_chance": 99.99, "img": ""})
+        jn = c.get("jackpot_name", "Jackpot")
+        items.append({"name": jn, "value": c.get("jackpot_value", 0), "emoji": get_emoji(jn), "rarity": "Mythic", "drop_chance": float(c.get("jackpot_chance") or 0)*100, "img": gift_img_url(jn)})
+        return {"case": c, "items": items, "preview": items}
+    rarities = c.get("rarities") or []
+    weights = c.get("weights") or []
+    total_w = sum(weights) or 1
+    force = c.get("force_names") or []
+    if force:
+        for name in force:
+            found = None
+            for r, arr in NFT_GIFTS.items():
+                for g in arr:
+                    if g["name"] == name:
+                        found = {**g, "rarity": r, "drop_chance": round(100/len(force),1)}
+                        break
+                if found: break
+            if found:
+                items.append(found)
+            else:
+                items.append({"name": name, "value": 500, "emoji": get_emoji(name), "rarity": "Epic", "drop_chance": round(100/len(force),1), "img": gift_img_url(name)})
+    else:
+        for r, w in zip(rarities, weights):
+            pool = NFT_GIFTS.get(r, [])
+            chance = round(100 * w / total_w, 1)
+            for g in pool:
+                items.append({**g, "drop_chance": chance, "rarity": r})
+    preview = items[:6]
+    return {"case": c, "items": items, "preview": preview}
 
 @app.get("/api/live")
 async def get_live():
@@ -1567,7 +1770,10 @@ async def deposit_confirm(req: DepositConfirmRequest, user=Depends(verify_telegr
         raise HTTPException(400, "Неизвестный платёж")
     amount = int(info["amount"])
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+        try:
+            await db.execute("UPDATE users SET balance=balance+?, total_deposited=COALESCE(total_deposited,0)+? WHERE tg_id=?", (amount, amount, tg_id))
+        except Exception:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
         await db.commit()
     return {"success": True, "balance": (await get_user(tg_id))["balance"], "amount": amount}
 
@@ -1603,34 +1809,178 @@ async def telegram_webhook(request: Request):
 
 @app.post("/api/case/open")
 async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
-    tg_id=user['id']; c=CASES.get(req.case_id)
-    if not c: raise HTTPException(400,"Invalid case")
-    if c["price"]>0 and (await get_user(tg_id))["balance"]<c["price"]: raise HTTPException(400,"Insufficient")
-    if req.case_id=="free_daily":
+    tg_id = user["id"]
+    c = CASES.get(req.case_id)
+    if not c:
+        raise HTTPException(400, "Invalid case")
+    u = await get_user(tg_id)
+    if c["price"] > 0 and u["balance"] < c["price"]:
+        raise HTTPException(400, "Insufficient")
+
+    # free daily cooldown
+    if req.case_id == "free_daily":
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cur:
-                r=await cur.fetchone()
-                if r and (datetime.now()-datetime.fromisoformat(r[0])).total_seconds()<86400: raise HTTPException(400,"Cooldown")
-            await db.execute("INSERT OR REPLACE INTO free_case_cooldowns (user_id,last_used) VALUES (?,?)", (tg_id,datetime.now().isoformat())); await db.commit()
-    if random.random()<0.3:
-        stars=round(random.uniform(c.get("min_stars",0), c.get("max_stars",10)),1)
+                r = await cur.fetchone()
+                if r and (datetime.now() - datetime.fromisoformat(r[0])).total_seconds() < 86400:
+                    raise HTTPException(400, "Cooldown")
+            await db.execute(
+                "INSERT OR REPLACE INTO free_case_cooldowns (user_id,last_used) VALUES (?,?)",
+                (tg_id, datetime.now().isoformat()),
+            )
+            await db.commit()
+
+    # charge + track
+    async def charge_and_inc():
         async with aiosqlite.connect(DB_NAME) as db:
-            if c["price"]>0: await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (c["price"],c["price"],tg_id))
-            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars),tg_id)); await db.commit()
-        return {"success":True,"stars_earned":stars,"balance":(await get_user(tg_id))["balance"]}
-    rarity=random.choices(c["rarities"], weights=c["weights"])[0]; gift=random.choice(NFT_GIFTS[rarity])
-    async with aiosqlite.connect(DB_NAME) as db:
-        if c["price"]>0: await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (c["price"],c["price"],tg_id))
-        u=await get_user(tg_id); inv=u["inventory"]
-        inv.append({"id":gift["id"],"name":gift["name"],"rarity":rarity,"value":gift["value"],"emoji":gift["emoji"],"img":gift.get("img","")})
-        await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv),tg_id)); await db.commit()
+            if c["price"] > 0:
+                await db.execute(
+                    "UPDATE users SET balance=balance-?, total_spent=total_spent+?, games_played=games_played+1 WHERE tg_id=?",
+                    (c["price"], c["price"], tg_id),
+                )
+            else:
+                await db.execute("UPDATE users SET games_played=games_played+1 WHERE tg_id=?", (tg_id,))
+            # cases_opened column (safe if missing)
+            try:
+                await db.execute("UPDATE users SET cases_opened=COALESCE(cases_opened,0)+1 WHERE tg_id=?", (tg_id,))
+            except Exception:
+                pass
+            await db.commit()
+
     uname = user.get("first_name") or user.get("username") or "Player"
-    push_live({**gift, "rarity": rarity}, uname)
+
+    # ---------- ALL-IN ----------
+    if c.get("allin"):
+        await charge_and_inc()
+        jp_chance = float(c.get("jackpot_chance") or 0)
+        # allin_pepe: jackpot_chance forced 0 so Pepe never drops
+        if random.random() < jp_chance and jp_chance > 0:
+            # extremely rare real jackpot
+            name = c.get("jackpot_name", "Plush Pepe")
+            val = int(c.get("jackpot_value", 100000))
+            gift = {
+                "id": name.lower().replace(" ", "_").replace("'", ""),
+                "name": name,
+                "value": val,
+                "emoji": get_emoji(name),
+                "img": gift_img_url(name),
+                "rarity": "Mythic",
+            }
+            async with aiosqlite.connect(DB_NAME) as db:
+                u2 = await get_user(tg_id)
+                inv = u2["inventory"]
+                inv.append({k: gift[k] for k in ("id", "name", "rarity", "value", "emoji", "img")})
+                await db.execute("UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?", (json.dumps(inv), tg_id))
+                await db.commit()
+            push_live(gift, uname)
+            try:
+                await sio.emit("live_win", {"name": gift["name"], "emoji": gift["emoji"], "img": gift.get("img", ""), "user": uname})
+            except Exception:
+                pass
+            return {"success": True, "gift": gift, "rarity": "Mythic", "balance": (await get_user(tg_id))["balance"], "allin_win": True}
+        # lose path: tiny stars or 0
+        drops = c.get("lose_stars") or [0]
+        weights = c.get("lose_weights") or [100]
+        stars = int(random.choices(drops, weights=weights)[0])
+        if stars > 0:
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
+                await db.commit()
+        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "allin_lose": True}
+
+    # ---------- PURE STARS CASES ----------
+    if c.get("star_drops"):
+        await charge_and_inc()
+        drops = c["star_drops"]
+        weights = c.get("star_weights") or [1] * len(drops)
+        stars = int(random.choices(drops, weights=weights)[0])
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
+            await db.commit()
+        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
+
+    # ---------- FREE / mixed: stars or gift ----------
+    stars_chance = float(c.get("stars_chance", 0.3 if c.get("min_stars") is not None else 0))
+    if c.get("stars_bias_low"):
+        # free case: часто очень мало
+        if random.random() < 0.85:
+            # low roll 0.1–8 mostly
+            stars = round(random.uniform(0.1, 8), 1)
+            if random.random() < 0.15:
+                stars = round(random.uniform(8, 25), 1)
+            if random.random() < 0.04:
+                stars = round(random.uniform(25, 50), 1)
+            await charge_and_inc()
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars), tg_id))
+                await db.commit()
+            return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
+
+    if stars_chance > 0 and random.random() < stars_chance and c.get("min_stars") is not None:
+        lo = c.get("min_stars", 1)
+        hi = c.get("max_stars", 20)
+        stars = int(round(random.uniform(lo, hi)))
+        await charge_and_inc()
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
+            await db.commit()
+        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
+
+    # ---------- NFT drop ----------
+    force = c.get("force_names") or []
+    if force:
+        # pick from forced list, map to existing gift by name
+        name = random.choice(force)
+        gift = None
+        rarity = "Epic"
+        for r, arr in NFT_GIFTS.items():
+            for g in arr:
+                if g["name"] == name:
+                    gift = {**g, "rarity": r}
+                    rarity = r
+                    break
+            if gift:
+                break
+        if not gift:
+            # synthesize
+            gift = {
+                "id": name.lower().replace(" ", "_").replace("'", ""),
+                "name": name,
+                "value": 500,
+                "emoji": get_emoji(name),
+                "img": gift_img_url(name),
+                "rarity": "Epic",
+            }
+            rarity = "Epic"
+    else:
+        rarities = c.get("rarities") or ["Common"]
+        weights = c.get("weights") or [100]
+        rarity = random.choices(rarities, weights=weights)[0]
+        pool = NFT_GIFTS.get(rarity) or NFT_GIFTS["Common"]
+        gift = random.choice(pool)
+        gift = {**gift, "rarity": rarity}
+
+    await charge_and_inc()
+    async with aiosqlite.connect(DB_NAME) as db:
+        u2 = await get_user(tg_id)
+        inv = u2["inventory"]
+        inv.append({
+            "id": gift["id"], "name": gift["name"], "rarity": gift.get("rarity", rarity),
+            "value": gift["value"], "emoji": gift["emoji"], "img": gift.get("img", ""),
+        })
+        await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv), tg_id))
+        await db.commit()
+    push_live(gift, uname)
     try:
         await sio.emit("live_win", {"name": gift["name"], "emoji": gift["emoji"], "img": gift.get("img", ""), "user": uname})
     except Exception:
         pass
-    return {"success":True,"gift":gift,"rarity":rarity,"balance":(await get_user(tg_id))["balance"]}
+    return {
+        "success": True,
+        "gift": gift,
+        "rarity": gift.get("rarity", rarity),
+        "balance": (await get_user(tg_id))["balance"],
+    }
 
 @app.post("/api/upgrade")
 async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
@@ -1793,6 +2143,75 @@ async def admin_give(req:AdminGiveRequest, user=Depends(verify_admin)):
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount,req.user_id)); await db.commit()
         await log_admin_action(user['id'], "give_stars", f"Gave {req.amount} to {req.user_id}")
     return {"success":True,"message":f"Added {req.amount} to {req.user_id}"}
+
+
+@app.get("/api/admin/tops")
+async def admin_tops(user=Depends(verify_admin)):
+    """Топы: депы / слив / открытые кейсы. Сбрасываются каждые 14 дней вручную/по флагу."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        # ensure columns
+        for col in ("total_deposited", "cases_opened"):
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        await db.commit()
+        dep = await (await db.execute(
+            "SELECT tg_id, username, COALESCE(total_deposited,0) as v FROM users ORDER BY v DESC LIMIT 20"
+        )).fetchall()
+        spent = await (await db.execute(
+            "SELECT tg_id, username, total_spent as v FROM users ORDER BY total_spent DESC LIMIT 20"
+        )).fetchall()
+        cases = await (await db.execute(
+            "SELECT tg_id, username, COALESCE(cases_opened,0) as v FROM users ORDER BY v DESC LIMIT 20"
+        )).fetchall()
+    def pack(rows):
+        return [{"tg_id": r[0], "username": r[1] or "Player", "value": r[2]} for r in rows]
+    return {
+        "by_deposit": pack(dep),
+        "by_spent": pack(spent),
+        "by_cases": pack(cases),
+        "period_days": 14,
+        "prizes": {
+            "1": "NFT 2000–3000⭐ (выдаёшь сам)",
+            "2": "NFT 1000–1500⭐ (выдаёшь сам)",
+            "3": "750⭐ (выдаёшь сам)",
+        },
+    }
+
+@app.post("/api/admin/give_prize")
+async def admin_give_prize(req: dict, user=Depends(verify_admin)):
+    """Выдать приз по tg_id: stars или конкретный gift по name/value/rarity."""
+    tg_id = int(req.get("user_id") or 0)
+    if tg_id <= 0:
+        raise HTTPException(400, "Invalid user_id")
+    prize_type = (req.get("prize_type") or "stars").lower()
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT OR IGNORE INTO users (tg_id, balance) VALUES (?, 50)", (tg_id,))
+        if prize_type == "stars":
+            amount = int(req.get("amount") or 0)
+            if amount < 1:
+                raise HTTPException(400, "amount")
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+            await db.commit()
+            await log_admin_action(user["id"], "give_prize_stars", f"{amount} to {tg_id}")
+            return {"success": True, "message": f"+{amount}⭐ to {tg_id}"}
+        else:
+            name = req.get("name") or "Gift"
+            value = int(req.get("value") or 100)
+            rarity = req.get("rarity") or "Epic"
+            emoji = get_emoji(name)
+            img = gift_img_url(name)
+            gid = name.lower().replace(" ", "_").replace("'", "")
+            # load inv
+            async with db.execute("SELECT inventory FROM users WHERE tg_id=?", (tg_id,)) as cur:
+                row = await cur.fetchone()
+            inv = json.loads(row[0] if row and row[0] else "[]")
+            inv.append({"id": gid, "name": name, "rarity": rarity, "value": value, "emoji": emoji, "img": img})
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv), tg_id))
+            await db.commit()
+            await log_admin_action(user["id"], "give_prize_gift", f"{name} to {tg_id}")
+            return {"success": True, "message": f"Gift {name} to {tg_id}"}
 
 @app.post("/api/admin/promo")
 async def create_promo(req:PromoCreateRequest, user=Depends(verify_admin)):
