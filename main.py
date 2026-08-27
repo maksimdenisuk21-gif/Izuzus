@@ -99,29 +99,22 @@ def gift_img_url(name: str) -> str:
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
 def build_nft_gifts():
-    """Все NFT_NAMES по редкостям, плотная сетка цен для апгрейда."""
+    """Все NFT_NAMES по редкостям. Мин. цена NFT ~80⭐ (дешёвых за 10 нет)."""
     gifts = {r: [] for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]}
-    # больше предметов в низких тирах
-    weights = {
-        "Common": 0.28, "Uncommon": 0.24, "Rare": 0.20,
-        "Epic": 0.14, "Legendary": 0.09, "Mythic": 0.05
-    }
     base = {
-        "Common": 10, "Uncommon": 80, "Rare": 250,
-        "Epic": 800, "Legendary": 2500, "Mythic": 10000
+        "Common": 80, "Uncommon": 180, "Rare": 400,
+        "Epic": 900, "Legendary": 2500, "Mythic": 12000
     }
     step = {
-        "Common": 4, "Uncommon": 12, "Rare": 30,
-        "Epic": 80, "Legendary": 250, "Mythic": 2000
+        "Common": 12, "Uncommon": 25, "Rare": 55,
+        "Epic": 120, "Legendary": 350, "Mythic": 2500
     }
     order = ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]
-    # распределяем по весам, не циклически
     buckets = {r: [] for r in order}
     for i, name in enumerate(NFT_NAMES):
-        # round-robin с bias к низким тирам
         r = order[i % 6]
         if i < len(NFT_NAMES) * 0.55 and r in ("Legendary","Mythic"):
-            r = order[i % 4]  # чаще Common..Epic
+            r = order[i % 4]
         buckets[r].append(name)
     for r in order:
         for n, name in enumerate(buckets[r]):
@@ -145,16 +138,16 @@ CASES = {
         "name": "🎁 FREE DAILY", "price": 0, "cooldown": 86400,
         "category": "free", "icon": "🎁", "color": "free",
         "rarities": ["Common"], "weights": [100],
-        "min_stars": 1, "max_stars": 50, "stars_bias_low": True,
+        "min_stars": 1, "max_stars": 20, "stars_bias_low": True, "stars_chance": 1.0,
         "desc": "Раз в 24ч · чаще мало, иногда до 50⭐"
     },
-    # ===== STARS CASES (только звёзды) =====
+    # ===== STARS =====
     "star_case_1": {
         "name": "⭐ STAR CASE I", "price": 50, "category": "stars",
         "icon": "⭐", "color": "c-starter",
         "star_drops": [5, 15, 25, 35, 40, 55, 70, 100],
         "star_weights": [28, 22, 16, 12, 9, 7, 4, 2],
-        "desc": "8 дропов 5–100⭐ · EV чуть ниже цены"
+        "desc": "8 дропов 5–100⭐"
     },
     "star_case_2": {
         "name": "⭐ STAR CASE II", "price": 100, "category": "stars",
@@ -177,7 +170,7 @@ CASES = {
         "star_weights": [22, 20, 16, 14, 12, 8, 5, 3],
         "desc": "50–1500⭐"
     },
-    # ===== NFT CASES =====
+    # ===== NFT =====
     "nft_starter": {
         "name": "🌱 NFT STARTER", "price": 200, "category": "nft",
         "icon": "🌱", "color": "c-starter",
@@ -256,16 +249,15 @@ CASES = {
         "force_names": ["Durov's Cap", "Heroic Helmet", "Plush Pepe", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
         "desc": "Топ-коллекции"
     },
-    # ===== ALL-IN (хайл риск) =====
+    # ===== ALL-IN =====
     "allin_pepe": {
         "name": "🐸 ALL-IN PEPE", "price": 40, "category": "allin",
         "icon": "🐸", "color": "c-pepe",
         "allin": True,
-        # 99.999% ничего (мелкие ⭐ или пусто), крошечный шанс на Pepe — но в коде Pepe НЕ падает
         "lose_stars": [0, 1, 2, 3, 5],
         "lose_weights": [50, 25, 15, 7, 3],
         "jackpot_name": "Plush Pepe", "jackpot_value": 1000000, "jackpot_chance": 0.0,
-        "desc": "40⭐ · 99.99% ничего · «шанс» на Pepe 1M (не падает)"
+        "desc": "40⭐ · 99.99% ничего · Pepe не падает"
     },
     "allin_rolex": {
         "name": "⌚ ALL-IN ROLEX", "price": 25, "category": "allin",
@@ -274,7 +266,7 @@ CASES = {
         "lose_stars": [0, 1, 2],
         "lose_weights": [70, 20, 10],
         "jackpot_name": "Swiss Watch", "jackpot_value": 50000, "jackpot_chance": 0.00001,
-        "desc": "25⭐ · почти всегда 0 · микрошанс на Rolex"
+        "desc": "25⭐ · микрошанс на Rolex"
     },
     "allin_cap": {
         "name": "🧢 ALL-IN CAP", "price": 60, "category": "allin",
@@ -283,7 +275,7 @@ CASES = {
         "lose_stars": [0, 1, 2, 5],
         "lose_weights": [55, 25, 12, 8],
         "jackpot_name": "Durov's Cap", "jackpot_value": 200000, "jackpot_chance": 0.000005,
-        "desc": "60⭐ · микрошанс на Durov's Cap"
+        "desc": "60⭐ · микрошанс на Cap"
     },
     "allin_helmet": {
         "name": "⛑️ ALL-IN HELMET", "price": 80, "category": "allin",
@@ -292,7 +284,7 @@ CASES = {
         "lose_stars": [0, 1, 3],
         "lose_weights": [60, 25, 15],
         "jackpot_name": "Heroic Helmet", "jackpot_value": 150000, "jackpot_chance": 0.000008,
-        "desc": "80⭐ · микрошанс на Heroic Helmet"
+        "desc": "80⭐ · микрошанс на Helmet"
     },
     # ===== RICH =====
     "rich_gold": {
@@ -460,7 +452,7 @@ def verify_admin(user=Depends(verify_telegram)):
 
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    return max(1, min(60, (in_val/target)*100*(1-HOUSE_EDGE)))
+    return max(1, min(85, (in_val/target)*100*(1-HOUSE_EDGE)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -1672,9 +1664,18 @@ async def case_contents(case_id: str):
     items = []
     if c.get("star_drops"):
         total = sum(c.get("star_weights") or [1]*len(c["star_drops"])) or 1
-        for s, w in zip(c["star_drops"], c.get("star_weights") or [1]*len(c["star_drops"])):
-            items.append({"name": f"⭐ {s}", "value": s, "emoji": "⭐", "rarity": "Common", "drop_chance": round(100*w/total,1), "img": ""})
+        for sv, w in zip(c["star_drops"], c.get("star_weights") or [1]*len(c["star_drops"])):
+            items.append({"name": f"⭐ {sv}", "value": sv, "emoji": "⭐", "rarity": "Common", "drop_chance": round(100*w/total,1), "img": ""})
         return {"case": c, "items": items, "preview": items[:6]}
+    # free case — только мелкие ⭐ + байт-превью (не дропаются)
+    if c.get("stars_bias_low") or case_id == "free_daily":
+        for sv, ch in [(1, 40), (3, 25), (5, 15), (8, 10), (12, 6), (20, 4)]:
+            items.append({"name": f"⭐ {sv}", "value": sv, "emoji": "⭐", "rarity": "Common", "drop_chance": ch, "img": ""})
+        bait = []
+        for rname in ("Legendary", "Mythic"):
+            for g in NFT_GIFTS.get(rname, [])[:2]:
+                bait.append({**g, "drop_chance": 0, "name": g["name"] + " (байт)"})
+        return {"case": c, "items": items + bait, "preview": items[:6]}
     if c.get("allin"):
         items.append({"name": "Пусто / 0–5⭐", "value": 0, "emoji": "💀", "rarity": "Common", "drop_chance": 99.99, "img": ""})
         jn = c.get("jackpot_name", "Jackpot")
@@ -1899,22 +1900,36 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             await db.commit()
         return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
 
+    # ---------- FREE: только 0.1–20⭐, NFT никогда ----------
+    if c.get("stars_bias_low") or req.case_id == "free_daily":
+        r = random.random()
+        if r < 0.70:
+            stars = round(random.uniform(0.1, 3), 1)
+        elif r < 0.90:
+            stars = round(random.uniform(3, 8), 1)
+        elif r < 0.98:
+            stars = round(random.uniform(8, 15), 1)
+        else:
+            stars = round(random.uniform(15, 20), 1)
+        await charge_and_inc()
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (max(1, int(stars)), tg_id))
+            await db.commit()
+        # bait_items для рулетки на фронте (дорогие NFT — только визуал)
+        bait = []
+        for rname in ("Legendary", "Mythic", "Epic"):
+            bait.extend(NFT_GIFTS.get(rname, [])[:3])
+        return {
+            "success": True,
+            "stars_earned": stars,
+            "balance": (await get_user(tg_id))["balance"],
+            "bait": [{"name": b["name"], "emoji": b["emoji"], "value": b["value"], "img": b.get("img", "")} for b in bait[:8]],
+        }
+
     # ---------- FREE / mixed: stars or gift ----------
     stars_chance = float(c.get("stars_chance", 0.3 if c.get("min_stars") is not None else 0))
-    if c.get("stars_bias_low"):
-        # free case: часто очень мало
-        if random.random() < 0.85:
-            # low roll 0.1–8 mostly
-            stars = round(random.uniform(0.1, 8), 1)
-            if random.random() < 0.15:
-                stars = round(random.uniform(8, 25), 1)
-            if random.random() < 0.04:
-                stars = round(random.uniform(25, 50), 1)
-            await charge_and_inc()
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars), tg_id))
-                await db.commit()
-            return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
+    if False:  # disabled old free path
+        pass
 
     if stars_chance > 0 and random.random() < stars_chance and c.get("min_stars") is not None:
         lo = c.get("min_stars", 1)
@@ -2283,4 +2298,4 @@ async def startup():
 
 if __name__=="__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
+    uvicorn.run(socket_app, host="0.0.0.0", port=8000
