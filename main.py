@@ -1,2517 +1,1161 @@
-# main.py - GiftUpgrader с админ-панелью (исправленные кейсы с окупаемостью)
-import os
-import hmac
-import hashlib
-import json
-import urllib.parse
-import random
-import time
-import uuid
-import asyncio
-import math
-from typing import Dict, List, Optional, Any
+# main.py - GiftUpgrader (полный код)
+
+import os, hmac, hashlib, json, urllib.parse, random, time, uuid, asyncio, math
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Header, HTTPException, Depends, Request, Form
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import aiosqlite
-import httpx
 import socketio
 
-# ==================== APP INIT ====================
-app = FastAPI(title="GiftUpgrader Admin Panel", version="2.0.0")
-
-sio = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins='*',
-    ping_timeout=10,
-    ping_interval=5
-)
+app = FastAPI(title="GiftUpgrader")
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 socket_app = socketio.ASGIApp(sio, app)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ==================== CONFIG ====================
+# ===== CONFIG =====
 BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_TG_ID = 7092015279
 DB_NAME = "database.db"
 HOUSE_EDGE = 0.05
-REFERRAL_PERCENT = 7
-MAX_WITHDRAW_AMOUNT = 50000
-WITHDRAW_FEE = 0.05
+TON_TO_STARS = 110
 
-# ==================== NFT NAMES ====================
+# ===== NFT NAMES =====
 NFT_NAMES = [
-    "Astral Shard", "B-Day Candle", "Berry Box", "Big Year",
-    "Bonded Ring", "Bow Tie", "Bunny Muffin", "Candy Cane",
-    "Cookie Heart", "Crystal Ball", "Cupid Charm", "Diamond Ring",
-    "Durov's Cap", "Electric Skull", "Eternal Rose", "Flying Broom",
-    "Genie Lamp", "Ginger Cookie", "Heart Locket", "Heroic Helmet",
-    "Hex Pot", "Holiday Drink", "Ion Gem", "Jack-in-the-Box",
-    "Jester Hat", "Khabib's Papakha", "Light Sword", "Loot Bag",
-    "Love Potion", "Lunar Snake", "Magic Potion", "Mini Oscar",
-    "Moon Pendant", "Nail Bracelet", "Neko Helmet", "Onyx Black",
-    "Perfume Bottle", "Plush Pepe", "Precious Peach", "Restless Jar",
-    "Rocket", "Santa Hat", "Scared Cat", "Signet Ring",
-    "Skull Flower", "Snow Globe", "Spiced Wine", "Star Notepad",
-    "Swiss Watch", "Top Hat", "Toy Bear", "Trapped Heart",
-    "Vintage Cigar", "Voodoo Doll", "Witch Hat", "Xmas Stocking",
-    "Happy Brownie", "Sakura Flower", "Easter Egg", "Westside Sign",
-    "Fresh Socks", "Low Rider", "Gingerbread House", "Record Player",
-    "Desk Calendar", "Spy Agaric", "Holiday Perfume", "Sharp Tongue",
-    "Evil Eye", "Faith Amulet", "Diamond Hand", "Mad Pumpkin",
-    "Eternal Candle", "Golden Horse", "Hypno Lollipop", "Jolly Chimp",
-    "Magic Mouse", "Mighty Arm", "Pretty Posy", "Swag Bag"
+    "Astral Shard","B-Day Candle","Berry Box","Big Year","Bonded Ring","Bow Tie",
+    "Bunny Muffin","Candy Cane","Cookie Heart","Crystal Ball","Cupid Charm",
+    "Diamond Ring","Durov's Cap","Electric Skull","Eternal Rose","Flying Broom",
+    "Genie Lamp","Ginger Cookie","Heart Locket","Heroic Helmet","Hex Pot",
+    "Holiday Drink","Ion Gem","Jack-in-the-Box","Jester Hat","Khabib's Papakha",
+    "Light Sword","Loot Bag","Love Potion","Lunar Snake","Magic Potion",
+    "Mini Oscar","Moon Pendant","Nail Bracelet","Neko Helmet","Onyx Black",
+    "Perfume Bottle","Plush Pepe","Precious Peach","Restless Jar","Rocket",
+    "Santa Hat","Scared Cat","Signet Ring","Skull Flower","Snow Globe",
+    "Spiced Wine","Star Notepad","Swiss Watch","Top Hat","Toy Bear",
+    "Trapped Heart","Vintage Cigar","Voodoo Doll","Witch Hat","Xmas Stocking"
 ]
 
-# ==================== RARITY COLORS ====================
 RARITY_COLORS = {
-    "Common": {"gradient": "from-gray-600 to-gray-400", "border": "#8B8B8B", "glow": "rgba(139,139,139,0.3)", "color": "#8B8B8B"},
-    "Uncommon": {"gradient": "from-green-700 to-green-400", "border": "#4CAF50", "glow": "rgba(76,175,80,0.3)", "color": "#4CAF50"},
-    "Rare": {"gradient": "from-blue-700 to-blue-400", "border": "#2196F3", "glow": "rgba(33,150,243,0.3)", "color": "#2196F3"},
-    "Epic": {"gradient": "from-purple-700 to-purple-400", "border": "#9C27B0", "glow": "rgba(156,39,176,0.3)", "color": "#9C27B0"},
-    "Legendary": {"gradient": "from-amber-700 to-amber-400", "border": "#FFC107", "glow": "rgba(255,193,7,0.3)", "color": "#FFC107"},
-    "Mythic": {"gradient": "from-red-700 to-red-400", "border": "#F44336", "glow": "rgba(244,67,54,0.3)", "color": "#F44336"}
+    "Common": {"color":"#8B8B8B","bg":"rgba(139,139,139,0.15)"},
+    "Uncommon": {"color":"#4CAF50","bg":"rgba(76,175,80,0.15)"},
+    "Rare": {"color":"#2196F3","bg":"rgba(33,150,243,0.15)"},
+    "Epic": {"color":"#9C27B0","bg":"rgba(156,39,176,0.15)"},
+    "Legendary": {"color":"#FFC107","bg":"rgba(255,193,7,0.15)"},
+    "Mythic": {"color":"#F44336","bg":"rgba(244,67,54,0.15)"}
 }
 
-def get_emoji_for_name(name: str) -> str:
-    emoji_map = {
-        "Astral Shard": "💫", "B-Day Candle": "🎂", "Berry Box": "🫐", "Big Year": "📅",
-        "Bonded Ring": "💍", "Bow Tie": "🎀", "Bunny Muffin": "🐰", "Candy Cane": "🍭",
-        "Cookie Heart": "🍪", "Crystal Ball": "🔮", "Cupid Charm": "💘", "Diamond Ring": "💎",
-        "Durov's Cap": "🧢", "Electric Skull": "⚡", "Eternal Rose": "🌹", "Flying Broom": "🧹",
-        "Genie Lamp": "🪔", "Ginger Cookie": "🍪", "Heart Locket": "❤️", "Heroic Helmet": "⛑️",
-        "Hex Pot": "🧪", "Holiday Drink": "🥂", "Ion Gem": "💠", "Jack-in-the-Box": "📦",
-        "Jester Hat": "🎭", "Khabib's Papakha": "🧢", "Light Sword": "⚔️", "Loot Bag": "💰",
-        "Love Potion": "💗", "Lunar Snake": "🐍", "Magic Potion": "🧙", "Mini Oscar": "🏆",
-        "Moon Pendant": "🌙", "Nail Bracelet": "📿", "Neko Helmet": "🐱", "Onyx Black": "🖤",
-        "Perfume Bottle": "🧴", "Plush Pepe": "🐸", "Precious Peach": "🍑", "Restless Jar": "🏺",
-        "Rocket": "🚀", "Santa Hat": "🎅", "Scared Cat": "😱", "Signet Ring": "💍",
-        "Skull Flower": "💀", "Snow Globe": "❄️", "Spiced Wine": "🍷", "Star Notepad": "📒",
-        "Swiss Watch": "⌚", "Top Hat": "🎩", "Toy Bear": "🧸", "Trapped Heart": "💔",
-        "Vintage Cigar": "🚬", "Voodoo Doll": "🪆", "Witch Hat": "🧙", "Xmas Stocking": "🧦",
-        "Happy Brownie": "🍫", "Sakura Flower": "🌸", "Easter Egg": "🥚", "Westside Sign": "🤙",
-        "Fresh Socks": "🧦", "Low Rider": "🚗", "Gingerbread House": "🏠", "Record Player": "🎵",
-        "Desk Calendar": "📆", "Spy Agaric": "🍄", "Holiday Perfume": "🌸", "Sharp Tongue": "👅",
-        "Evil Eye": "🧿", "Faith Amulet": "📿", "Diamond Hand": "💎", "Mad Pumpkin": "🎃",
-        "Eternal Candle": "🕯️", "Golden Horse": "🐴", "Hypno Lollipop": "🍭", "Jolly Chimp": "🐵",
-        "Magic Mouse": "🐭", "Mighty Arm": "💪", "Pretty Posy": "💐", "Swag Bag": "👜"
+def get_emoji(name):
+    m = {
+        "Astral Shard":"💫","B-Day Candle":"🎂","Berry Box":"🫐","Big Year":"📅",
+        "Bonded Ring":"💍","Bow Tie":"🎀","Bunny Muffin":"🐰","Candy Cane":"🍭",
+        "Cookie Heart":"🍪","Crystal Ball":"🔮","Cupid Charm":"💘","Diamond Ring":"💎",
+        "Durov's Cap":"🧢","Electric Skull":"⚡","Eternal Rose":"🌹","Flying Broom":"🧹",
+        "Genie Lamp":"🪔","Ginger Cookie":"🍪","Heart Locket":"❤️","Heroic Helmet":"⛑️",
+        "Hex Pot":"🧪","Holiday Drink":"🥂","Ion Gem":"💠","Jack-in-the-Box":"📦",
+        "Jester Hat":"🎭","Khabib's Papakha":"🧢","Light Sword":"⚔️","Loot Bag":"💰",
+        "Love Potion":"💗","Lunar Snake":"🐍","Magic Potion":"🧙","Mini Oscar":"🏆",
+        "Moon Pendant":"🌙","Nail Bracelet":"📿","Neko Helmet":"🐱","Onyx Black":"🖤",
+        "Perfume Bottle":"🧴","Plush Pepe":"🐸","Precious Peach":"🍑","Restless Jar":"🏺",
+        "Rocket":"🚀","Santa Hat":"🎅","Scared Cat":"😱","Signet Ring":"💍",
+        "Skull Flower":"💀","Snow Globe":"❄️","Spiced Wine":"🍷","Star Notepad":"📒",
+        "Swiss Watch":"⌚","Top Hat":"🎩","Toy Bear":"🧸","Trapped Heart":"💔",
+        "Vintage Cigar":"🚬","Voodoo Doll":"🪆","Witch Hat":"🧙","Xmas Stocking":"🧦"
     }
-    return emoji_map.get(name, "🎁")
+    return m.get(name, "🎁")
 
-# ==================== NFT ПОДАРКИ (8 В КАЖДОЙ РЕДКОСТИ) ====================
 def build_nft_gifts():
     gifts = {}
-    rarity_counts = {
-        "Common": 8,
-        "Uncommon": 8,
-        "Rare": 8,
-        "Epic": 8,
-        "Legendary": 8,
-        "Mythic": 8
+    values = {
+        "Common": (15,80), "Uncommon": (100,350), "Rare": (400,900),
+        "Epic": (1000,2500), "Legendary": (3000,8000), "Mythic": (10000,60000)
     }
-    # Цены увеличены, чтобы кейсы окупались
-    value_ranges = {
-        "Common": (15, 80),
-        "Uncommon": (100, 350),
-        "Rare": (400, 900),
-        "Epic": (1000, 2500),
-        "Legendary": (3000, 8000),
-        "Mythic": (10000, 60000)
-    }
-    name_index = 0
-    for rarity, count in rarity_counts.items():
-        gifts[rarity] = []
-        min_val, max_val = value_ranges[rarity]
-        # Генерируем уникальные значения для каждой редкости
-        values = []
-        for i in range(count):
-            if rarity == "Common":
-                v = random.randint(min_val, max_val)
-                v = round(v / 5) * 5
-            elif rarity in ["Uncommon", "Rare"]:
-                v = random.randint(min_val, max_val)
-                v = round(v / 10) * 10
-            elif rarity in ["Epic", "Legendary"]:
-                v = random.randint(min_val, max_val)
-                v = round(v / 50) * 50
-            else:
-                v = random.randint(min_val, max_val)
-                v = round(v / 100) * 100
-            if v < 1:
-                v = 1
-            values.append(v)
-        # Сортируем по возрастанию
-        values.sort()
-        for i in range(count):
-            if name_index >= len(NFT_NAMES):
-                name_index = 0
-            name = NFT_NAMES[name_index]
-            name_index += 1
-            gifts[rarity].append({
-                "id": name.lower().replace(" ", "_").replace("'", ""),
-                "name": name,
-                "value": values[i],
-                "emoji": get_emoji_for_name(name)
-            })
+    idx = 0
+    for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]:
+        gifts[r] = []
+        for i in range(8):
+            if idx >= len(NFT_NAMES): idx = 0
+            name = NFT_NAMES[idx]; idx += 1
+            v = random.randint(values[r][0], values[r][1])
+            v = round(v/10)*10 if r in ["Uncommon","Rare"] else round(v/50)*50 if r in ["Epic","Legendary"] else round(v/100)*100 if r=="Mythic" else round(v/5)*5
+            gifts[r].append({"id": name.lower().replace(" ","_"), "name": name, "value": max(1,v), "emoji": get_emoji(name)})
     return gifts
 
 NFT_GIFTS = build_nft_gifts()
 
-# ==================== КЕЙСЫ (ВСЁ ЗА ЗВЁЗДЫ, С ОКУПАЕМОСТЬЮ) ====================
 CASES = {
-    "free_daily": {
-        "name": "🎁 FREE DAILY CASE",
-        "price": 0,
-        "cooldown": 86400,
-        "rarities": ["Common"],
-        "weights": [100],
-        "min_stars": 0.5,
-        "max_stars": 15,
-        "description": "Бесплатно каждый день"
-    },
-    "tg_starter": {
-        "name": "🚀 TG STARTER CASE",
-        "price": 50,
-        "rarities": ["Common", "Uncommon"],
-        "weights": [50, 50],
-        "min_stars": 10,
-        "max_stars": 80,
-        "description": "Отличный старт"
-    },
-    "pepe_memes": {
-        "name": "🐸 PEPE & MEMES CASE",
-        "price": 200,
-        "rarities": ["Uncommon", "Rare"],
-        "weights": [45, 55],
-        "min_stars": 50,
-        "max_stars": 400,
-        "description": "Мемы и легенды"
-    },
-    "telegram_gifts": {
-        "name": "🎁 TELEGRAM GIFTS CASE",
-        "price": 500,
-        "rarities": ["Rare", "Epic"],
-        "weights": [40, 60],
-        "min_stars": 100,
-        "max_stars": 1200,
-        "description": "Эксклюзивные подарки"
-    },
-    "fragment_nft": {
-        "name": "💎 FRAGMENT NFT CASE",
-        "price": 1500,
-        "rarities": ["Epic", "Legendary"],
-        "weights": [45, 55],
-        "min_stars": 300,
-        "max_stars": 4000,
-        "description": "NFT от Fragment"
-    },
-    "durov_selection": {
-        "name": "👑 DUROV'S SELECTION",
-        "price": 5000,
-        "rarities": ["Legendary", "Mythic"],
-        "weights": [50, 50],
-        "min_stars": 1000,
-        "max_stars": 30000,
-        "description": "Топовая коллекция"
-    }
+    "free_daily": {"name":"🎁 FREE DAILY","price":0,"cooldown":86400,"rarities":["Common"],"weights":[100],"min_stars":0.5,"max_stars":15},
+    "tg_starter": {"name":"🚀 TG STARTER","price":50,"rarities":["Common","Uncommon"],"weights":[50,50],"min_stars":10,"max_stars":80},
+    "pepe_memes": {"name":"🐸 PEPE & MEMES","price":200,"rarities":["Uncommon","Rare"],"weights":[45,55],"min_stars":50,"max_stars":400},
+    "telegram_gifts": {"name":"🎁 TELEGRAM GIFTS","price":500,"rarities":["Rare","Epic"],"weights":[40,60],"min_stars":100,"max_stars":1200},
+    "fragment_nft": {"name":"💎 FRAGMENT NFT","price":1500,"rarities":["Epic","Legendary"],"weights":[45,55],"min_stars":300,"max_stars":4000},
+    "durov_selection": {"name":"👑 DUROV'S SELECTION","price":5000,"rarities":["Legendary","Mythic"],"weights":[50,50],"min_stars":1000,"max_stars":30000}
 }
 
-# ==================== GIFT UPGRADER MATH ====================
-def calculate_upgrade_chance(input_value: int, target_value: int) -> float:
-    base_chance = (input_value / target_value) * 100
-    final_chance = base_chance * (1 - HOUSE_EDGE)
-    if final_chance > 60:
-        final_chance = 60
-    if final_chance < 1:
-        final_chance = 1
-    return round(final_chance, 1)
+# ===== MODELS =====
+class UpgradeRequest(BaseModel): item_index:int; target_value:int
+class CaseOpenRequest(BaseModel): case_id:str
+class SellItemRequest(BaseModel): item_index:int
+class MinesStartRequest(BaseModel): bet:int; mines:int
+class MinesOpenRequest(BaseModel): game_id:str; cell:int
+class MinesCashoutRequest(BaseModel): game_id:str
+class AdminGiveRequest(BaseModel): user_id:int; amount:int
+class WithdrawRequest(BaseModel): amount:int; wallet:str
+class PromoCreateRequest(BaseModel): code:str; reward_type:str; case_id:str=None; stars:int=0; max_uses:int=1
+class AdminWithdrawStatusRequest(BaseModel): withdraw_id:int; status:str
 
-# ==================== MINES MATH ====================
-MINES_GRID_SIZE = 5
-
-def calculate_mines_multiplier(mines: int, opened: int) -> float:
-    total = MINES_GRID_SIZE * MINES_GRID_SIZE
-    safe = total - mines
-    if opened >= safe:
-        return round((1 - HOUSE_EDGE) * 100, 2)
-    prob = 1.0
-    for i in range(opened):
-        prob *= (safe - i) / (total - i)
-    multiplier = (1 - HOUSE_EDGE) / prob
-    caps = {1: 5, 3: 15, 5: 40, 10: 150, 15: 500, 20: 1500, 24: 3000}
-    cap_key = min(caps.keys(), key=lambda k: abs(k - mines))
-    return round(min(multiplier, caps[cap_key]), 2)
-
-# ==================== CRASH MATH ====================
-CRASH_MIN_BET = 25
-CRASH_MAX_BET = 5000
-CRASH_BETTING_TIME = 6
-CRASH_COOLDOWN = 3
-CRASH_SPEED = 0.08
-SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
-SERVER_SEED_HASH = hashlib.sha256(SERVER_SEED.encode()).hexdigest()
-crash_nonce = 0
-
-def generate_crash_point() -> tuple:
-    global crash_nonce, SERVER_SEED, SERVER_SEED_HASH
-    crash_nonce += 1
-    message = f"{SERVER_SEED}:{crash_nonce}"
-    hash_hex = hashlib.sha256(message.encode()).hexdigest()
-    h = int(hash_hex[:16], 16)
-    r = h / (2**64)
-    if r < 0.30:
-        cp = 1.01 + (r / 0.30) * 0.09
-    elif r < 0.60:
-        cp = 1.10 + ((r - 0.30) / 0.30) * 0.20
-    elif r < 0.82:
-        cp = 1.30 + ((r - 0.60) / 0.22) * 0.50
-    elif r < 0.94:
-        cp = 1.80 + ((r - 0.82) / 0.12) * 1.20
-    elif r < 0.98:
-        cp = 3.00 + ((r - 0.94) / 0.04) * 5.00
-    elif r < 0.995:
-        cp = 8.00 + ((r - 0.98) / 0.015) * 12.00
-    else:
-        cp = 20.00 + ((r - 0.995) / 0.005) * 30.00
-    return round(min(cp, 50.0), 2), hash_hex
-
-# ==================== MODELS ====================
-class UpgradeRequest(BaseModel):
-    item_index: int
-    target_value: int
-
-class CaseOpenRequest(BaseModel):
-    case_id: str
-
-class SellItemRequest(BaseModel):
-    item_index: int
-
-class MinesStartRequest(BaseModel):
-    bet: int
-    mines: int
-
-class MinesOpenRequest(BaseModel):
-    game_id: str
-    cell: int
-
-class MinesCashoutRequest(BaseModel):
-    game_id: str
-
-class AdminGiveRequest(BaseModel):
-    user_id: int
-    amount: int
-
-class WithdrawRequest(BaseModel):
-    amount: int
-    wallet: str
-
-class PromoCreateRequest(BaseModel):
-    code: str
-    reward_type: str
-    case_id: str = None
-    stars: int = 0
-    max_uses: int = 1
-
-class AdminWithdrawStatusRequest(BaseModel):
-    withdraw_id: int
-    status: str
-
-# ==================== DATABASE ====================
+# ===== DB =====
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                tg_id INTEGER PRIMARY KEY,
-                username TEXT DEFAULT 'Player',
-                balance INTEGER DEFAULT 50,
-                total_spent INTEGER DEFAULT 0,
-                inventory TEXT DEFAULT '[]',
-                games_played INTEGER DEFAULT 0,
-                wins INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS withdrawals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tg_id INTEGER,
-                amount INTEGER,
-                wallet TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS referrals (
-                user_id INTEGER PRIMARY KEY,
-                referrer_id INTEGER NOT NULL,
-                total_earned INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS referral_earnings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                referrer_id INTEGER NOT NULL,
-                referral_id INTEGER NOT NULL,
-                deposit_amount INTEGER NOT NULL,
-                earned INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS promocodes (
-                code TEXT PRIMARY KEY,
-                reward_type TEXT,
-                case_id TEXT,
-                stars INTEGER DEFAULT 0,
-                max_uses INTEGER DEFAULT 1,
-                uses INTEGER DEFAULT 0,
-                created_by INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS promo_uses (
-                user_id INTEGER,
-                promo_code TEXT,
-                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, promo_code)
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS free_case_cooldowns (
-                user_id INTEGER PRIMARY KEY,
-                last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS admin_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admin_id INTEGER,
-                action TEXT,
-                details TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Player', balance INTEGER DEFAULT 50, total_spent INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]', games_played INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS withdrawals (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, wallet TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, total_earned INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS promocodes (code TEXT PRIMARY KEY, reward_type TEXT, case_id TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS promo_uses (user_id INTEGER, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, promo_code))")
+        await db.execute("CREATE TABLE IF NOT EXISTS free_case_cooldowns (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute("CREATE TABLE IF NOT EXISTS admin_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.commit()
 
-async def get_user(tg_id: int) -> dict:
+async def get_user(tg_id):
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
-            "SELECT balance, total_spent, inventory, games_played, wins FROM users WHERE tg_id = ?",
-            (tg_id,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            if row:
-                return {
-                    "balance": row[0],
-                    "total_spent": row[1],
-                    "inventory": json.loads(row[2]),
-                    "games_played": row[3],
-                    "wins": row[4]
-                }
-            else:
-                await db.execute(
-                    "INSERT INTO users (tg_id, balance, inventory) VALUES (?, 50, '[]')",
-                    (tg_id,)
-                )
-                await db.commit()
-                return {"balance": 50, "total_spent": 0, "inventory": [], "games_played": 0, "wins": 0}
+        async with db.execute("SELECT balance,total_spent,inventory,games_played,wins FROM users WHERE tg_id=?", (tg_id,)) as c:
+            r = await c.fetchone()
+            if r: return {"balance": r[0], "total_spent": r[1], "inventory": json.loads(r[2]), "games_played": r[3], "wins": r[4]}
+            await db.execute("INSERT INTO users (tg_id, balance, inventory) VALUES (?, 50, '[]')", (tg_id,)); await db.commit()
+            return {"balance": 50, "total_spent": 0, "inventory": [], "games_played": 0, "wins": 0}
 
-async def log_admin_action(admin_id: int, action: str, details: str = ""):
+async def log_admin_action(admin_id, action, details=""):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "INSERT INTO admin_logs (admin_id, action, details) VALUES (?, ?, ?)",
-            (admin_id, action, details)
-        )
+        await db.execute("INSERT INTO admin_logs (admin_id, action, details) VALUES (?, ?, ?)", (admin_id, action, details))
         await db.commit()
 
-# ==================== AUTH ====================
+# ===== AUTH =====
 def verify_telegram(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization")
-    if not BOT_TOKEN:
-        raise HTTPException(status_code=500, detail="BOT_TOKEN not configured")
-    
+    if not authorization or not BOT_TOKEN: raise HTTPException(401)
     try:
         data = urllib.parse.parse_qs(authorization)
-        hash_val = data.get('hash', [None])[0]
-        if not hash_val:
-            raise HTTPException(status_code=401, detail="Invalid data")
-        
-        sorted_data = sorted([f"{k}={v[0]}" for k, v in data.items() if k != 'hash'])
-        check_string = "\n".join(sorted_data)
+        h = data.get('hash', [None])[0]
+        if not h: raise HTTPException(401)
+        sd = sorted([f"{k}={v[0]}" for k,v in data.items() if k!='hash'])
         secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-        calc_hash = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
-        
-        if calc_hash != hash_val:
-            raise HTTPException(status_code=401, detail="Validation failed")
-        
+        if hmac.new(secret, "\n".join(sd).encode(), hashlib.sha256).hexdigest() != h: raise HTTPException(401)
         return json.loads(data.get('user', ['{}'])[0])
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Auth error: {str(e)}")
+    except: raise HTTPException(401)
 
-def verify_admin(user: dict = Depends(verify_telegram)):
-    if user['id'] != ADMIN_TG_ID:
-        raise HTTPException(status_code=403, detail="Admin access required")
+def verify_admin(user=Depends(verify_telegram)):
+    if user['id'] != ADMIN_TG_ID: raise HTTPException(403)
     return user
 
-# ==================== ФРОНТЕНД ====================
-FRONTEND_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GiftUpgrader</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0D121D;
-            color: #E8E8E8;
-            min-height: 100vh;
-            overflow-x: hidden;
-            padding-bottom: 80px;
-        }
-        ::-webkit-scrollbar { width: 0; background: transparent; }
-        .app-container { max-width: 480px; margin: 0 auto; padding: 16px; }
-        .glass {
-            background: rgba(22, 31, 46, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0 20px;
-        }
-        .logo {
-            font-size: 22px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #FFC107, #FF6B00);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .balance-badge {
-            background: rgba(255,193,7,0.15);
-            border: 1px solid rgba(255,193,7,0.25);
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 15px;
-            font-weight: 600;
-            color: #FFC107;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .tabs {
-            display: flex;
-            gap: 6px;
-            background: rgba(13, 18, 29, 0.6);
-            border-radius: 16px;
-            padding: 4px;
-            margin-bottom: 20px;
-            overflow-x: auto;
-            flex-wrap: nowrap;
-        }
-        .tab-btn {
-            flex: 1;
-            min-width: 60px;
-            padding: 10px 6px;
-            border: none;
-            background: transparent;
-            color: #8899AA;
-            font-size: 12px;
-            font-weight: 600;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.3s;
-            white-space: nowrap;
-            text-align: center;
-        }
-        .tab-btn.active {
-            background: linear-gradient(135deg, #FFC107, #FF6B00);
-            color: #0D121D;
-            box-shadow: 0 4px 16px rgba(255,193,7,0.25);
-        }
-        .tab-btn:active { transform: scale(0.95); }
-        .tab-content { display: none; animation: fadeUp 0.4s ease; }
-        .tab-content.active { display: block; }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-
-        .upgrader-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .gift-card {
-            background: rgba(13, 18, 29, 0.6);
-            border-radius: 16px;
-            padding: 16px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.05);
-            transition: all 0.3s;
-        }
-        .gift-card.selected { border-color: #FFC107; box-shadow: 0 0 24px rgba(255,193,7,0.1); }
-        .gift-card .emoji { font-size: 48px; display: block; margin-bottom: 6px; }
-        .gift-card .name { font-size: 13px; font-weight: 600; color: #E8E8E8; }
-        .gift-card .value { font-size: 12px; color: #8899AA; margin-top: 2px; }
-        .gift-card .rarity-badge {
-            display: inline-block;
-            font-size: 10px;
-            padding: 2px 10px;
-            border-radius: 10px;
-            margin-top: 4px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
-        .arrow-icon { font-size: 28px; text-align: center; color: #FFC107; align-self: center; }
-
-        .wheel-wrapper {
-            position: relative;
-            width: 100%;
-            max-width: 340px;
-            margin: 0 auto 16px;
-            aspect-ratio: 1/1;
-        }
-        .wheel {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            position: relative;
-            transition: transform 4s cubic-bezier(0.15, 0.90, 0.25, 1.00);
-            box-shadow: 0 0 40px rgba(255,193,7,0.05), inset 0 0 60px rgba(0,0,0,0.3);
-        }
-        .wheel canvas { width: 100%; height: 100%; border-radius: 50%; display: block; }
-        .wheel-pointer {
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 16px solid transparent;
-            border-right: 16px solid transparent;
-            border-top: 28px solid #FFC107;
-            filter: drop-shadow(0 4px 12px rgba(255,193,7,0.5));
-            z-index: 10;
-        }
-        .wheel-center {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #1A2A3F, #0D121D);
-            border: 2px solid rgba(255,193,7,0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            color: #FFC107;
-            z-index: 5;
-            box-shadow: 0 0 30px rgba(255,193,7,0.1);
-        }
-        .wheel-glow {
-            position: absolute;
-            inset: -8px;
-            border-radius: 50%;
-            pointer-events: none;
-            transition: all 0.6s;
-            opacity: 0;
-        }
-        .wheel-glow.success { opacity: 1; box-shadow: 0 0 60px rgba(76,175,80,0.4), inset 0 0 60px rgba(76,175,80,0.1); }
-        .wheel-glow.fail { opacity: 1; box-shadow: 0 0 60px rgba(244,67,54,0.4), inset 0 0 60px rgba(244,67,54,0.1); }
-
-        .upgrade-info {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 24px;
-            padding: 12px 0;
-        }
-        .upgrade-info .stat { text-align: center; }
-        .upgrade-info .stat .label { font-size: 11px; color: #8899AA; text-transform: uppercase; letter-spacing: 0.5px; }
-        .upgrade-info .stat .value { font-size: 22px; font-weight: 700; }
-        .upgrade-info .stat .value.green { color: #4CAF50; }
-        .upgrade-info .stat .value.gold { color: #FFC107; }
-
-        .btn-upgrade {
-            width: 100%;
-            padding: 16px;
-            border: none;
-            border-radius: 16px;
-            font-size: 18px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #FFC107, #FF6B00);
-            color: #0D121D;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 24px rgba(255,193,7,0.2);
-        }
-        .btn-upgrade:active { transform: scale(0.97); }
-        .btn-upgrade:disabled { opacity: 0.5; transform: scale(0.98); cursor: not-allowed; box-shadow: none; }
-        .btn-upgrade .spinner { display: none; width: 20px; height: 20px; border: 2px solid rgba(13,18,29,0.2); border-top-color: #0D121D; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
-        .btn-upgrade.loading .spinner { display: block; }
-        .btn-upgrade.loading .label { display: none; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .cases-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-        .case-card {
-            background: rgba(13,18,29,0.6);
-            border-radius: 16px;
-            padding: 16px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.05);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .case-card:active { transform: scale(0.96); }
-        .case-card .price { font-size: 14px; font-weight: 600; color: #FFC107; }
-        .case-card .name { font-size: 13px; font-weight: 600; margin: 4px 0; }
-        .case-card .rarities { font-size: 11px; color: #8899AA; }
-        .case-card .desc { font-size: 10px; color: #667788; margin-top: 4px; }
-        .case-card.free { border-color: rgba(76,175,80,0.3); }
-        .case-card .cooldown { font-size: 11px; color: #F44336; }
-        .case-card .stars-range { font-size: 11px; color: #FFC107; margin-top: 2px; }
-
-        .inv-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-        }
-        .inv-item {
-            background: rgba(13,18,29,0.6);
-            border-radius: 14px;
-            padding: 12px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.05);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .inv-item:active { transform: scale(0.95); }
-        .inv-item .emoji { font-size: 32px; }
-        .inv-item .name { font-size: 11px; font-weight: 500; margin-top: 4px; }
-        .inv-item .val { font-size: 10px; color: #8899AA; }
-        .inv-item .sell-btn {
-            margin-top: 6px;
-            padding: 4px 12px;
-            border: none;
-            border-radius: 8px;
-            background: rgba(244,67,54,0.2);
-            color: #F44336;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .inv-item.selected { border-color: #FFC107; box-shadow: 0 0 20px rgba(255,193,7,0.1); }
-
-        .mines-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-            max-width: 340px;
-            margin: 12px auto;
-        }
-        .mine-cell {
-            aspect-ratio: 1/1;
-            background: rgba(22,31,46,0.8);
-            border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.06);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            color: #8899AA;
-        }
-        .mine-cell:active { transform: scale(0.92); }
-        .mine-cell.opened { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.2); }
-        .mine-cell.bomb { background: rgba(244,67,54,0.2); border-color: rgba(244,67,54,0.3); color: #F44336; }
-        .mine-cell .gem { color: #FFC107; }
-
-        .crash-graph {
-            background: rgba(13,18,29,0.6);
-            border-radius: 16px;
-            padding: 16px;
-            height: 160px;
-            position: relative;
-            overflow: hidden;
-            margin-bottom: 12px;
-        }
-        .crash-graph canvas { width: 100%; height: 100%; }
-        .crash-bet-row { display: flex; gap: 10px; align-items: center; }
-        .crash-bet-row input {
-            flex: 1;
-            padding: 12px 16px;
-            background: rgba(13,18,29,0.6);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px;
-            color: #E8E8E8;
-            font-size: 16px;
-        }
-        .crash-bet-row input:focus { outline: none; border-color: #FFC107; }
-        .crash-bet-row .btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .btn-crash-bet { background: linear-gradient(135deg, #4CAF50, #2E7D32); color: white; }
-        .btn-crash-cashout { background: linear-gradient(135deg, #FFC107, #FF6B00); color: #0D121D; }
-        .btn:active { transform: scale(0.95); }
-        .crash-multiplier { font-size: 42px; font-weight: 800; text-align: center; padding: 8px 0; color: #FFC107; }
-        .crash-status { text-align: center; font-size: 14px; color: #8899AA; padding: 4px 0; }
-
-        .promo-row { display: flex; gap: 10px; margin-top: 12px; }
-        .promo-row input {
-            flex: 1;
-            padding: 12px 16px;
-            background: rgba(13,18,29,0.6);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px;
-            color: #E8E8E8;
-            font-size: 14px;
-            text-transform: uppercase;
-        }
-        .promo-row input:focus { outline: none; border-color: #FFC107; }
-        .promo-row .btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #FFC107, #FF6B00);
-            color: #0D121D;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .ref-card { text-align: center; padding: 20px; }
-        .ref-card .big { font-size: 48px; font-weight: 800; color: #FFC107; }
-        .ref-card .link {
-            background: rgba(13,18,29,0.6);
-            padding: 10px 16px;
-            border-radius: 12px;
-            margin: 12px 0;
-            font-size: 14px;
-            word-break: break-all;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .toast-container {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 999;
-            width: 90%;
-            max-width: 400px;
-        }
-        .toast {
-            padding: 14px 20px;
-            border-radius: 14px;
-            background: rgba(22,31,46,0.95);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.08);
-            text-align: center;
-            font-weight: 500;
-            font-size: 14px;
-            animation: toastIn 0.4s ease;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        }
-        .toast.success { border-color: #4CAF50; color: #4CAF50; }
-        .toast.error { border-color: #F44336; color: #F44336; }
-        .toast.info { border-color: #FFC107; color: #FFC107; }
-        @keyframes toastIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-
-        @media (max-width: 420px) {
-            .upgrader-grid { gap: 8px; }
-            .gift-card .emoji { font-size: 36px; }
-            .wheel-wrapper { max-width: 280px; }
-            .cases-grid { grid-template-columns: 1fr 1fr; }
-            .inv-grid { grid-template-columns: repeat(3, 1fr); }
-        }
-    </style>
-</head>
-<body>
-
-<div class="app-container" id="app">
-    <div class="header">
-        <div class="logo">🎮 GiftUpgrader</div>
-        <div class="balance-badge" id="balanceDisplay">⭐ 0</div>
-    </div>
-
-    <div class="tabs" id="tabs">
-        <button class="tab-btn active" data-tab="upgrader">⬆️ Апгрейд</button>
-        <button class="tab-btn" data-tab="cases">🎁 Кейсы</button>
-        <button class="tab-btn" data-tab="mines">💣 Мины</button>
-        <button class="tab-btn" data-tab="crash">🚀 Ракетка</button>
-        <button class="tab-btn" data-tab="inventory">🎒 Инвентарь</button>
-        <button class="tab-btn" data-tab="profile">👤 Профиль</button>
-    </div>
-
-    <!-- UPGRADER -->
-    <div class="tab-content active" id="tab-upgrader">
-        <div class="glass glow-border" style="padding:16px;">
-            <div class="upgrader-grid">
-                <div class="gift-card selected" id="inputGift">
-                    <span class="emoji" id="inputEmoji">🧸</span>
-                    <div class="name" id="inputName">Plush Bear</div>
-                    <div class="value" id="inputValue">⭐ 15</div>
-                    <span class="rarity-badge" id="inputRarity" style="background:rgba(139,139,139,0.2);color:#8B8B8B;">Common</span>
-                </div>
-                <div class="arrow-icon">➡️</div>
-                <div class="gift-card" id="targetGift">
-                    <span class="emoji" id="targetEmoji">💎</span>
-                    <div class="name" id="targetName">Telegram Premium</div>
-                    <div class="value" id="targetValue">⭐ 80</div>
-                    <span class="rarity-badge" id="targetRarity" style="background:rgba(76,175,80,0.2);color:#4CAF50;">Uncommon</span>
-                </div>
-            </div>
-
-            <div class="wheel-wrapper">
-                <div class="wheel-glow" id="wheelGlow"></div>
-                <div class="wheel" id="wheel">
-                    <canvas id="wheelCanvas" width="400" height="400"></canvas>
-                </div>
-                <div class="wheel-pointer"></div>
-                <div class="wheel-center" id="wheelCenter">?</div>
-            </div>
-
-            <div class="upgrade-info">
-                <div class="stat"><div class="label">Шанс</div><div class="value gold" id="chanceDisplay">35.0%</div></div>
-                <div class="stat"><div class="label">Множитель</div><div class="value green" id="multiplierDisplay">2.5x</div></div>
-            </div>
-
-            <button class="btn-upgrade" id="upgradeBtn">
-                <span class="label">⬆️ АПГРЕЙД</span>
-                <div class="spinner"></div>
-            </button>
-        </div>
-    </div>
-
-    <!-- CASES -->
-    <div class="tab-content" id="tab-cases">
-        <div class="glass glow-border">
-            <div class="cases-grid" id="casesGrid"></div>
-        </div>
-    </div>
-
-    <!-- MINES -->
-    <div class="tab-content" id="tab-mines">
-        <div class="glass glow-border">
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-                <input type="number" id="minesBet" placeholder="Ставка" value="10" style="flex:1; padding:10px 14px; background:rgba(13,18,29,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:12px; color:#E8E8E8; font-size:14px;">
-                <input type="number" id="minesCount" placeholder="Мин" value="3" min="1" max="24" style="flex:1; padding:10px 14px; background:rgba(13,18,29,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:12px; color:#E8E8E8; font-size:14px;">
-                <button class="btn" id="minesStartBtn" style="padding:10px 20px; background:linear-gradient(135deg,#4CAF50,#2E7D32); color:white; border:none; border-radius:12px; font-weight:600; cursor:pointer;">Старт</button>
-            </div>
-            <div class="mines-grid" id="minesGrid"></div>
-            <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px;">
-                <span>Множитель: <strong id="minesMultiplier">1.00x</strong></span>
-                <span>Открыто: <strong id="minesOpened">0</strong></span>
-                <button class="btn" id="minesCashoutBtn" style="padding:8px 16px; background:linear-gradient(135deg,#FFC107,#FF6B00); color:#0D121D; border:none; border-radius:10px; font-weight:600; cursor:pointer; display:none;">Забрать</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- CRASH -->
-    <div class="tab-content" id="tab-crash">
-        <div class="glass glow-border">
-            <div class="crash-graph"><canvas id="crashCanvas"></canvas></div>
-            <div class="crash-multiplier" id="crashMultiplier">1.00x</div>
-            <div class="crash-status" id="crashStatus">Ожидание ставок...</div>
-            <div class="crash-bet-row">
-                <input type="number" id="crashBetInput" placeholder="Ставка" value="25" min="25" max="5000">
-                <button class="btn btn-crash-bet" id="crashBetBtn">Ставка</button>
-                <button class="btn btn-crash-cashout" id="crashCashoutBtn" style="display:none;">Забрать</button>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;" id="crashBetsList"></div>
-        </div>
-    </div>
-
-    <!-- INVENTORY -->
-    <div class="tab-content" id="tab-inventory">
-        <div class="glass glow-border">
-            <div class="inv-grid" id="invGrid"></div>
-            <div style="margin-top:12px; text-align:center; color:#8899AA; font-size:13px;" id="invEmpty">Инвентарь пуст</div>
-        </div>
-    </div>
-
-    <!-- PROFILE -->
-    <div class="tab-content" id="tab-profile">
-        <div class="glass glow-border">
-            <div style="text-align:center; padding:12px 0;">
-                <div style="font-size:48px;">👤</div>
-                <div style="font-size:20px; font-weight:600;" id="profileName">Player</div>
-                <div style="font-size:14px; color:#8899AA;" id="profileId">ID: 0</div>
-                <div style="margin:12px 0; display:flex; justify-content:center; gap:24px;">
-                    <div><div style="font-size:12px; color:#8899AA;">Баланс</div><div style="font-size:20px; font-weight:700; color:#FFC107;" id="profileBalance">0</div></div>
-                    <div><div style="font-size:12px; color:#8899AA;">Игр</div><div style="font-size:20px; font-weight:700;" id="profileGames">0</div></div>
-                    <div><div style="font-size:12px; color:#8899AA;">Побед</div><div style="font-size:20px; font-weight:700; color:#4CAF50;" id="profileWins">0</div></div>
-                </div>
-            </div>
-            <div class="ref-card">
-                <div class="big">🎯</div>
-                <div style="font-weight:600; font-size:16px;">Реферальная программа</div>
-                <div style="font-size:13px; color:#8899AA; margin:4px 0;">Получай 7% от депозитов друзей</div>
-                <div style="display:flex; justify-content:center; gap:24px; margin:12px 0;">
-                    <div><div style="font-size:12px; color:#8899AA;">Приглашено</div><div style="font-size:18px; font-weight:700;" id="refCount">0</div></div>
-                    <div><div style="font-size:12px; color:#8899AA;">Заработано</div><div style="font-size:18px; font-weight:700; color:#FFC107;" id="refEarned">0</div></div>
-                </div>
-                <div class="link" id="refLink">Загрузка...</div>
-                <button class="btn" id="copyRefBtn" style="padding:8px 24px; background:rgba(255,193,7,0.15); color:#FFC107; border:1px solid rgba(255,193,7,0.2); border-radius:12px; cursor:pointer;">📋 Копировать ссылку</button>
-            </div>
-            <div style="margin-top:12px;">
-                <div class="promo-row">
-                    <input type="text" id="promoInput" placeholder="Введите промокод">
-                    <button class="btn" id="promoActivateBtn">Активировать</button>
-                </div>
-            </div>
-            <div style="margin-top:12px;">
-                <button class="btn" id="withdrawBtn" style="width:100%; padding:12px; background:rgba(244,67,54,0.15); color:#F44336; border:1px solid rgba(244,67,54,0.2); border-radius:12px; font-weight:600; cursor:pointer;">💳 Вывести звёзды</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="toast-container" id="toastContainer"></div>
-
-<script>
-// ============================================================
-// 1. ГЛОБАЛЬНОЕ СОСТОЯНИЕ
-// ============================================================
-const STATE = {
-    tgId: 0,
-    username: 'Player',
-    balance: 50,
-    inventory: [],
-    gamesPlayed: 0,
-    wins: 0,
-    isAdmin: false,
-    selectedItemIndex: 0,
-    targetValue: 80,
-    isUpgrading: false,
-    minesGameId: null,
-    minesOpened: 0,
-    minesMultiplier: 1,
-    minesBombPositions: [],
-    crashConnected: false,
-    crashSocket: null,
-    crashBetPlaced: false,
-    casesData: {},
-    freeCaseAvailable: true,
-};
-
-// ============================================================
-// 2. TELEGRAM WEBAPP
-// ============================================================
-function initTelegram() {
-    if (window.Telegram && window.Telegram.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.enableClosingConfirmation();
-        const user = tg.initDataUnsafe?.user;
-        if (user) {
-            STATE.tgId = user.id;
-            STATE.username = user.first_name || 'Player';
-            document.getElementById('profileName').textContent = STATE.username;
-            document.getElementById('profileId').textContent = 'ID: ' + STATE.tgId;
-        }
-        window.tgHaptic = {
-            impact: (style = 'medium') => { try { tg.HapticFeedback.impactOccurred(style); } catch(e) {} },
-            notify: (type = 'success') => { try { tg.HapticFeedback.notificationOccurred(type); } catch(e) {} }
-        };
-    } else {
-        window.tgHaptic = { impact: () => {}, notify: () => {} };
-    }
-}
-
-// ============================================================
-// 3. API
-// ============================================================
-async function apiCall(method, url, body = null) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (window.Telegram?.WebApp?.initData) {
-        headers['Authorization'] = window.Telegram.WebApp.initData;
-    }
-    const options = { method, headers };
-    if (body) options.body = JSON.stringify(body);
-    const res = await fetch(url, options);
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'API Error');
-    }
-    return res.json();
-}
-
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    toast.className = 'toast ' + type;
-    toast.textContent = message;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
-}
-
-// ============================================================
-// 4. ПРОФИЛЬ
-// ============================================================
-async function loadProfile() {
-    try {
-        const data = await apiCall('GET', '/api/profile');
-        STATE.balance = data.balance || 0;
-        STATE.inventory = data.inventory || [];
-        STATE.gamesPlayed = data.games_played || 0;
-        STATE.wins = data.wins || 0;
-        STATE.isAdmin = data.is_admin || false;
-        STATE.freeCaseAvailable = data.free_case_available !== false;
-        updateBalance();
-        renderInventory();
-        document.getElementById('profileBalance').textContent = STATE.balance;
-        document.getElementById('profileGames').textContent = STATE.gamesPlayed;
-        document.getElementById('profileWins').textContent = STATE.wins;
-        loadRefStats();
-        loadCases();
-        loadGifts();
-        updateUpgraderUI();
-    } catch (e) {
-        console.error('Load profile error:', e);
-        showToast('Ошибка загрузки профиля', 'error');
-    }
-}
-
-function updateBalance() {
-    document.getElementById('balanceDisplay').textContent = '⭐ ' + STATE.balance;
-    document.getElementById('profileBalance').textContent = STATE.balance;
-}
-
-// ============================================================
-// 5. CASES
-// ============================================================
-async function loadCases() {
-    try {
-        const data = await apiCall('GET', '/api/cases');
-        STATE.casesData = data;
-        renderCases();
-    } catch (e) {
-        console.error('Load cases error:', e);
-    }
-}
-
-function renderCases() {
-    const grid = document.getElementById('casesGrid');
-    grid.innerHTML = '';
-    for (const [id, c] of Object.entries(STATE.casesData)) {
-        const card = document.createElement('div');
-        card.className = 'case-card' + (id === 'free_daily' ? ' free' : '');
-        const priceText = c.price === 0 ? '🎁 БЕСПЛАТНО' : '⭐ ' + c.price;
-        const rarities = c.rarities.join(' • ');
-        const starsRange = c.min_stars ? '⭐ ' + c.min_stars + ' - ' + c.max_stars : '';
-        card.innerHTML = `
-            <div style="font-size:28px;">🎁</div>
-            <div class="name">${c.name}</div>
-            <div class="price">${priceText}</div>
-            <div class="rarities">${rarities}</div>
-            <div class="stars-range">${starsRange}</div>
-            <div class="desc">${c.description || ''}</div>
-            ${id === 'free_daily' ? (STATE.freeCaseAvailable ? '<div class="cooldown" style="color:#4CAF50;">✅ Доступен</div>' : '<div class="cooldown">⏳ 24ч</div>') : ''}
-        `;
-        card.addEventListener('click', () => openCase(id));
-        grid.appendChild(card);
-    }
-}
-
-async function openCase(caseId) {
-    try {
-        const data = await apiCall('POST', '/api/case/open', { case_id: caseId });
-        if (data.success) {
-            STATE.balance = data.balance || STATE.balance;
-            updateBalance();
-            const profile = await apiCall('GET', '/api/profile');
-            STATE.inventory = profile.inventory || [];
-            renderInventory();
-            updateUpgraderUI();
-            const starsEarned = data.stars_earned || 0;
-            if (starsEarned > 0) {
-                showToast('⭐ Получено ' + starsEarned + ' звёзд!', 'success');
-            } else if (data.gift) {
-                showToast('🎁 Получен: ' + data.gift.name + ' (' + data.rarity + ')', 'success');
-            }
-            window.tgHaptic?.notify('success');
-            if (caseId === 'free_daily') {
-                STATE.freeCaseAvailable = false;
-                renderCases();
-            }
-        }
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-// ============================================================
-// 6. UPGRADER
-// ============================================================
-let giftsData = null;
-
-async function loadGifts() {
-    try {
-        const data = await apiCall('GET', '/api/gifts');
-        giftsData = data;
-        const uncommon = data.gifts.Uncommon;
-        if (uncommon && uncommon.length > 0) {
-            STATE.targetValue = uncommon[0].value;
-        }
-        updateUpgraderUI();
-    } catch (e) {
-        console.error('Load gifts error:', e);
-    }
-}
-
-function updateUpgraderUI() {
-    const inv = STATE.inventory;
-    if (inv.length === 0) {
-        document.getElementById('inputEmoji').textContent = '❌';
-        document.getElementById('inputName').textContent = 'Нет предметов';
-        document.getElementById('inputValue').textContent = '⭐ 0';
-        document.getElementById('inputRarity').textContent = '—';
-        document.getElementById('inputRarity').style.background = 'rgba(255,255,255,0.05)';
-        document.getElementById('inputRarity').style.color = '#8899AA';
-        document.getElementById('chanceDisplay').textContent = '0%';
-        document.getElementById('multiplierDisplay').textContent = '0x';
-        return;
-    }
-    const idx = Math.min(STATE.selectedItemIndex, inv.length - 1);
-    const item = inv[idx];
-    document.getElementById('inputEmoji').textContent = item.emoji || '🎁';
-    document.getElementById('inputName').textContent = item.name || 'Item';
-    document.getElementById('inputValue').textContent = '⭐ ' + (item.value || 0);
-    const rarity = item.rarity || 'Common';
-    const colors = {
-        'Common': { bg: 'rgba(139,139,139,0.2)', color: '#8B8B8B' },
-        'Uncommon': { bg: 'rgba(76,175,80,0.2)', color: '#4CAF50' },
-        'Rare': { bg: 'rgba(33,150,243,0.2)', color: '#2196F3' },
-        'Epic': { bg: 'rgba(156,39,176,0.2)', color: '#9C27B0' },
-        'Legendary': { bg: 'rgba(255,193,7,0.2)', color: '#FFC107' },
-        'Mythic': { bg: 'rgba(244,67,54,0.2)', color: '#F44336' }
-    };
-    const c = colors[rarity] || colors['Common'];
-    document.getElementById('inputRarity').textContent = rarity;
-    document.getElementById('inputRarity').style.background = c.bg;
-    document.getElementById('inputRarity').style.color = c.color;
-
-    let targetGift = null;
-    if (giftsData) {
-        for (const [r, list] of Object.entries(giftsData.gifts)) {
-            for (const g of list) {
-                if (g.value === STATE.targetValue) {
-                    targetGift = { ...g, rarity: r };
-                    break;
-                }
-            }
-            if (targetGift) break;
-        }
-    }
-    if (!targetGift) {
-        const uncommon = giftsData?.gifts?.Uncommon?.[0];
-        if (uncommon) {
-            targetGift = { ...uncommon, rarity: 'Uncommon' };
-            STATE.targetValue = uncommon.value;
-        }
-    }
-    if (targetGift) {
-        document.getElementById('targetEmoji').textContent = targetGift.emoji || '🎁';
-        document.getElementById('targetName').textContent = targetGift.name || 'Target';
-        document.getElementById('targetValue').textContent = '⭐ ' + targetGift.value;
-        const tc = colors[targetGift.rarity] || colors['Common'];
-        document.getElementById('targetRarity').textContent = targetGift.rarity;
-        document.getElementById('targetRarity').style.background = tc.bg;
-        document.getElementById('targetRarity').style.color = tc.color;
-    }
-
-    const inputVal = item.value || 1;
-    const targetVal = targetGift?.value || 1;
-    const chance = Math.min((inputVal / targetVal) * 100 * 0.95, 60);
-    document.getElementById('chanceDisplay').textContent = chance.toFixed(1) + '%';
-    const mult = (targetVal / inputVal) * 0.95;
-    document.getElementById('multiplierDisplay').textContent = mult.toFixed(2) + 'x';
-    drawWheel(chance);
-}
-
-function drawWheel(chancePercent) {
-    const canvas = document.getElementById('wheelCanvas');
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    const cx = w/2, cy = h/2, r = w/2 - 4;
-    ctx.clearRect(0, 0, w, h);
-    const winAngle = (chancePercent / 100) * 2 * Math.PI;
-    const loseAngle = 2 * Math.PI - winAngle;
-    let start = -Math.PI/2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, start + winAngle);
-    ctx.closePath();
-    const gradWin = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    gradWin.addColorStop(0, '#4CAF50');
-    gradWin.addColorStop(1, '#1B5E20');
-    ctx.fillStyle = gradWin;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    start += winAngle;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, start + loseAngle);
-    ctx.closePath();
-    const gradLose = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    gradLose.addColorStop(0, '#F44336');
-    gradLose.addColorStop(1, '#880E4F');
-    ctx.fillStyle = gradLose;
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.15, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(13,18,29,0.6)';
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const labelAngle = -Math.PI/2 + winAngle/2;
-    ctx.fillText('WIN', cx + Math.cos(labelAngle) * r * 0.6, cy + Math.sin(labelAngle) * r * 0.6);
-    const loseLabelAngle = -Math.PI/2 + winAngle + loseAngle/2;
-    ctx.fillText('LOSE', cx + Math.cos(loseLabelAngle) * r * 0.6, cy + Math.sin(loseLabelAngle) * r * 0.6);
-    for (let i = 0; i < 24; i++) {
-        const angle = (i / 24) * 2 * Math.PI - Math.PI/2;
-        const r1 = r * 0.94, r2 = r * 0.98;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
-        ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-}
-
-let wheelRotation = 0;
-
-async function runUpgrade() {
-    if (STATE.isUpgrading) return;
-    const inv = STATE.inventory;
-    if (inv.length === 0) {
-        showToast('Нет предметов для апгрейда', 'error');
-        return;
-    }
-    const idx = Math.min(STATE.selectedItemIndex, inv.length - 1);
-    const item = inv[idx];
-    if (!item) return;
-    const targetVal = STATE.targetValue;
-    if (item.value >= targetVal) {
-        showToast('Цель должна быть дороже', 'error');
-        return;
-    }
-    STATE.isUpgrading = true;
-    const btn = document.getElementById('upgradeBtn');
-    btn.classList.add('loading');
-    btn.disabled = true;
-    document.getElementById('wheelGlow').className = 'wheel-glow';
-
-    try {
-        const data = await apiCall('POST', '/api/upgrade', {
-            item_index: idx,
-            target_value: targetVal
-        });
-        const finalAngle = data.angle || 0;
-        const isSuccess = data.success || false;
-        const totalRotation = 360 * 5 + (finalAngle % 360);
-        wheelRotation += totalRotation;
-        document.getElementById('wheel').style.transform = 'rotate(' + wheelRotation + 'deg)';
-        
-        const glow = document.getElementById('wheelGlow');
-        if (isSuccess) {
-            glow.className = 'wheel-glow success';
-            window.tgHaptic?.notify('success');
-        } else {
-            glow.className = 'wheel-glow fail';
-            window.tgHaptic?.notify('error');
-        }
-        
-        if (data.balance !== undefined) {
-            STATE.balance = data.balance;
-            updateBalance();
-        }
-
-        setTimeout(async () => {
-            try {
-                const profile = await apiCall('GET', '/api/profile');
-                STATE.inventory = profile.inventory || [];
-                STATE.balance = profile.balance || 0;
-                updateBalance();
-                renderInventory();
-                updateUpgraderUI();
-                showToast(data.message || (isSuccess ? '🎉 Успешно!' : '💔 Неудача'), isSuccess ? 'success' : 'error');
-            } catch (e) {}
-            STATE.isUpgrading = false;
-            btn.classList.remove('loading');
-            btn.disabled = false;
-            document.getElementById('wheelGlow').className = 'wheel-glow';
-        }, 4500);
-
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-        STATE.isUpgrading = false;
-        btn.classList.remove('loading');
-        btn.disabled = false;
-        document.getElementById('wheelGlow').className = 'wheel-glow';
-    }
-}
-
-// ============================================================
-// 7. INVENTORY
-// ============================================================
-function renderInventory() {
-    const grid = document.getElementById('invGrid');
-    const empty = document.getElementById('invEmpty');
-    grid.innerHTML = '';
-    if (!STATE.inventory || STATE.inventory.length === 0) {
-        empty.style.display = 'block';
-        return;
-    }
-    empty.style.display = 'none';
-    STATE.inventory.forEach((item, idx) => {
-        const div = document.createElement('div');
-        div.className = 'inv-item' + (idx === STATE.selectedItemIndex ? ' selected' : '');
-        const colors = {
-            'Common': 'rgba(139,139,139,0.2)',
-            'Uncommon': 'rgba(76,175,80,0.2)',
-            'Rare': 'rgba(33,150,243,0.2)',
-            'Epic': 'rgba(156,39,176,0.2)',
-            'Legendary': 'rgba(255,193,7,0.2)',
-            'Mythic': 'rgba(244,67,54,0.2)'
-        };
-        div.style.borderColor = colors[item.rarity] || 'rgba(255,255,255,0.05)';
-        div.innerHTML = `
-            <div class="emoji">${item.emoji || '🎁'}</div>
-            <div class="name">${item.name}</div>
-            <div class="val">⭐ ${item.value}</div>
-            <div style="font-size:9px; color:#8899AA;">${item.rarity}</div>
-            <button class="sell-btn" data-idx="${idx}">Продать</button>
-        `;
-        div.addEventListener('click', (e) => {
-            if (e.target.classList.contains('sell-btn')) return;
-            STATE.selectedItemIndex = idx;
-            renderInventory();
-            updateUpgraderUI();
-        });
-        const sellBtn = div.querySelector('.sell-btn');
-        sellBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await sellItem(idx);
-        });
-        grid.appendChild(div);
-    });
-}
-
-async function sellItem(idx) {
-    try {
-        const data = await apiCall('POST', '/api/inventory/sell', { item_index: idx });
-        if (data.success) {
-            STATE.balance = data.balance || STATE.balance;
-            updateBalance();
-            const profile = await apiCall('GET', '/api/profile');
-            STATE.inventory = profile.inventory || [];
-            renderInventory();
-            updateUpgraderUI();
-            showToast('💰 Продано за ' + data.price + ' ⭐', 'success');
-            window.tgHaptic?.impact('light');
-        }
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-// ============================================================
-// 8. MINES
-// ============================================================
-let minesState = { grid: [], opened: [], bombs: [], gameId: null, bet: 0, multiplier: 1, cashedOut: false, started: false };
-
-async function startMines() {
-    const bet = parseInt(document.getElementById('minesBet').value) || 10;
-    const mines = parseInt(document.getElementById('minesCount').value) || 3;
-    if (mines < 1 || mines > 24) {
-        showToast('Мины: 1-24', 'error');
-        return;
-    }
-    try {
-        const data = await apiCall('POST', '/api/mines/start', { bet, mines });
-        STATE.balance = data.balance || STATE.balance;
-        updateBalance();
-        minesState.gameId = data.game_id;
-        minesState.bet = data.bet;
-        minesState.started = true;
-        minesState.opened = [];
-        minesState.cashedOut = false;
-        minesState.multiplier = 1;
-        minesState.bombs = [];
-        minesState.grid = Array(25).fill(0);
-        renderMines();
-        document.getElementById('minesMultiplier').textContent = '1.00x';
-        document.getElementById('minesOpened').textContent = '0';
-        document.getElementById('minesCashoutBtn').style.display = 'none';
-        showToast('💣 Игра начата!', 'info');
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function openMineCell(idx) {
-    if (!minesState.started || minesState.cashedOut) return;
-    if (minesState.opened.includes(idx)) return;
-    try {
-        const data = await apiCall('POST', '/api/mines/open', {
-            game_id: minesState.gameId,
-            cell: idx
-        });
-        if (data.status === 'bomb') {
-            minesState.cashedOut = true;
-            minesState.bombs = data.mines || [];
-            renderMines();
-            showToast('💥 Бомба!', 'error');
-            window.tgHaptic?.notify('error');
-            document.getElementById('minesCashoutBtn').style.display = 'none';
-            const profile = await apiCall('GET', '/api/profile');
-            STATE.balance = profile.balance || 0;
-            updateBalance();
-            return;
-        }
-        minesState.opened = data.opened || [];
-        minesState.multiplier = data.multiplier || 1;
-        document.getElementById('minesMultiplier').textContent = minesState.multiplier.toFixed(2) + 'x';
-        document.getElementById('minesOpened').textContent = minesState.opened.length;
-        renderMines();
-        if (minesState.opened.length > 0) {
-            document.getElementById('minesCashoutBtn').style.display = 'block';
-        }
-        window.tgHaptic?.impact('light');
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function cashoutMines() {
-    if (!minesState.started || minesState.cashedOut) return;
-    if (minesState.opened.length === 0) {
-        showToast('Откройте хотя бы одну клетку', 'error');
-        return;
-    }
-    try {
-        const data = await apiCall('POST', '/api/mines/cashout', {
-            game_id: minesState.gameId
-        });
-        STATE.balance = data.balance || STATE.balance;
-        updateBalance();
-        minesState.cashedOut = true;
-        showToast('💰 Выигрыш: ' + data.win + ' ⭐ (x' + data.multiplier + ')', 'success');
-        window.tgHaptic?.notify('success');
-        document.getElementById('minesCashoutBtn').style.display = 'none';
-        renderMines();
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-function renderMines() {
-    const grid = document.getElementById('minesGrid');
-    grid.innerHTML = '';
-    for (let i = 0; i < 25; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'mine-cell';
-        if (minesState.opened.includes(i)) {
-            cell.classList.add('opened');
-            cell.textContent = '💎';
-        }
-        if (minesState.cashedOut && minesState.bombs && minesState.bombs.includes(i)) {
-            cell.classList.add('bomb');
-            cell.textContent = '💣';
-        }
-        if (minesState.cashedOut && !minesState.opened.includes(i) && !(minesState.bombs && minesState.bombs.includes(i))) {
-            cell.textContent = '💎';
-            cell.style.opacity = '0.5';
-        }
-        cell.dataset.idx = i;
-        cell.addEventListener('click', () => openMineCell(i));
-        grid.appendChild(cell);
-    }
-}
-
-// ============================================================
-// 9. CRASH
-// ============================================================
-function initCrash() {
-    const socket = io();
-    STATE.crashSocket = socket;
-    socket.on('connect', () => { STATE.crashConnected = true; });
-    socket.on('crash_state', (data) => {
-        document.getElementById('crashStatus').textContent = 
-            data.status === 'betting' ? '⌛ Ставки: ' + data.timer + 'с' :
-            data.status === 'flying' ? '🚀 Взлёт!' :
-            data.status === 'crashed' ? '💥 Крах!' :
-            '⏳ Ожидание...';
-        if (data.status === 'betting') document.getElementById('crashMultiplier').textContent = '1.00x';
-        if (data.history) drawCrashHistory(data.history);
-    });
-    socket.on('crash_multiplier', (data) => {
-        document.getElementById('crashMultiplier').textContent = data.multiplier.toFixed(2) + 'x';
-    });
-    socket.on('crash_start', (data) => {
-        document.getElementById('crashStatus').textContent = '🚀 Взлёт!';
-        document.getElementById('crashBetBtn').disabled = true;
-        document.getElementById('crashCashoutBtn').style.display = 'block';
-        STATE.crashBetPlaced = true;
-    });
-    socket.on('crash_end', (data) => {
-        document.getElementById('crashStatus').textContent = '💥 Крах на ' + data.crash_point.toFixed(2) + 'x';
-        document.getElementById('crashBetBtn').disabled = false;
-        document.getElementById('crashCashoutBtn').style.display = 'none';
-        STATE.crashBetPlaced = false;
-        loadProfile();
-        if (data.bets) {
-            document.getElementById('crashBetsList').innerHTML = data.bets.map(b => 
-                `<span style="font-size:12px; padding:2px 10px; border-radius:10px; background:rgba(255,255,255,0.05);">
-                    ${b.username}: ${b.win > 0 ? '✅+' + b.win : '❌0'}
-                </span>`
-            ).join('');
-        }
-    });
-    socket.on('cashout_success', (data) => {
-        showToast('💰 Забрано: ' + data.win + ' ⭐', 'success');
-        window.tgHaptic?.notify('success');
-        STATE.balance = data.balance || STATE.balance;
-        updateBalance();
-        document.getElementById('crashCashoutBtn').style.display = 'none';
-    });
-    socket.on('bet_placed', (data) => {
-        showToast('✅ Ставка ' + data.amount + ' ⭐ принята', 'success');
-        STATE.balance = data.balance || STATE.balance;
-        updateBalance();
-    });
-    socket.on('error', (data) => {
-        showToast('❌ ' + data.message, 'error');
-    });
-}
-
-function placeCrashBet() {
-    if (!STATE.crashConnected) { showToast('Подключение...', 'info'); return; }
-    const amount = parseInt(document.getElementById('crashBetInput').value) || 25;
-    if (amount < 25 || amount > 5000) { showToast('Ставка 25-5000 ⭐', 'error'); return; }
-    if (amount > STATE.balance) { showToast('Недостаточно средств', 'error'); return; }
-    STATE.crashSocket.emit('place_bet', { tg_id: STATE.tgId, amount, username: STATE.username });
-}
-
-function crashCashout() {
-    if (!STATE.crashConnected) return;
-    STATE.crashSocket.emit('cashout', { tg_id: STATE.tgId });
-}
-
-function drawCrashHistory(history) {
-    const canvas = document.getElementById('crashCanvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    if (!history || history.length < 2) {
-        ctx.fillStyle = '#8899AA';
-        ctx.font = '14px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('История раундов', w/2, h/2);
-        return;
-    }
-    const max = Math.max(2, ...history);
-    const min = 1;
-    const step = w / (history.length - 1);
-    ctx.beginPath();
-    ctx.strokeStyle = '#FFC107';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < history.length; i++) {
-        const x = i * step;
-        const y = h - ((history[i] - min) / (max - min)) * (h - 20) - 10;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, 'rgba(255,193,7,0.15)');
-    grad.addColorStop(1, 'rgba(255,193,7,0)');
-    ctx.fillStyle = grad;
-    ctx.fill();
-}
-
-// ============================================================
-// 10. REFERRALS
-// ============================================================
-async function loadRefStats() {
-    try {
-        const data = await apiCall('GET', '/api/referral/stats');
-        document.getElementById('refCount').textContent = data.referrals_count || 0;
-        document.getElementById('refEarned').textContent = data.total_earned || 0;
-        const link = 'https://t.me/' + (window.Telegram?.WebApp?.initDataUnsafe?.user?.username || 'GiftUpgraderBot') + '?start=ref_' + STATE.tgId;
-        document.getElementById('refLink').textContent = link;
-        window._refLink = link;
-    } catch (e) {}
-}
-
-function copyRefLink() {
-    const link = window._refLink || '';
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(() => showToast('📋 Ссылка скопирована!', 'success'));
-    } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = link;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        showToast('📋 Ссылка скопирована!', 'success');
-    }
-}
-
-// ============================================================
-// 11. PROMO
-// ============================================================
-async function activatePromo() {
-    const code = document.getElementById('promoInput').value.trim().toUpperCase();
-    if (!code) { showToast('Введите промокод', 'error'); return; }
-    try {
-        const data = await apiCall('POST', '/api/promo/activate?code=' + encodeURIComponent(code), {});
-        showToast(data.message || '✅ Промокод активирован!', 'success');
-        window.tgHaptic?.notify('success');
-        loadProfile();
-        document.getElementById('promoInput').value = '';
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-// ============================================================
-// 12. WITHDRAW
-// ============================================================
-async function withdrawFunds() {
-    const amount = prompt('Введите сумму для вывода (мин 100 ⭐):', '100');
-    if (!amount) return;
-    const val = parseInt(amount);
-    if (isNaN(val) || val < 100) { showToast('Минимальный вывод: 100 ⭐', 'error'); return; }
-    const wallet = prompt('Введите адрес кошелька (TON/TRC20):', '');
-    if (!wallet || wallet.length < 10) { showToast('Введите корректный адрес', 'error'); return; }
-    try {
-        const data = await apiCall('POST', '/api/withdraw', { amount: val, wallet });
-        showToast('✅ Заявка создана!', 'success');
-        STATE.balance = data.balance || STATE.balance;
-        updateBalance();
-    } catch (e) {
-        showToast('Ошибка: ' + e.message, 'error');
-    }
-}
-
-// ============================================================
-// 13. TABS
-// ============================================================
-function initTabs() {
-    const tabs = document.querySelectorAll('.tab-btn');
-    tabs.forEach(btn => {
-        btn.addEventListener('click', function() {
-            tabs.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
-            if (this.dataset.tab === 'inventory') renderInventory();
-            if (this.dataset.tab === 'profile') loadProfile();
-            if (this.dataset.tab === 'crash' && !STATE.crashConnected) initCrash();
-        });
-    });
-}
-
-// ============================================================
-// 14. INIT
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    initTelegram();
-    loadProfile();
-    initTabs();
-    renderInventory();
-    updateUpgraderUI();
-    
-    document.getElementById('upgradeBtn').addEventListener('click', runUpgrade);
-    document.getElementById('minesStartBtn').addEventListener('click', startMines);
-    document.getElementById('minesCashoutBtn').addEventListener('click', cashoutMines);
-    document.getElementById('crashBetBtn').addEventListener('click', placeCrashBet);
-    document.getElementById('crashCashoutBtn').addEventListener('click', crashCashout);
-    document.getElementById('promoActivateBtn').addEventListener('click', activatePromo);
-    document.getElementById('copyRefBtn').addEventListener('click', copyRefLink);
-    document.getElementById('withdrawBtn').addEventListener('click', withdrawFunds);
-    document.getElementById('promoInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') activatePromo(); });
-    
-    if (document.querySelector('.tab-btn[data-tab="crash"]').classList.contains('active')) initCrash();
-});
-
-console.log('🎮 GiftUpgrader v2.0 loaded');
-</script>
-</body>
-</html>
-"""
-
-# ==================== ADMIN PANEL HTML ====================
-ADMIN_PANEL_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GiftUpgrader Admin</title>
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0D121D;
-            color: #E8E8E8;
-            padding: 20px;
-        }
-        .container { max-width:1200px; margin:0 auto; }
-        .header {
-            display:flex; justify-content:space-between; align-items:center;
-            padding:20px; background:#161F2E; border-radius:16px;
-            margin-bottom:30px; border:1px solid #2A3A4F;
-        }
-        .header h1 {
-            font-size:28px;
-            background:linear-gradient(135deg,#FFC107,#F44336);
-            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-        }
-        .header .admin-badge {
-            background:#2A3A4F; padding:8px 16px; border-radius:20px;
-            font-size:14px; border:1px solid #FFC107; color:#FFC107;
-        }
-        .stats-grid {
-            display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-            gap:16px; margin-bottom:30px;
-        }
-        .stat-card {
-            background:#161F2E; padding:20px; border-radius:12px;
-            border:1px solid #2A3A4F; text-align:center;
-        }
-        .stat-card .value {
-            font-size:32px; font-weight:bold;
-            background:linear-gradient(135deg,#FFC107,#FF6B00);
-            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-        }
-        .stat-card .label { font-size:14px; color:#8899AA; margin-top:4px; }
-        .panel {
-            background:#161F2E; border-radius:16px; padding:24px;
-            margin-bottom:24px; border:1px solid #2A3A4F;
-        }
-        .panel h2 { font-size:20px; margin-bottom:16px; color:#FFC107; }
-        .form-group { margin-bottom:16px; }
-        .form-group label { display:block; font-size:14px; color:#8899AA; margin-bottom:4px; }
-        .form-group input, .form-group select {
-            width:100%; padding:10px 14px; background:#0D121D;
-            border:1px solid #2A3A4F; border-radius:8px;
-            color:#E8E8E8; font-size:14px;
-        }
-        .form-group input:focus, .form-group select:focus { outline:none; border-color:#FFC107; }
-        .form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-        .btn {
-            padding:10px 24px; border:none; border-radius:8px;
-            font-size:14px; font-weight:600; cursor:pointer; transition:all 0.3s;
-        }
-        .btn-primary { background:linear-gradient(135deg,#FFC107,#FF6B00); color:#0D121D; }
-        .btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(255,193,7,0.3); }
-        .btn-success { background:#4CAF50; color:white; }
-        .btn-danger { background:#F44336; color:white; }
-        .btn-danger:hover { background:#D32F2F; }
-        .btn-success:hover { background:#388E3C; }
-        .table-wrapper { overflow-x:auto; }
-        table { width:100%; border-collapse:collapse; font-size:14px; }
-        th { text-align:left; padding:12px; color:#8899AA; border-bottom:1px solid #2A3A4F; font-weight:600; }
-        td { padding:12px; border-bottom:1px solid #1A2A3F; }
-        .status-badge { padding:4px 12px; border-radius:12px; font-size:12px; font-weight:600; }
-        .status-pending { background:#FFC107; color:#0D121D; }
-        .status-approved { background:#4CAF50; color:white; }
-        .status-rejected { background:#F44336; color:white; }
-        .actions { display:flex; gap:8px; }
-        .actions .btn { padding:4px 12px; font-size:12px; }
-        .tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
-        .tab {
-            padding:10px 20px; background:#0D121D; border:1px solid #2A3A4F;
-            border-radius:8px; cursor:pointer; color:#8899AA; transition:all 0.3s;
-        }
-        .tab.active { border-color:#FFC107; color:#FFC107; background:#1A2A3F; }
-        .tab:hover { border-color:#FFC107; }
-        .tab-content { display:none; }
-        .tab-content.active { display:block; }
-        .empty-state { text-align:center; padding:40px; color:#8899AA; }
-        .toast {
-            position:fixed; bottom:20px; right:20px; padding:16px 24px;
-            border-radius:12px; background:#161F2E; border:1px solid #2A3A4F;
-            color:#E8E8E8; display:none; max-width:400px; z-index:1000;
-        }
-        .toast.success { border-color:#4CAF50; }
-        .toast.error { border-color:#F44336; }
-        @media (max-width:768px) {
-            .form-row { grid-template-columns:1fr; }
-            .header { flex-direction:column; gap:12px; text-align:center; }
-        }
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="header">
-        <h1>🎮 GiftUpgrader Admin</h1>
-        <div class="admin-badge">👑 Admin Panel v2.0</div>
-    </div>
-    <div class="stats-grid" id="stats">
-        <div class="stat-card"><div class="value" id="totalUsers">0</div><div class="label">Users</div></div>
-        <div class="stat-card"><div class="value" id="totalWithdraws">0</div><div class="label">Pending Withdrawals</div></div>
-        <div class="stat-card"><div class="value" id="totalPromos">0</div><div class="label">Promocodes</div></div>
-        <div class="stat-card"><div class="value" id="totalReferrals">0</div><div class="label">Referrals</div></div>
-    </div>
-    <div class="tabs">
-        <div class="tab active" data-tab="promocodes">🎫 Promocodes</div>
-        <div class="tab" data-tab="withdrawals">💳 Withdrawals</div>
-        <div class="tab" data-tab="users">👤 Users</div>
-        <div class="tab" data-tab="logs">📋 Logs</div>
-    </div>
-    <div class="tab-content active" id="tab-promocodes">
-        <div class="panel">
-            <h2>Create Promocode</h2>
-            <form id="promoForm">
-                <div class="form-row">
-                    <div class="form-group"><label>Promocode</label><input type="text" id="promoCode" placeholder="e.g. GIFT2024" required></div>
-                    <div class="form-group"><label>Reward Type</label>
-                        <select id="promoRewardType"><option value="stars">⭐ Stars</option><option value="gift">🎁 Gift</option></select>
-                    </div>
-                </div>
-                <div class="form-row" id="starsField">
-                    <div class="form-group"><label>Stars Amount</label><input type="number" id="promoStars" value="100" min="1"></div>
-                </div>
-                <div class="form-row" id="giftField" style="display:none;">
-                    <div class="form-group"><label>Case ID</label>
-                        <select id="promoCaseId">
-                            <option value="tg_starter">🚀 TG STARTER</option>
-                            <option value="pepe_memes">🐸 PEPE & MEMES</option>
-                            <option value="telegram_gifts">🎁 TELEGRAM GIFTS</option>
-                            <option value="fragment_nft">💎 FRAGMENT NFT</option>
-                            <option value="durov_selection">👑 DUROV'S SELECTION</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group"><label>Max Uses</label><input type="number" id="promoMaxUses" value="1" min="1"></div>
-                <button type="submit" class="btn btn-primary">Create</button>
-            </form>
-        </div>
-        <div class="panel">
-            <h2>Active Promocodes</h2>
-            <div class="table-wrapper"><table><thead><tr><th>Code</th><th>Type</th><th>Reward</th><th>Uses</th><th>Max</th><th>Created</th></tr></thead><tbody id="promoList"><tr><td colspan="6" class="empty-state">No promocodes</td></tr></tbody></table></div>
-        </div>
-    </div>
-    <div class="tab-content" id="tab-withdrawals">
-        <div class="panel">
-            <h2>Withdrawals</h2>
-            <div class="table-wrapper"><table><thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Wallet</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody id="withdrawList"><tr><td colspan="7" class="empty-state">No withdrawals</td></tr></tbody></table></div>
-        </div>
-    </div>
-    <div class="tab-content" id="tab-users">
-        <div class="panel">
-            <h2>Give Stars</h2>
-            <form id="giveStarsForm">
-                <div class="form-row">
-                    <div class="form-group"><label>User ID</label><input type="number" id="giveUserId" placeholder="123456789" required></div>
-                    <div class="form-group"><label>Amount</label><input type="number" id="giveAmount" value="100" min="1" required></div>
-                </div>
-                <button type="submit" class="btn btn-primary">Give Stars</button>
-            </form>
-        </div>
-        <div class="panel">
-            <h2>Top Users</h2>
-            <div class="table-wrapper"><table><thead><tr><th>#</th><th>Username</th><th>Balance</th><th>Spent</th><th>Games</th><th>Wins</th></tr></thead><tbody id="userList"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody></table></div>
-        </div>
-    </div>
-    <div class="tab-content" id="tab-logs">
-        <div class="panel">
-            <h2>Admin Logs</h2>
-            <div class="table-wrapper"><table><thead><tr><th>ID</th><th>Admin</th><th>Action</th><th>Details</th><th>Date</th></tr></thead><tbody id="logList"><tr><td colspan="5" class="empty-state">No logs</td></tr></tbody></table></div>
-        </div>
-    </div>
-</div>
-<div class="toast" id="toast"></div>
-<script>
-    let currentTab='promocodes';
-    function showToast(m,t){const toast=document.getElementById('toast');toast.textContent=m;toast.className='toast '+t;toast.style.display='block';setTimeout(()=>{toast.style.display='none';},3000);}
-    async function fetchData(url){try{const res=await fetch(url);if(!res.ok)throw new Error();return await res.json();}catch(e){return null;}}
-    async function loadStats(){const data=await fetchData('/api/admin/stats');if(data){document.getElementById('totalUsers').textContent=data.total_users||0;document.getElementById('totalWithdraws').textContent=data.pending_withdrawals||0;document.getElementById('totalPromos').textContent=data.total_promos||0;document.getElementById('totalReferrals').textContent=data.total_referrals||0;}}
-    async function loadPromos(){const data=await fetchData('/api/admin/promos');const tbody=document.getElementById('promoList');if(data&&data.length>0){tbody.innerHTML=data.map(p=>`<tr><td><strong>${p.code}</strong></td><td>${p.reward_type}</td><td>${p.reward_type==='stars'?'⭐ '+p.stars+' UC':'🎁 '+p.case_id}</td><td>${p.uses}/${p.max_uses}</td><td>${p.max_uses}</td><td>${new Date(p.created_at).toLocaleDateString()}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="6" class="empty-state">No promocodes</td></tr>';}}
-    async function loadWithdrawals(){const data=await fetchData('/api/admin/withdrawals');const tbody=document.getElementById('withdrawList');if(data&&data.length>0){tbody.innerHTML=data.map(w=>`<tr><td>#${w.id}</td><td>${w.tg_id}</td><td>⭐ ${w.amount}</td><td>${w.wallet||'N/A'}</td><td><span class="status-badge status-${w.status}">${w.status}</span></td><td>${new Date(w.created_at).toLocaleDateString()}</td><td>${w.status==='pending'?`<div class="actions"><button class="btn btn-success" onclick="updateWithdraw(${w.id},'approved')">✅</button><button class="btn btn-danger" onclick="updateWithdraw(${w.id},'rejected')">❌</button></div>`:'-'}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="7" class="empty-state">No withdrawals</td></tr>';}}
-    async function loadUsers(){const data=await fetchData('/api/admin/users');const tbody=document.getElementById('userList');if(data&&data.length>0){tbody.innerHTML=data.map((u,i)=>`<tr><td>#${i+1}</td><td>${u.username}</td><td>⭐ ${u.balance}</td><td>⭐ ${u.total_spent}</td><td>${u.games_played||0}</td><td>${u.wins||0}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="6" class="empty-state">No users</td></tr>';}}
-    async function loadLogs(){const data=await fetchData('/api/admin/logs');const tbody=document.getElementById('logList');if(data&&data.length>0){tbody.innerHTML=data.map(l=>`<tr><td>#${l.id}</td><td>${l.admin_id}</td><td>${l.action}</td><td>${l.details||'-'}</td><td>${new Date(l.created_at).toLocaleString()}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="5" class="empty-state">No logs</td></tr>';}}
-    async function updateWithdraw(id,status){if(!confirm('Set withdrawal #'+id+' to '+status+'?'))return;const res=await fetch('/api/admin/withdraw/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({withdraw_id:id,status})});const data=await res.json();if(data.success){showToast('✅ #'+id+' '+status,'success');loadWithdrawals();loadStats();}else{showToast('❌ Error','error');}}
-    document.querySelectorAll('.tab').forEach(tab=>{tab.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('tab-'+this.dataset.tab).classList.add('active');currentTab=this.dataset.tab;if(currentTab==='withdrawals')loadWithdrawals();if(currentTab==='users')loadUsers();if(currentTab==='logs')loadLogs();});});
-    document.getElementById('promoRewardType').addEventListener('change',function(){if(this.value==='stars'){document.getElementById('starsField').style.display='block';document.getElementById('giftField').style.display='none';}else{document.getElementById('starsField').style.display='none';document.getElementById('giftField').style.display='block';}});
-    document.getElementById('promoForm').addEventListener('submit',async function(e){e.preventDefault();const data={code:document.getElementById('promoCode').value.toUpperCase(),reward_type:document.getElementById('promoRewardType').value,case_id:document.getElementById('promoCaseId').value,stars:parseInt(document.getElementById('promoStars').value)||0,max_uses:parseInt(document.getElementById('promoMaxUses').value)||1};const res=await fetch('/api/admin/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await res.json();if(result.success){showToast('✅ '+result.message,'success');loadPromos();loadStats();document.getElementById('promoForm').reset();}else{showToast('❌ '+(result.detail||'Error'),'error');}});
-    document.getElementById('giveStarsForm').addEventListener('submit',async function(e){e.preventDefault();const data={user_id:parseInt(document.getElementById('giveUserId').value),amount:parseInt(document.getElementById('giveAmount').value)};const res=await fetch('/api/admin/give',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await res.json();if(result.success){showToast('✅ '+result.message,'success');loadUsers();loadStats();document.getElementById('giveStarsForm').reset();}else{showToast('❌ '+(result.detail||'Error'),'error');}});
-    loadStats();loadPromos();loadWithdrawals();loadUsers();loadLogs();
-    setInterval(()=>{loadStats();if(currentTab==='promocodes')loadPromos();if(currentTab==='withdrawals')loadWithdrawals();if(currentTab==='users')loadUsers();if(currentTab==='logs')loadLogs();},30000);
-</script>
-</body>
-</html>
-"""
-
-# ==================== ROOT ====================
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    return FRONTEND_HTML
-
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_panel(user: dict = Depends(verify_admin)):
-    return ADMIN_PANEL_HTML
-
-# ==================== ADMIN API ====================
-@app.get("/api/admin/stats")
-async def admin_stats(user: dict = Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
-        total_users = await (await db.execute("SELECT COUNT(*) FROM users")).fetchone()
-        pending_withdraws = await (await db.execute("SELECT COUNT(*) FROM withdrawals WHERE status='pending'")).fetchone()
-        total_promos = await (await db.execute("SELECT COUNT(*) FROM promocodes")).fetchone()
-        total_refs = await (await db.execute("SELECT COUNT(*) FROM referrals")).fetchone()
-        return {
-            "total_users": total_users[0] if total_users else 0,
-            "pending_withdrawals": pending_withdraws[0] if pending_withdraws else 0,
-            "total_promos": total_promos[0] if total_promos else 0,
-            "total_referrals": total_refs[0] if total_refs else 0
-        }
-
-@app.get("/api/admin/promos")
-async def admin_promos(user: dict = Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT code, reward_type, case_id, stars, max_uses, uses, created_at FROM promocodes ORDER BY created_at DESC") as cursor:
-            rows = await cursor.fetchall()
-            return [{"code": r[0], "reward_type": r[1], "case_id": r[2], "stars": r[3], "max_uses": r[4], "uses": r[5], "created_at": r[6]} for r in rows]
-
-@app.get("/api/admin/users")
-async def admin_users(user: dict = Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT username, balance, total_spent, games_played, wins FROM users ORDER BY balance DESC LIMIT 50") as cursor:
-            rows = await cursor.fetchall()
-            return [{"username": r[0], "balance": r[1], "total_spent": r[2], "games_played": r[3], "wins": r[4]} for r in rows]
-
-@app.get("/api/admin/logs")
-async def admin_logs(user: dict = Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT id, admin_id, action, details, created_at FROM admin_logs ORDER BY created_at DESC LIMIT 50") as cursor:
-            rows = await cursor.fetchall()
-            return [{"id": r[0], "admin_id": r[1], "action": r[2], "details": r[3], "created_at": r[4]} for r in rows]
-
-# ==================== MAIN API ====================
-@app.get("/api/profile")
-async def profile(user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    username = user.get('first_name', 'Player')
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET username=? WHERE tg_id=?", (username, tg_id))
-        await db.commit()
-    user_data = await get_user(tg_id)
-    user_data["tg_id"] = tg_id
-    user_data["username"] = username
-    user_data["is_admin"] = (tg_id == ADMIN_TG_ID)
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cursor:
-            row = await cursor.fetchone()
-            if row:
-                last_used = datetime.fromisoformat(row[0])
-                user_data["free_case_available"] = (datetime.now() - last_used).total_seconds() >= 86400
-            else:
-                user_data["free_case_available"] = True
-    return user_data
-
-@app.get("/api/gifts")
-async def get_gifts():
-    return {"rarities": RARITY_COLORS, "gifts": NFT_GIFTS}
-
-@app.get("/api/cases")
-async def get_cases():
-    return CASES
-
-@app.post("/api/case/open")
-async def open_case(req: CaseOpenRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if req.case_id not in CASES:
-        raise HTTPException(status_code=400, detail="Invalid case")
-    case = CASES[req.case_id]
-    if case["price"] > 0:
-        user_data = await get_user(tg_id)
-        if user_data["balance"] < case["price"]:
-            raise HTTPException(status_code=400, detail="Insufficient balance")
-    if req.case_id == "free_daily":
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cursor:
-                row = await cursor.fetchone()
-                if row:
-                    last_used = datetime.fromisoformat(row[0])
-                    if (datetime.now() - last_used).total_seconds() < 86400:
-                        raise HTTPException(status_code=400, detail="Free case on cooldown")
-                await db.execute("INSERT OR REPLACE INTO free_case_cooldowns (user_id, last_used) VALUES (?, ?)", (tg_id, datetime.now().isoformat()))
-                await db.commit()
-    # Определяем, даём ли звёзды или предмет
-    if random.random() < 0.3:  # 30% шанс на звёзды
-        stars = round(random.uniform(case.get("min_stars", 0), case.get("max_stars", 10)), 1)
-        async with aiosqlite.connect(DB_NAME) as db:
-            if case["price"] > 0:
-                await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (case["price"], case["price"], tg_id))
-            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars), tg_id))
-            await db.commit()
-        return {
-            "success": True,
-            "stars_earned": stars,
-            "balance": (await get_user(tg_id))["balance"]
-        }
-    else:
-        rarity = random.choices(case["rarities"], weights=case["weights"], k=1)[0]
-        gift = random.choice(NFT_GIFTS[rarity])
-        async with aiosqlite.connect(DB_NAME) as db:
-            if case["price"] > 0:
-                await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (case["price"], case["price"], tg_id))
-            user_data = await get_user(tg_id)
-            inventory = user_data["inventory"]
-            inventory.append({
-                "id": gift["id"],
-                "name": gift["name"],
-                "rarity": rarity,
-                "value": gift["value"],
-                "emoji": gift["emoji"]
-            })
-            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
-            await db.commit()
-        return {
-            "success": True,
-            "gift": gift,
-            "rarity": rarity,
-            "color": RARITY_COLORS[rarity],
-            "balance": (await get_user(tg_id))["balance"]
-        }
-
-@app.post("/api/upgrade")
-async def upgrade_item(req: UpgradeRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    user_data = await get_user(tg_id)
-    if req.item_index < 0 or req.item_index >= len(user_data["inventory"]):
-        raise HTTPException(status_code=400, detail="Item not found")
-    item = user_data["inventory"][req.item_index]
-    if item["value"] >= req.target_value:
-        raise HTTPException(status_code=400, detail="Target must be higher value")
-    target_gift = None
-    for rarity, gifts in NFT_GIFTS.items():
-        for g in gifts:
-            if g["value"] == req.target_value:
-                target_gift = {**g, "rarity": rarity}
-                break
-        if target_gift:
-            break
-    if not target_gift:
-        raise HTTPException(status_code=400, detail="Target gift not found")
-    chance = calculate_upgrade_chance(item["value"], target_gift["value"]) / 100.0
-    is_win = random.random() < chance
-    win_angle_deg = chance * 360
-    if is_win:
-        margin = 3
-        if win_angle_deg > margin * 2:
-            final_angle = random.uniform(margin, win_angle_deg - margin)
-        else:
-            final_angle = win_angle_deg / 2
-    else:
-        margin = 3
-        if win_angle_deg < 360 - margin:
-            final_angle = random.uniform(win_angle_deg + margin, 360 - margin)
-        else:
-            final_angle = random.uniform(0, 360 - margin)
-    if is_win:
-        user_data["inventory"][req.item_index] = {
-            "id": target_gift["id"],
-            "name": target_gift["name"],
-            "rarity": target_gift["rarity"],
-            "value": target_gift["value"],
-            "emoji": target_gift["emoji"]
-        }
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?", (json.dumps(user_data["inventory"]), tg_id))
-            await db.commit()
-    else:
-        del user_data["inventory"][req.item_index]
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(user_data["inventory"]), tg_id))
-            await db.commit()
-    return {
-        "success": is_win,
-        "chance": chance * 100,
-        "target": target_gift,
-        "angle": final_angle,
-        "win_sector": {"start": 0, "end": win_angle_deg, "degrees": win_angle_deg},
-        "message": f"{'🎉 Успешно!' if is_win else '💔 Неудача!'} {item['name']} → {target_gift['name']}",
-        "balance": (await get_user(tg_id))["balance"]
-    }
-
-@app.get("/api/inventory")
-async def get_inventory(user: dict = Depends(verify_telegram)):
-    user_data = await get_user(user['id'])
-    return {"inventory": user_data["inventory"]}
-
-@app.post("/api/inventory/sell")
-async def sell_item(req: SellItemRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    user_data = await get_user(tg_id)
-    if req.item_index < 0 or req.item_index >= len(user_data["inventory"]):
-        raise HTTPException(status_code=400, detail="Item not found")
-    item = user_data["inventory"].pop(req.item_index)
-    sell_price = int(item["value"] * 0.7)
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=balance+?, inventory=? WHERE tg_id=?", (sell_price, json.dumps(user_data["inventory"]), tg_id))
-        await db.commit()
-    return {"success": True, "sold": item["name"], "price": sell_price, "balance": (await get_user(tg_id))["balance"]}
-
-# ==================== MINES ====================
-active_mines: Dict[int, dict] = {}
-
-@app.post("/api/mines/start")
-async def mines_start(req: MinesStartRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if req.bet < 10:
-        raise HTTPException(status_code=400, detail="Min 10 ⭐")
-    if req.bet > 50000:
-        raise HTTPException(status_code=400, detail="Max 50000 ⭐")
-    if req.mines < 1 or req.mines > 24:
-        raise HTTPException(status_code=400, detail="Mines 1-24")
-    user_data = await get_user(tg_id)
-    if user_data["balance"] < req.bet:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
-    total = MINES_GRID_SIZE * MINES_GRID_SIZE
-    grid = [0] * total
-    mine_positions = random.sample(range(total), req.mines)
-    for pos in mine_positions:
-        grid[pos] = 1
-    game_id = str(uuid.uuid4())[:8]
-    active_mines[tg_id] = {"game_id": game_id, "bet": req.bet, "mines": req.mines, "grid": grid, "opened": [], "cashed_out": False, "multiplier": 1.0}
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=balance-?, games_played=games_played+1 WHERE tg_id=?", (req.bet, tg_id))
-        await db.commit()
-    return {"game_id": game_id, "bet": req.bet, "mines": req.mines, "total_cells": total, "balance": (await get_user(tg_id))["balance"]}
-
-@app.post("/api/mines/open")
-async def mines_open(req: MinesOpenRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if tg_id not in active_mines:
-        raise HTTPException(status_code=400, detail="No active game")
-    game = active_mines[tg_id]
-    if game["game_id"] != req.game_id:
-        raise HTTPException(status_code=400, detail="Invalid game")
-    if game["cashed_out"]:
-        raise HTTPException(status_code=400, detail="Game finished")
-    if req.cell in game["opened"]:
-        raise HTTPException(status_code=400, detail="Already opened")
-    if req.cell < 0 or req.cell >= MINES_GRID_SIZE * MINES_GRID_SIZE:
-        raise HTTPException(status_code=400, detail="Invalid cell")
-    if game["grid"][req.cell] == 1:
-        mine_positions = [i for i, v in enumerate(game["grid"]) if v == 1]
-        del active_mines[tg_id]
-        return {"status": "bomb", "cell": req.cell, "opened": game["opened"], "mines": mine_positions, "balance": (await get_user(tg_id))["balance"]}
-    game["opened"].append(req.cell)
-    game["multiplier"] = calculate_mines_multiplier(game["mines"], len(game["opened"]))
-    return {"status": "safe", "cell": req.cell, "opened": game["opened"], "opened_count": len(game["opened"]), "multiplier": game["multiplier"]}
-
-@app.post("/api/mines/cashout")
-async def mines_cashout(req: MinesCashoutRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if tg_id not in active_mines:
-        raise HTTPException(status_code=400, detail="No active game")
-    game = active_mines[tg_id]
-    if game["game_id"] != req.game_id:
-        raise HTTPException(status_code=400, detail="Invalid game")
-    if game["cashed_out"]:
-        raise HTTPException(status_code=400, detail="Already cashed out")
-    if len(game["opened"]) == 0:
-        raise HTTPException(status_code=400, detail="Open at least one cell")
-    win = int(game["bet"] * game["multiplier"])
-    game["cashed_out"] = True
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=balance+?, wins=wins+1 WHERE tg_id=?", (win, tg_id))
-        await db.commit()
-    del active_mines[tg_id]
-    return {"status": "cashed_out", "multiplier": game["multiplier"], "win": win, "profit": win - game["bet"], "balance": (await get_user(tg_id))["balance"]}
-
-# ==================== WITHDRAW ====================
-@app.post("/api/withdraw")
-async def withdraw(req: WithdrawRequest, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if req.amount < 100:
-        raise HTTPException(status_code=400, detail="Min 100 ⭐")
-    if req.amount > MAX_WITHDRAW_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Max {MAX_WITHDRAW_AMOUNT} ⭐")
-    user_data = await get_user(tg_id)
-    if user_data["balance"] < req.amount:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
-    fee = int(req.amount * WITHDRAW_FEE)
-    payout = req.amount - fee
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, tg_id))
-        await db.execute("INSERT INTO withdrawals (tg_id, amount, wallet) VALUES (?,?,?)", (tg_id, req.amount, req.wallet))
-        await db.commit()
-    return {"success": True, "requested": req.amount, "fee": fee, "payout": payout, "balance": (await get_user(tg_id))["balance"], "status": "pending"}
-
-@app.get("/api/admin/withdrawals")
-async def admin_withdrawals(user: dict = Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT id, tg_id, amount, wallet, status, created_at FROM withdrawals ORDER BY created_at DESC LIMIT 100") as cursor:
-            rows = await cursor.fetchall()
-            return [{"id": r[0], "tg_id": r[1], "amount": r[2], "wallet": r[3], "status": r[4], "created_at": r[5]} for r in rows]
-
-@app.post("/api/admin/withdraw/status")
-async def update_withdraw_status(req: AdminWithdrawStatusRequest, user: dict = Depends(verify_admin)):
-    if req.status not in ["approved", "rejected"]:
-        raise HTTPException(status_code=400, detail="Invalid status")
-    async with aiosqlite.connect(DB_NAME) as db:
-        if req.status == "rejected":
-            async with db.execute("SELECT tg_id, amount FROM withdrawals WHERE id=?", (req.withdraw_id,)) as cursor:
-                row = await cursor.fetchone()
-                if row:
-                    await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (row[1], row[0]))
-        await db.execute("UPDATE withdrawals SET status=? WHERE id=?", (req.status, req.withdraw_id))
-        await db.commit()
-        await log_admin_action(user['id'], f"withdraw_{req.status}", f"Withdrawal #{req.withdraw_id} -> {req.status}")
-    return {"success": True, "status": req.status}
-
-# ==================== ADMIN GIVE ====================
-@app.post("/api/admin/give")
-async def admin_give(req: AdminGiveRequest, user: dict = Depends(verify_admin)):
-    if req.user_id <= 0 or req.amount < 1 or req.amount > 1000000:
-        raise HTTPException(status_code=400, detail="Invalid")
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("INSERT OR IGNORE INTO users (tg_id, balance) VALUES (?, 50)", (req.user_id,))
-        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount, req.user_id))
-        await db.commit()
-        await log_admin_action(user['id'], "give_stars", f"Gave {req.amount} ⭐ to {req.user_id}")
-    return {"success": True, "message": f"Added {req.amount} ⭐ to {req.user_id}"}
-
-# ==================== PROMO ====================
-@app.post("/api/admin/promo")
-async def create_promo(req: PromoCreateRequest, user: dict = Depends(verify_admin)):
-    code = req.code.strip().upper()
-    async with aiosqlite.connect(DB_NAME) as db:
-        if await (await db.execute("SELECT code FROM promocodes WHERE code=?", (code,))).fetchone():
-            raise HTTPException(status_code=400, detail="Exists")
-        await db.execute("INSERT INTO promocodes (code, reward_type, case_id, stars, max_uses, created_by) VALUES (?,?,?,?,?,?)",
-                         (code, req.reward_type, req.case_id, req.stars, req.max_uses, user['id']))
-        await db.commit()
-        await log_admin_action(user['id'], "create_promo", f"Created {code} ({req.reward_type})")
-    return {"success": True, "message": f"✅ {code} created!"}
-
-@app.post("/api/promo/activate")
-async def activate_promo(code: str, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    code = code.upper()
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT reward_type, case_id, stars, max_uses, uses FROM promocodes WHERE code=?", (code,)) as cursor:
-            promo = await cursor.fetchone()
-            if not promo:
-                raise HTTPException(status_code=400, detail="Invalid")
-            if promo[3] >= promo[4]:
-                raise HTTPException(status_code=400, detail="Expired")
-            if await (await db.execute("SELECT 1 FROM promo_uses WHERE user_id=? AND promo_code=?", (tg_id, code))).fetchone():
-                raise HTTPException(status_code=400, detail="Already used")
-        reward = None
-        if promo[0] == "stars":
-            amount = promo[2]
-            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
-            reward = f"⭐ {amount}"
-        elif promo[0] == "gift":
-            case_id = promo[1]
-            if case_id not in CASES:
-                raise HTTPException(status_code=400, detail="Invalid case")
-            case = CASES[case_id]
-            rarity = random.choices(case["rarities"], weights=case["weights"], k=1)[0]
-            gift = random.choice(NFT_GIFTS[rarity])
-            user_data = await get_user(tg_id)
-            inventory = user_data["inventory"]
-            inventory.append({"id": gift["id"], "name": gift["name"], "rarity": rarity, "value": gift["value"], "emoji": gift["emoji"]})
-            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inventory), tg_id))
-            reward = gift["name"]
-        await db.execute("INSERT INTO promo_uses (user_id, promo_code) VALUES (?,?)", (tg_id, code))
-        await db.execute("UPDATE promocodes SET uses=uses+1 WHERE code=?", (code,))
-        await db.commit()
-    return {"success": True, "message": "🎉 Promocode activated!", "reward": reward}
-
-# ==================== REFERRALS ====================
-@app.post("/api/referral/activate")
-async def activate_referral(referrer_id: int, user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    if tg_id == referrer_id:
-        raise HTTPException(status_code=400, detail="Cannot refer yourself")
-    async with aiosqlite.connect(DB_NAME) as db:
-        if await (await db.execute("SELECT 1 FROM users WHERE tg_id=?", (referrer_id,))).fetchone() is None:
-            raise HTTPException(status_code=400, detail="Referrer not found")
-        if await (await db.execute("SELECT 1 FROM referrals WHERE user_id=?", (tg_id,))).fetchone():
-            raise HTTPException(status_code=400, detail="Already referred")
-        await db.execute("INSERT INTO referrals (user_id, referrer_id) VALUES (?,?)", (tg_id, referrer_id))
-        await db.commit()
-    return {"success": True, "referrer": referrer_id}
-
-@app.get("/api/referral/stats")
-async def referral_stats(user: dict = Depends(verify_telegram)):
-    tg_id = user['id']
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT total_earned FROM referrals WHERE user_id=?", (tg_id,)) as cursor:
-            row = await cursor.fetchone()
-            earned = row[0] if row else 0
-        async with db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (tg_id,)) as cursor:
-            count = (await cursor.fetchone())[0]
-    return {"total_earned": earned, "referrals_count": count, "percent": REFERRAL_PERCENT}
-
-# ==================== CRASH ====================
-crash_state = {"status": "waiting", "round_id": "", "crash_point": 1.0, "hash": "", "start_time": 0, "bets": {}, "history": [], "timer_ends": 0, "multiplier": 1.0, "crashed": False}
+# ===== HELPERS =====
+def calc_upgrade_chance(in_val, target):
+    return max(1, min(60, (in_val/target)*100*(1-HOUSE_EDGE)))
+
+def calc_mines_multiplier(mines, opened):
+    total, safe = 25, 25-mines
+    if opened >= safe: return round((1-HOUSE_EDGE)*100, 2)
+    p = 1.0
+    for i in range(opened): p *= (safe-i)/(total-i)
+    caps = {1:5, 3:15, 5:40, 10:150, 15:500, 20:1500, 24:3000}
+    return round(min((1-HOUSE_EDGE)/p, caps[min(caps.keys(), key=lambda k: abs(k-mines))]), 2)
+
+# ===== CRASH =====
+CRASH_MIN_BET, CRASH_MAX_BET = 25, 5000
+CRASH_BETTING_TIME, CRASH_COOLDOWN, CRASH_SPEED = 6, 3, 0.08
+SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
+crash_nonce = 0
+crash_state = {"status":"waiting","round_id":"","crash_point":1.0,"hash":"","bets":{},"history":[],"timer_ends":0,"multiplier":1.0}
+
+def gen_crash_point():
+    global crash_nonce
+    crash_nonce += 1
+    h = int(hashlib.sha256(f"{SERVER_SEED}:{crash_nonce}".encode()).hexdigest()[:16], 16) / (2**64)
+    if h < 0.30: cp = 1.01 + (h/0.30)*0.09
+    elif h < 0.60: cp = 1.10 + ((h-0.30)/0.30)*0.20
+    elif h < 0.82: cp = 1.30 + ((h-0.60)/0.22)*0.50
+    elif h < 0.94: cp = 1.80 + ((h-0.82)/0.12)*1.20
+    elif h < 0.98: cp = 3.00 + ((h-0.94)/0.04)*5.00
+    elif h < 0.995: cp = 8.00 + ((h-0.98)/0.015)*12.00
+    else: cp = 20.00 + ((h-0.995)/0.005)*30.00
+    return round(min(cp, 50), 2)
 
 async def crash_loop():
-    global crash_state
     while True:
-        crash_state["status"] = "betting"
-        crash_state["round_id"] = str(uuid.uuid4())[:8]
-        crash_state["bets"] = {}
-        crash_state["crash_point"], crash_state["hash"] = generate_crash_point()
-        crash_state["multiplier"] = 1.0
-        crash_state["crashed"] = False
-        crash_state["timer_ends"] = time.time() + CRASH_BETTING_TIME
-        await sio.emit("crash_state", {"status": "betting", "round_id": crash_state["round_id"], "hash": crash_state["hash"], "timer": CRASH_BETTING_TIME, "bets": len(crash_state["bets"])})
+        crash_state.update({"status":"betting","round_id":str(uuid.uuid4())[:8],"bets":{},"crash_point":gen_crash_point(),"multiplier":1.0,"timer_ends":time.time()+CRASH_BETTING_TIME})
+        await sio.emit("crash_state", {"status":"betting","round_id":crash_state["round_id"],"timer":CRASH_BETTING_TIME})
         await asyncio.sleep(CRASH_BETTING_TIME)
         if not crash_state["bets"]:
-            crash_state["status"] = "cooldown"
-            await sio.emit("crash_state", {"status": "cooldown", "timer": CRASH_COOLDOWN, "history": crash_state["history"][:10]})
+            await sio.emit("crash_state", {"status":"cooldown","timer":CRASH_COOLDOWN})
             await asyncio.sleep(CRASH_COOLDOWN)
             continue
-        crash_state["status"] = "flying"
-        crash_state["start_time"] = time.time()
-        await sio.emit("crash_start", {"round_id": crash_state["round_id"], "hash": crash_state["hash"], "total_bets": len(crash_state["bets"]), "total_amount": sum(b["amount"] for b in crash_state["bets"].values())})
-        last_sent = 1.0
+        crash_state["status"]="flying"
+        st = time.time()
+        await sio.emit("crash_start", {"round_id":crash_state["round_id"]})
         while True:
-            elapsed = time.time() - crash_state["start_time"]
-            current = 1.0 * math.exp(CRASH_SPEED * elapsed)
-            crash_state["multiplier"] = current
-            if current >= crash_state["crash_point"]:
-                crash_state["crashed"] = True
-                crash_state["status"] = "crashed"
+            cur = 1.0 * math.exp(CRASH_SPEED * (time.time()-st))
+            crash_state["multiplier"] = cur
+            if cur >= crash_state["crash_point"]:
+                crash_state["status"]="crashed"
                 crash_state["history"].insert(0, crash_state["crash_point"])
-                if len(crash_state["history"]) > 20:
-                    crash_state["history"] = crash_state["history"][:20]
-                results = []
-                for bet in crash_state["bets"].values():
-                    results.append({"username": bet["username"], "amount": bet["amount"], "cashed": bet.get("cashed", False), "win": int(bet["amount"] * bet.get("cashed_at", 1)) if bet.get("cashed", False) else 0})
-                await sio.emit("crash_end", {"crash_point": crash_state["crash_point"], "hash": crash_state["hash"], "server_seed": SERVER_SEED, "nonce": crash_nonce, "bets": results})
+                if len(crash_state["history"]) > 20: crash_state["history"] = crash_state["history"][:20]
+                results = [{"username":b["username"],"amount":b["amount"],"cashed":b.get("cashed",False),"win":int(b["amount"]*b.get("cashed_at",1)) if b.get("cashed") else 0} for b in crash_state["bets"].values()]
+                await sio.emit("crash_end", {"crash_point":crash_state["crash_point"],"bets":results})
                 break
-            if abs(current - last_sent) >= 0.01:
-                await sio.emit("crash_multiplier", {"multiplier": round(current, 2), "elapsed": elapsed})
-                last_sent = current
+            await sio.emit("crash_multiplier", {"multiplier":round(cur,2)})
             await asyncio.sleep(0.05)
-        crash_state["status"] = "cooldown"
-        await sio.emit("crash_state", {"status": "cooldown", "timer": CRASH_COOLDOWN, "history": crash_state["history"][:10]})
+        crash_state["status"]="cooldown"
+        await sio.emit("crash_state", {"status":"cooldown","timer":CRASH_COOLDOWN,"history":crash_state["history"][:10]})
         await asyncio.sleep(CRASH_COOLDOWN)
 
 @sio.event
-async def connect(sid, environ):
-    await sio.emit("crash_state", {"status": crash_state["status"], "round_id": crash_state["round_id"], "timer": max(0, int(crash_state["timer_ends"] - time.time())), "history": crash_state["history"][:10], "bets": len(crash_state["bets"])}, to=sid)
+async def connect(sid, env):
+    await sio.emit("crash_state", {"status":crash_state["status"],"round_id":crash_state["round_id"],"history":crash_state["history"][:10]}, to=sid)
 
 @sio.event
 async def place_bet(sid, data):
-    try:
-        tg_id = int(data.get("tg_id", 0))
-    except:
-        return await sio.emit("error", {"message": "Invalid ID"}, to=sid)
     if crash_state["status"] != "betting":
-        return await sio.emit("error", {"message": "Bets closed"}, to=sid)
-    try:
-        amount = int(data.get("amount", 0))
-    except:
-        return await sio.emit("error", {"message": "Invalid amount"}, to=sid)
-    if amount < CRASH_MIN_BET or amount > CRASH_MAX_BET:
-        return await sio.emit("error", {"message": f"Bet {CRASH_MIN_BET}-{CRASH_MAX_BET}"}, to=sid)
-    user_data = await get_user(tg_id)
-    if user_data["balance"] < amount:
-        return await sio.emit("error", {"message": "Insufficient balance"}, to=sid)
+        return await sio.emit("error", {"message":"Bets closed"}, to=sid)
+    tg_id = data.get("tg_id", 0)
+    amount = data.get("amount", 0)
+    if not tg_id or amount < CRASH_MIN_BET or amount > CRASH_MAX_BET:
+        return await sio.emit("error", {"message":"Invalid bet"}, to=sid)
+    u = await get_user(tg_id)
+    if u["balance"] < amount:
+        return await sio.emit("error", {"message":"Insufficient balance"}, to=sid)
     key = f"{tg_id}:{crash_state['round_id']}"
     if key in crash_state["bets"]:
-        return await sio.emit("error", {"message": "Already placed"}, to=sid)
+        return await sio.emit("error", {"message":"Already placed"}, to=sid)
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance-?, games_played=games_played+1 WHERE tg_id=?", (amount, tg_id))
         await db.commit()
-    crash_state["bets"][key] = {"tg_id": tg_id, "amount": amount, "username": data.get("username", "Player"), "cashed": False, "cashed_at": 0}
-    await sio.emit("bet_placed", {"username": data.get("username", "Player"), "amount": amount, "balance": (await get_user(tg_id))["balance"]})
-    await sio.emit("bets_update", {"count": len(crash_state["bets"]), "total": sum(b["amount"] for b in crash_state["bets"].values())})
+    crash_state["bets"][key] = {"tg_id":tg_id, "amount":amount, "username":data.get("username","Player"), "cashed":False, "cashed_at":0}
+    await sio.emit("bet_placed", {"username":data.get("username","Player"), "amount":amount, "balance":(await get_user(tg_id))["balance"]})
 
 @sio.event
 async def cashout(sid, data):
-    try:
-        tg_id = int(data.get("tg_id", 0))
-    except:
-        return await sio.emit("error", {"message": "Invalid ID"}, to=sid)
     if crash_state["status"] != "flying":
-        return await sio.emit("error", {"message": "Not flying"}, to=sid)
+        return await sio.emit("error", {"message":"Not flying"}, to=sid)
+    tg_id = data.get("tg_id", 0)
     key = f"{tg_id}:{crash_state['round_id']}"
     bet = crash_state["bets"].get(key)
-    if not bet:
-        return await sio.emit("error", {"message": "No bet"}, to=sid)
-    if bet["cashed"]:
-        return await sio.emit("error", {"message": "Already cashed"}, to=sid)
+    if not bet or bet["cashed"]:
+        return await sio.emit("error", {"message":"No bet"}, to=sid)
     win = int(bet["amount"] * crash_state["multiplier"])
     bet["cashed"] = True
     bet["cashed_at"] = crash_state["multiplier"]
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance+?, wins=wins+1 WHERE tg_id=?", (win, tg_id))
         await db.commit()
-    await sio.emit("cashout_success", {"username": bet["username"], "amount": bet["amount"], "multiplier": round(crash_state["multiplier"], 2), "win": win, "balance": (await get_user(tg_id))["balance"]})
+    await sio.emit("cashout_success", {"username":bet["username"], "win":win, "balance":(await get_user(tg_id))["balance"]})
 
-# ==================== STARTUP ====================
+# ===== HTML =====
+HTML = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GiftUpgrader</title>
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:#0a0e17;color:#e8e8e8;min-height:100vh;padding-bottom:80px}
+.app{max-width:480px;margin:0 auto;padding:12px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 16px}
+.logo{font-size:20px;font-weight:800;background:linear-gradient(135deg,#FFC107,#FF6B00);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.balance{background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.2);padding:4px 14px;border-radius:16px;font-size:14px;font-weight:600;color:#FFC107;display:flex;align-items:center;gap:4px}
+.tabs{display:flex;gap:4px;background:rgba(255,255,255,0.04);border-radius:14px;padding:4px;margin-bottom:16px;overflow-x:auto}
+.tab{flex:1;min-width:52px;padding:8px 4px;border:none;background:transparent;color:#8899AA;font-size:11px;font-weight:600;border-radius:10px;cursor:pointer;transition:.3s;text-align:center;white-space:nowrap}
+.tab.active{background:linear-gradient(135deg,#FFC107,#FF6B00);color:#0a0e17;box-shadow:0 4px 16px rgba(255,193,7,0.2)}
+.tab:active{transform:scale(.95)}
+.tab-content{display:none;animation:fade .3s}
+.tab-content.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.glass{background:rgba(255,255,255,0.04);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:16px;margin-bottom:12px}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:.3s;background:linear-gradient(135deg,#FFC107,#FF6B00);color:#0a0e17}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.gift-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.gift-card{background:rgba(255,255,255,0.04);border-radius:12px;padding:12px;text-align:center;border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:.3s}
+.gift-card.selected{border-color:#FFC107;box-shadow:0 0 20px rgba(255,193,7,0.1)}
+.gift-card .emoji{font-size:36px;display:block}
+.gift-card .name{font-size:12px;font-weight:500;margin:4px 0}
+.gift-card .value{font-size:11px;color:#8899AA}
+.gift-card .rarity{font-size:9px;padding:2px 8px;border-radius:8px;display:inline-block;margin-top:4px}
+.wheel-wrap{position:relative;width:100%;max-width:320px;margin:0 auto 12px;aspect-ratio:1/1}
+.wheel{width:100%;height:100%;border-radius:50%;transition:transform 4s cubic-bezier(0.15,0.90,0.25,1.00);box-shadow:0 0 40px rgba(255,193,7,0.05)}
+.wheel canvas{width:100%;height:100%;border-radius:50%;display:block}
+.wheel-pointer{position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-top:24px solid #FFC107;filter:drop-shadow(0 4px 12px rgba(255,193,7,0.4));z-index:10}
+.wheel-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:radial-gradient(circle,#1a2a3f,#0a0e17);border:2px solid rgba(255,193,7,0.25);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FFC107;z-index:5}
+.wheel-glow{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;transition:.6s;opacity:0}
+.wheel-glow.success{opacity:1;box-shadow:0 0 50px rgba(76,175,80,0.3),inset 0 0 50px rgba(76,175,80,0.05)}
+.wheel-glow.fail{opacity:1;box-shadow:0 0 50px rgba(244,67,54,0.3),inset 0 0 50px rgba(244,67,54,0.05)}
+.upgrade-info{display:flex;justify-content:center;gap:20px;padding:8px 0}
+.upgrade-info .stat{text-align:center}
+.upgrade-info .stat .label{font-size:10px;color:#8899AA;text-transform:uppercase}
+.upgrade-info .stat .value{font-size:20px;font-weight:700}
+.upgrade-info .stat .value.gold{color:#FFC107}
+.upgrade-info .stat .value.green{color:#4CAF50}
+.cases-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.case-card{background:rgba(255,255,255,0.04);border-radius:12px;padding:14px;text-align:center;border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:.3s}
+.case-card:active{transform:scale(.96)}
+.case-card .icon{font-size:28px}
+.case-card .name{font-size:12px;font-weight:600;margin:4px 0}
+.case-card .price{font-size:13px;font-weight:600;color:#FFC107}
+.case-card .rarities{font-size:10px;color:#8899AA}
+.case-card .range{font-size:10px;color:#4CAF50}
+.case-card.free{border-color:rgba(76,175,80,0.2)}
+.case-card .cooldown{font-size:10px;color:#F44336}
+.inv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.inv-item{background:rgba(255,255,255,0.04);border-radius:10px;padding:10px;text-align:center;border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:.3s}
+.inv-item:active{transform:scale(.95)}
+.inv-item .emoji{font-size:28px}
+.inv-item .name{font-size:10px;font-weight:500;margin:2px 0}
+.inv-item .val{font-size:9px;color:#8899AA}
+.inv-item .sell{font-size:9px;padding:2px 10px;border:none;border-radius:6px;background:rgba(244,67,54,0.15);color:#F44336;cursor:pointer;margin-top:4px}
+.inv-item.selected{border-color:#FFC107}
+.mines-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;max-width:320px;margin:10px auto}
+.mine-cell{aspect-ratio:1;background:rgba(255,255,255,0.06);border-radius:8px;border:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:.3s;color:#8899AA}
+.mine-cell:active{transform:scale(.92)}
+.mine-cell.opened{background:rgba(76,175,80,0.1);border-color:rgba(76,175,80,0.15)}
+.mine-cell.bomb{background:rgba(244,67,54,0.15);border-color:rgba(244,67,54,0.2);color:#F44336}
+.mine-cell .gem{color:#FFC107}
+.mines-info{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
+.mines-info .btn{padding:6px 16px;width:auto;font-size:12px;border-radius:8px}
+.crash-graph{background:rgba(0,0,0,0.3);border-radius:12px;padding:12px;height:140px;margin-bottom:10px}
+.crash-graph canvas{width:100%;height:100%}
+.crash-mult{font-size:36px;font-weight:800;text-align:center;color:#FFC107;padding:4px 0}
+.crash-status{text-align:center;font-size:13px;color:#8899AA;padding:4px 0}
+.crash-row{display:flex;gap:8px;align-items:center}
+.crash-row input{flex:1;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:#e8e8e8;font-size:14px}
+.crash-row input:focus{outline:none;border-color:#FFC107}
+.crash-row .btn{padding:10px 18px;width:auto;font-size:13px;border-radius:10px}
+.btn-crash{background:linear-gradient(135deg,#4CAF50,#2E7D32);color:#fff}
+.btn-cashout{background:linear-gradient(135deg,#FFC107,#FF6B00);color:#0a0e17}
+.crash-bets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.crash-bets span{font-size:11px;padding:2px 10px;border-radius:8px;background:rgba(255,255,255,0.04)}
+.promo-row{display:flex;gap:8px;margin-top:10px}
+.promo-row input{flex:1;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:#e8e8e8;font-size:14px;text-transform:uppercase}
+.promo-row .btn{padding:10px 18px;width:auto;font-size:13px;border-radius:10px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:999;width:90%;max-width:400px;padding:12px 18px;border-radius:12px;background:rgba(22,31,46,.95);border:1px solid rgba(255,255,255,0.08);text-align:center;font-weight:500;font-size:14px;animation:toastIn .3s;display:none}
+.toast.success{border-color:#4CAF50;color:#4CAF50}
+.toast.error{border-color:#F44336;color:#F44336}
+.toast.info{border-color:#FFC107;color:#FFC107}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.empty{text-align:center;color:#8899AA;padding:20px 0;font-size:13px}
+.ref-card{text-align:center;padding:12px 0}
+.ref-card .big{font-size:40px;font-weight:800;color:#FFC107}
+.ref-card .link{background:rgba(0,0,0,0.3);padding:8px 14px;border-radius:10px;margin:10px 0;font-size:13px;word-break:break-all}
+.profile-stats{display:flex;justify-content:center;gap:20px;padding:10px 0}
+.profile-stats div{text-align:center}
+.profile-stats .num{font-size:18px;font-weight:700;color:#FFC107}
+.profile-stats .lbl{font-size:10px;color:#8899AA}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">🎮 GiftUpgrader</div>
+    <div class="balance" id="balance">⭐ 0</div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="upgrade">Апгрейд</button>
+    <button class="tab" data-tab="cases">Кейсы</button>
+    <button class="tab" data-tab="mines">Мины</button>
+    <button class="tab" data-tab="crash">Ракетка</button>
+    <button class="tab" data-tab="inventory">Инвентарь</button>
+    <button class="tab" data-tab="profile">Профиль</button>
+  </div>
+
+  <!-- UPGRADE -->
+  <div class="tab-content active" id="tab-upgrade">
+    <div class="glass">
+      <div class="gift-grid">
+        <div class="gift-card selected" id="inputCard">
+          <span class="emoji" id="inEmoji">🧸</span>
+          <div class="name" id="inName">Plush Bear</div>
+          <div class="value" id="inValue">⭐ 15</div>
+          <span class="rarity" id="inRarity" style="background:rgba(139,139,139,0.15);color:#8B8B8B">Common</span>
+        </div>
+        <div class="gift-card" id="targetCard">
+          <span class="emoji" id="tEmoji">💎</span>
+          <div class="name" id="tName">Diamond Ring</div>
+          <div class="value" id="tValue">⭐ 100</div>
+          <span class="rarity" id="tRarity" style="background:rgba(76,175,80,0.15);color:#4CAF50">Uncommon</span>
+        </div>
+      </div>
+
+      <div class="wheel-wrap">
+        <div class="wheel-glow" id="wheelGlow"></div>
+        <div class="wheel" id="wheel"><canvas id="wheelCanvas" width="400" height="400"></canvas></div>
+        <div class="wheel-pointer"></div>
+        <div class="wheel-center" id="wheelCenter">?</div>
+      </div>
+
+      <div class="upgrade-info">
+        <div class="stat"><div class="label">Шанс</div><div class="value gold" id="chanceDisplay">35%</div></div>
+        <div class="stat"><div class="label">Множитель</div><div class="value green" id="multDisplay">2.5x</div></div>
+      </div>
+
+      <button class="btn" id="upgradeBtn">⬆️ АПГРЕЙД</button>
+    </div>
+  </div>
+
+  <!-- CASES -->
+  <div class="tab-content" id="tab-cases">
+    <div class="glass"><div class="cases-grid" id="casesGrid"></div></div>
+  </div>
+
+  <!-- MINES -->
+  <div class="tab-content" id="tab-mines">
+    <div class="glass">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input type="number" id="minesBet" placeholder="Ставка" value="10" style="flex:1;padding:10px 12px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:#e8e8e8;font-size:14px">
+        <input type="number" id="minesCount" placeholder="Мин" value="3" min="1" max="24" style="flex:1;padding:10px 12px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:#e8e8e8;font-size:14px">
+        <button class="btn" id="minesStart" style="width:auto;padding:10px 18px;font-size:13px;background:linear-gradient(135deg,#4CAF50,#2E7D32);color:#fff">Старт</button>
+      </div>
+      <div class="mines-grid" id="minesGrid"></div>
+      <div class="mines-info">
+        <span>Множитель: <strong id="minesMult">1.00x</strong></span>
+        <span>Открыто: <strong id="minesOpened">0</strong></span>
+        <button class="btn" id="minesCashout" style="display:none;background:linear-gradient(135deg,#FFC107,#FF6B00);color:#0a0e17">Забрать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRASH -->
+  <div class="tab-content" id="tab-crash">
+    <div class="glass">
+      <div class="crash-graph"><canvas id="crashCanvas"></canvas></div>
+      <div class="crash-mult" id="crashMult">1.00x</div>
+      <div class="crash-status" id="crashStatus">Ожидание ставок...</div>
+      <div class="crash-row">
+        <input type="number" id="crashBet" placeholder="Ставка" value="25" min="25" max="5000">
+        <button class="btn btn-crash" id="crashBetBtn">Ставка</button>
+        <button class="btn btn-cashout" id="crashCashBtn" style="display:none">Забрать</button>
+      </div>
+      <div class="crash-bets" id="crashBets"></div>
+    </div>
+  </div>
+
+  <!-- INVENTORY -->
+  <div class="tab-content" id="tab-inventory">
+    <div class="glass">
+      <div class="inv-grid" id="invGrid"></div>
+      <div class="empty" id="invEmpty">Инвентарь пуст</div>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div class="tab-content" id="tab-profile">
+    <div class="glass">
+      <div style="text-align:center;padding:8px 0">
+        <div style="font-size:40px">👤</div>
+        <div style="font-size:18px;font-weight:600" id="profileName">Player</div>
+        <div style="font-size:12px;color:#8899AA" id="profileId">ID: 0</div>
+        <div class="profile-stats">
+          <div><div class="num" id="pBalance">0</div><div class="lbl">Баланс</div></div>
+          <div><div class="num" id="pGames">0</div><div class="lbl">Игр</div></div>
+          <div><div class="num" id="pWins" style="color:#4CAF50">0</div><div class="lbl">Побед</div></div>
+        </div>
+      </div>
+
+      <div class="ref-card">
+        <div class="big">🎯</div>
+        <div style="font-weight:600;font-size:14px">Реферальная программа</div>
+        <div style="font-size:12px;color:#8899AA">7% от депозитов друзей</div>
+        <div style="display:flex;justify-content:center;gap:20px;margin:8px 0">
+          <div><div style="font-size:16px;font-weight:700" id="refCount">0</div><div style="font-size:10px;color:#8899AA">Приглашено</div></div>
+          <div><div style="font-size:16px;font-weight:700;color:#FFC107" id="refEarned">0</div><div style="font-size:10px;color:#8899AA">Заработано</div></div>
+        </div>
+        <div class="link" id="refLink">Загрузка...</div>
+        <button class="btn" id="copyRef" style="width:auto;padding:8px 20px;font-size:12px;background:rgba(255,193,7,0.12);color:#FFC107;border:1px solid rgba(255,193,7,0.15)">📋 Копировать</button>
+      </div>
+
+      <div class="promo-row">
+        <input type="text" id="promoInput" placeholder="Промокод">
+        <button class="btn" id="promoBtn" style="width:auto;padding:10px 18px;font-size:13px">Активировать</button>
+      </div>
+
+      <button class="btn" id="withdrawBtn" style="margin-top:10px;background:rgba(244,67,54,0.12);color:#F44336;border:1px solid rgba(244,67,54,0.15)">💳 Вывести звёзды</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STATE = {
+  tgId:0, username:'Player', balance:50, inventory:[], gamesPlayed:0, wins:0,
+  selectedItem:0, targetValue:80, isUpgrading:false,
+  mines:{gameId:null,opened:[],bombs:[],multiplier:1,cashedOut:false,started:false},
+  crash:{connected:false,socket:null,betPlaced:false},
+  cases:{}, freeCase:true
+};
+
+function showToast(msg,type='info'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast '+type; t.style.display='block';
+  setTimeout(()=>t.style.display='none',3000);
+}
+
+async function api(method,url,body=null){
+  const h={'Content-Type':'application/json'};
+  if(window.Telegram?.WebApp?.initData) h.Authorization=window.Telegram.WebApp.initData;
+  const res=await fetch(url,{method,headers:h,body:body?JSON.stringify(body):null});
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.detail||'API Error');}
+  return res.json();
+}
+
+function initTelegram(){
+  if(window.Telegram?.WebApp){
+    const tg=window.Telegram.WebApp; tg.expand(); tg.enableClosingConfirmation();
+    const u=tg.initDataUnsafe?.user;
+    if(u){STATE.tgId=u.id; STATE.username=u.first_name||'Player'; document.getElementById('profileName').textContent=STATE.username; document.getElementById('profileId').textContent='ID: '+STATE.tgId;}
+    window.tgHaptic={impact:s=>{try{tg.HapticFeedback.impactOccurred(s)}catch(e){}},notify:t=>{try{tg.HapticFeedback.notificationOccurred(t)}catch(e){}}};
+  }else{window.tgHaptic={impact:()=>{},notify:()=>{}};}
+}
+
+function updateBalance(){document.getElementById('balance').textContent='⭐ '+STATE.balance; document.getElementById('pBalance').textContent=STATE.balance;}
+
+async function loadProfile(){
+  try{
+    const d=await api('GET','/api/profile');
+    STATE.balance=d.balance||0; STATE.inventory=d.inventory||[]; STATE.gamesPlayed=d.games_played||0; STATE.wins=d.wins||0;
+    STATE.freeCase=d.free_case_available!==false;
+    updateBalance(); renderInv(); loadCases(); loadGifts(); updateUpgrade();
+    document.getElementById('pGames').textContent=STATE.gamesPlayed; document.getElementById('pWins').textContent=STATE.wins;
+    loadRef();
+  }catch(e){showToast('Ошибка загрузки','error')}
+}
+
+// CASES
+async function loadCases(){
+  try{const d=await api('GET','/api/cases'); STATE.cases=d; renderCases();}catch(e){}
+}
+
+function renderCases(){
+  const g=document.getElementById('casesGrid'); g.innerHTML='';
+  for(const [id,c] of Object.entries(STATE.cases)){
+    const div=document.createElement('div');
+    div.className='case-card'+(id==='free_daily'?' free':'');
+    div.innerHTML=`
+      <div class="icon">🎁</div>
+      <div class="name">${c.name}</div>
+      <div class="price">${c.price===0?'🎁 БЕСПЛАТНО':'⭐ '+c.price}</div>
+      <div class="rarities">${c.rarities.join(' • ')}</div>
+      <div class="range">⭐ ${c.min_stars||0} - ${c.max_stars||0}</div>
+      ${id==='free_daily'?(STATE.freeCase?'<div style="color:#4CAF50;font-size:10px">✅ Доступен</div>':'<div class="cooldown">⏳ 24ч</div>'):''}
+    `;
+    div.onclick=()=>openCase(id);
+    g.appendChild(div);
+  }
+}
+
+async function openCase(id){
+  try{
+    const d=await api('POST','/api/case/open',{case_id:id});
+    if(d.success){
+      STATE.balance=d.balance||STATE.balance; updateBalance();
+      const p=await api('GET','/api/profile'); STATE.inventory=p.inventory||[]; renderInv(); updateUpgrade();
+      if(d.stars_earned) showToast('⭐ +'+d.stars_earned+' звёзд','success');
+      else if(d.gift) showToast('🎁 '+d.gift.name+' ('+d.rarity+')','success');
+      window.tgHaptic?.notify('success');
+      if(id==='free_daily'){STATE.freeCase=false; renderCases();}
+    }
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+// UPGRADE
+let giftsData=null, wheelRotation=0;
+
+async function loadGifts(){
+  try{const d=await api('GET','/api/gifts'); giftsData=d; const u=d.gifts.Uncommon; if(u?.length) STATE.targetValue=u[0].value; updateUpgrade();}catch(e){}
+}
+
+function updateUpgrade(){
+  const inv=STATE.inventory;
+  if(!inv.length){
+    document.getElementById('inEmoji').textContent='❌'; document.getElementById('inName').textContent='Нет предметов';
+    document.getElementById('inValue').textContent='⭐ 0'; document.getElementById('inRarity').textContent='—';
+    document.getElementById('chanceDisplay').textContent='0%'; document.getElementById('multDisplay').textContent='0x';
+    return;
+  }
+  const idx=Math.min(STATE.selectedItem, inv.length-1);
+  const item=inv[idx];
+  document.getElementById('inEmoji').textContent=item.emoji||'🎁';
+  document.getElementById('inName').textContent=item.name||'Item';
+  document.getElementById('inValue').textContent='⭐ '+(item.value||0);
+  const r=item.rarity||'Common';
+  const cols={'Common':{bg:'rgba(139,139,139,0.15)',c:'#8B8B8B'},'Uncommon':{bg:'rgba(76,175,80,0.15)',c:'#4CAF50'},'Rare':{bg:'rgba(33,150,243,0.15)',c:'#2196F3'},'Epic':{bg:'rgba(156,39,176,0.15)',c:'#9C27B0'},'Legendary':{bg:'rgba(255,193,7,0.15)',c:'#FFC107'},'Mythic':{bg:'rgba(244,67,54,0.15)',c:'#F44336'}};
+  const cl=cols[r]||cols.Common;
+  document.getElementById('inRarity').textContent=r; document.getElementById('inRarity').style.background=cl.bg; document.getElementById('inRarity').style.color=cl.c;
+
+  let target=null;
+  if(giftsData){for(const [r2,list] of Object.entries(giftsData.gifts)){for(const g of list){if(g.value===STATE.targetValue){target={...g,rarity:r2};break}}if(target)break}}
+  if(!target){const u=giftsData?.gifts?.Uncommon?.[0]; if(u){target={...u,rarity:'Uncommon'}; STATE.targetValue=u.value;}}
+  if(target){
+    document.getElementById('tEmoji').textContent=target.emoji||'🎁';
+    document.getElementById('tName').textContent=target.name||'Target';
+    document.getElementById('tValue').textContent='⭐ '+target.value;
+    const tc=cols[target.rarity]||cols.Common;
+    document.getElementById('tRarity').textContent=target.rarity; document.getElementById('tRarity').style.background=tc.bg; document.getElementById('tRarity').style.color=tc.c;
+  }
+
+  const iv=item.value||1, tv=target?.value||1;
+  const ch=Math.min((iv/tv)*100*0.95,60);
+  document.getElementById('chanceDisplay').textContent=ch.toFixed(1)+'%';
+  document.getElementById('multDisplay').textContent=((tv/iv)*0.95).toFixed(2)+'x';
+  drawWheel(ch);
+}
+
+function drawWheel(chance){
+  const canvas=document.getElementById('wheelCanvas');
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,r=w/2-4;
+  ctx.clearRect(0,0,w,h);
+  const win=(chance/100)*2*Math.PI, lose=2*Math.PI-win;
+  let start=-Math.PI/2;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+win); ctx.closePath();
+  const gw=ctx.createRadialGradient(cx,cy,0,cx,cy,r); gw.addColorStop(0,'#4CAF50'); gw.addColorStop(1,'#1B5E20');
+  ctx.fillStyle=gw; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.stroke();
+  start+=win;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+lose); ctx.closePath();
+  const gl=ctx.createRadialGradient(cx,cy,0,cx,cy,r); gl.addColorStop(0,'#F44336'); gl.addColorStop(1,'#880E4F');
+  ctx.fillStyle=gl; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,r*0.15,0,2*Math.PI); ctx.fillStyle='rgba(13,18,29,0.6)'; ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.font='bold 14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const la=-Math.PI/2+win/2; ctx.fillText('WIN',cx+Math.cos(la)*r*0.6,cy+Math.sin(la)*r*0.6);
+  const lla=-Math.PI/2+win+lose/2; ctx.fillText('LOSE',cx+Math.cos(lla)*r*0.6,cy+Math.sin(lla)*r*0.6);
+  for(let i=0;i<24;i++){const a=(i/24)*2*Math.PI-Math.PI/2; ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*r*0.94,cy+Math.sin(a)*r*0.94); ctx.lineTo(cx+Math.cos(a)*r*0.98,cy+Math.sin(a)*r*0.98); ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=2; ctx.stroke();}
+}
+
+async function runUpgrade(){
+  if(STATE.isUpgrading||!STATE.inventory.length) return;
+  const idx=Math.min(STATE.selectedItem, STATE.inventory.length-1);
+  const item=STATE.inventory[idx];
+  if(!item||item.value>=STATE.targetValue){showToast('Цель должна быть дороже','error'); return;}
+  STATE.isUpgrading=true; const btn=document.getElementById('upgradeBtn'); btn.classList.add('loading'); btn.disabled=true;
+  document.getElementById('wheelGlow').className='wheel-glow';
+  try{
+    const d=await api('POST','/api/upgrade',{item_index:idx,target_value:STATE.targetValue});
+    const angle=d.angle||0, win=d.success||false;
+    wheelRotation+=360*5+(angle%360);
+    document.getElementById('wheel').style.transform='rotate('+wheelRotation+'deg)';
+    const glow=document.getElementById('wheelGlow');
+    if(win){glow.className='wheel-glow success'; window.tgHaptic?.notify('success');}else{glow.className='wheel-glow fail'; window.tgHaptic?.notify('error');}
+    if(d.balance!==undefined){STATE.balance=d.balance; updateBalance();}
+    setTimeout(async()=>{
+      try{const p=await api('GET','/api/profile'); STATE.inventory=p.inventory||[]; STATE.balance=p.balance||0; updateBalance(); renderInv(); updateUpgrade(); showToast(d.message||(win?'🎉 Успешно!':'💔 Неудача'),win?'success':'error');}catch(e){}
+      STATE.isUpgrading=false; btn.classList.remove('loading'); btn.disabled=false; document.getElementById('wheelGlow').className='wheel-glow';
+    },4500);
+  }catch(e){showToast('Ошибка: '+e.message,'error'); STATE.isUpgrading=false; btn.classList.remove('loading'); btn.disabled=false; document.getElementById('wheelGlow').className='wheel-glow';}
+}
+
+// INVENTORY
+function renderInv(){
+  const g=document.getElementById('invGrid'), e=document.getElementById('invEmpty');
+  g.innerHTML='';
+  if(!STATE.inventory.length){e.style.display='block'; return;}
+  e.style.display='none';
+  STATE.inventory.forEach((item,idx)=>{
+    const div=document.createElement('div');
+    div.className='inv-item'+(idx===STATE.selectedItem?' selected':'');
+    const cols={'Common':'rgba(139,139,139,0.15)','Uncommon':'rgba(76,175,80,0.15)','Rare':'rgba(33,150,243,0.15)','Epic':'rgba(156,39,176,0.15)','Legendary':'rgba(255,193,7,0.15)','Mythic':'rgba(244,67,54,0.15)'};
+    div.style.borderColor=cols[item.rarity]||'rgba(255,255,255,0.05)';
+    div.innerHTML=`<div class="emoji">${item.emoji||'🎁'}</div><div class="name">${item.name}</div><div class="val">⭐ ${item.value}</div><button class="sell" data-idx="${idx}">Продать</button>`;
+    div.onclick=(e)=>{if(e.target.classList.contains('sell'))return; STATE.selectedItem=idx; renderInv(); updateUpgrade();};
+    div.querySelector('.sell').onclick=async(e)=>{e.stopPropagation(); await sellItem(idx);};
+    g.appendChild(div);
+  });
+}
+
+async function sellItem(idx){
+  try{
+    const d=await api('POST','/api/inventory/sell',{item_index:idx});
+    if(d.success){STATE.balance=d.balance||STATE.balance; updateBalance(); const p=await api('GET','/api/profile'); STATE.inventory=p.inventory||[]; renderInv(); updateUpgrade(); showToast('💰 +'+d.price+' ⭐','success'); window.tgHaptic?.impact('light');}
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+// MINES
+const mines={grid:[],opened:[],bombs:[],gameId:null,bet:0,multiplier:1,cashedOut:false,started:false};
+
+async function startMines(){
+  const bet=parseInt(document.getElementById('minesBet').value)||10;
+  const cnt=parseInt(document.getElementById('minesCount').value)||3;
+  if(cnt<1||cnt>24){showToast('Мины 1-24','error'); return;}
+  try{
+    const d=await api('POST','/api/mines/start',{bet,mines:cnt});
+    STATE.balance=d.balance||STATE.balance; updateBalance();
+    mines.gameId=d.game_id; mines.bet=d.bet; mines.started=true; mines.opened=[]; mines.cashedOut=false; mines.multiplier=1; mines.bombs=[]; mines.grid=Array(25).fill(0);
+    renderMines();
+    document.getElementById('minesMult').textContent='1.00x'; document.getElementById('minesOpened').textContent='0'; document.getElementById('minesCashout').style.display='none';
+    showToast('💣 Игра начата','info');
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+async function openMine(idx){
+  if(!mines.started||mines.cashedOut||mines.opened.includes(idx)) return;
+  try{
+    const d=await api('POST','/api/mines/open',{game_id:mines.gameId,cell:idx});
+    if(d.status==='bomb'){mines.cashedOut=true; mines.bombs=d.mines||[]; renderMines(); showToast('💥 Бомба!','error'); window.tgHaptic?.notify('error'); document.getElementById('minesCashout').style.display='none'; const p=await api('GET','/api/profile'); STATE.balance=p.balance||0; updateBalance(); return;}
+    mines.opened=d.opened||[]; mines.multiplier=d.multiplier||1;
+    document.getElementById('minesMult').textContent=mines.multiplier.toFixed(2)+'x'; document.getElementById('minesOpened').textContent=mines.opened.length;
+    renderMines();
+    if(mines.opened.length) document.getElementById('minesCashout').style.display='block';
+    window.tgHaptic?.impact('light');
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+async function cashoutMines(){
+  if(!mines.started||mines.cashedOut||!mines.opened.length){showToast('Откройте клетку','error'); return;}
+  try{
+    const d=await api('POST','/api/mines/cashout',{game_id:mines.gameId});
+    STATE.balance=d.balance||STATE.balance; updateBalance(); mines.cashedOut=true;
+    showToast('💰 Выигрыш: '+d.win+' ⭐ (x'+d.multiplier+')','success'); window.tgHaptic?.notify('success');
+    document.getElementById('minesCashout').style.display='none'; renderMines();
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+function renderMines(){
+  const g=document.getElementById('minesGrid'); g.innerHTML='';
+  for(let i=0;i<25;i++){
+    const cell=document.createElement('div'); cell.className='mine-cell';
+    if(mines.opened.includes(i)){cell.classList.add('opened'); cell.textContent='💎';}
+    if(mines.cashedOut&&mines.bombs&&mines.bombs.includes(i)){cell.classList.add('bomb'); cell.textContent='💣';}
+    if(mines.cashedOut&&!mines.opened.includes(i)&&!(mines.bombs&&mines.bombs.includes(i))){cell.textContent='💎'; cell.style.opacity='0.5';}
+    cell.onclick=()=>openMine(i);
+    g.appendChild(cell);
+  }
+}
+
+// CRASH
+function initCrash(){
+  const socket=io(); STATE.crash.socket=socket;
+  socket.on('connect',()=>{STATE.crash.connected=true;});
+  socket.on('crash_state',(d)=>{
+    document.getElementById('crashStatus').textContent=d.status==='betting'?'⌛ Ставки: '+d.timer+'с':d.status==='flying'?'🚀 Взлёт!':d.status==='crashed'?'💥 Крах!':'⏳ Ожидание...';
+    if(d.status==='betting') document.getElementById('crashMult').textContent='1.00x';
+    if(d.history) drawCrashHistory(d.history);
+  });
+  socket.on('crash_multiplier',(d)=>{document.getElementById('crashMult').textContent=d.multiplier.toFixed(2)+'x';});
+  socket.on('crash_start',()=>{document.getElementById('crashStatus').textContent='🚀 Взлёт!'; document.getElementById('crashBetBtn').disabled=true; document.getElementById('crashCashBtn').style.display='block'; STATE.crash.betPlaced=true;});
+  socket.on('crash_end',(d)=>{document.getElementById('crashStatus').textContent='💥 Крах на '+d.crash_point.toFixed(2)+'x'; document.getElementById('crashBetBtn').disabled=false; document.getElementById('crashCashBtn').style.display='none'; STATE.crash.betPlaced=false; loadProfile(); if(d.bets){document.getElementById('crashBets').innerHTML=d.bets.map(b=>`<span>${b.username}: ${b.win>0?'✅+'+b.win:'❌0'}</span>`).join('');}});
+  socket.on('cashout_success',(d)=>{showToast('💰 +'+d.win+' ⭐','success'); window.tgHaptic?.notify('success'); STATE.balance=d.balance||STATE.balance; updateBalance(); document.getElementById('crashCashBtn').style.display='none';});
+  socket.on('bet_placed',(d)=>{showToast('✅ Ставка '+d.amount+' ⭐','success'); STATE.balance=d.balance||STATE.balance; updateBalance();});
+  socket.on('error',(d)=>{showToast('❌ '+d.message,'error');});
+}
+
+function placeCrashBet(){
+  if(!STATE.crash.connected){showToast('Подключение...','info'); return;}
+  const amt=parseInt(document.getElementById('crashBet').value)||25;
+  if(amt<25||amt>5000){showToast('Ставка 25-5000 ⭐','error'); return;}
+  if(amt>STATE.balance){showToast('Недостаточно','error'); return;}
+  STATE.crash.socket.emit('place_bet',{tg_id:STATE.tgId,amount:amt,username:STATE.username});
+}
+
+function crashCashout(){
+  if(!STATE.crash.connected) return;
+  STATE.crash.socket.emit('cashout',{tg_id:STATE.tgId});
+}
+
+function drawCrashHistory(history){
+  const canvas=document.getElementById('crashCanvas');
+  const ctx=canvas.getContext('2d');
+  canvas.width=canvas.parentElement.clientWidth; canvas.height=canvas.parentElement.clientHeight;
+  const w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  if(!history||history.length<2){ctx.fillStyle='#8899AA'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText('История раундов',w/2,h/2); return;}
+  const max=Math.max(2,...history), min=1, step=w/(history.length-1);
+  ctx.beginPath(); ctx.strokeStyle='#FFC107'; ctx.lineWidth=2;
+  for(let i=0;i<history.length;i++){const x=i*step, y=h-((history[i]-min)/(max-min))*(h-20)-10; if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);}
+  ctx.stroke(); ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  const grad=ctx.createLinearGradient(0,0,0,h); grad.addColorStop(0,'rgba(255,193,7,0.15)'); grad.addColorStop(1,'rgba(255,193,7,0)');
+  ctx.fillStyle=grad; ctx.fill();
+}
+
+// REFERRALS
+async function loadRef(){
+  try{
+    const d=await api('GET','/api/referral/stats');
+    document.getElementById('refCount').textContent=d.referrals_count||0;
+    document.getElementById('refEarned').textContent=d.total_earned||0;
+    const link='https://t.me/'+(window.Telegram?.WebApp?.initDataUnsafe?.user?.username||'GiftUpgraderBot')+'?start=ref_'+STATE.tgId;
+    document.getElementById('refLink').textContent=link; window._refLink=link;
+  }catch(e){}
+}
+
+function copyRef(){
+  const l=window._refLink||'';
+  if(navigator.clipboard){navigator.clipboard.writeText(l).then(()=>showToast('📋 Скопировано!','success'));}
+  else{const t=document.createElement('textarea'); t.value=l; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); showToast('📋 Скопировано!','success');}
+}
+
+// PROMO
+async function activatePromo(){
+  const code=document.getElementById('promoInput').value.trim().toUpperCase();
+  if(!code){showToast('Введите промокод','error'); return;}
+  try{
+    const d=await api('POST','/api/promo/activate?code='+encodeURIComponent(code),{});
+    showToast(d.message||'✅ Активирован!','success'); window.tgHaptic?.notify('success'); loadProfile(); document.getElementById('promoInput').value='';
+  }catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+// WITHDRAW
+async function withdraw(){
+  const amt=prompt('Сумма (мин 100 ⭐):','100');
+  if(!amt)return; const v=parseInt(amt);
+  if(isNaN(v)||v<100){showToast('Минимум 100 ⭐','error'); return;}
+  const wallet=prompt('Адрес кошелька (TON/TRC20):','');
+  if(!wallet||wallet.length<10){showToast('Некорректный адрес','error'); return;}
+  try{const d=await api('POST','/api/withdraw',{amount:v,wallet}); showToast('✅ Заявка создана!','success'); STATE.balance=d.balance||STATE.balance; updateBalance();}catch(e){showToast('Ошибка: '+e.message,'error')}
+}
+
+// TABS
+function initTabs(){
+  document.querySelectorAll('.tab').forEach(b=>{
+    b.onclick=function(){
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+      this.classList.add('active'); document.getElementById('tab-'+this.dataset.tab).classList.add('active');
+      if(this.dataset.tab==='inventory') renderInv();
+      if(this.dataset.tab==='profile') loadProfile();
+      if(this.dataset.tab==='crash'&&!STATE.crash.connected) initCrash();
+    };
+  });
+}
+
+// INIT
+document.addEventListener('DOMContentLoaded',()=>{
+  initTelegram(); loadProfile(); initTabs(); renderInv(); updateUpgrade();
+  document.getElementById('upgradeBtn').onclick=runUpgrade;
+  document.getElementById('minesStart').onclick=startMines;
+  document.getElementById('minesCashout').onclick=cashoutMines;
+  document.getElementById('crashBetBtn').onclick=placeCrashBet;
+  document.getElementById('crashCashBtn').onclick=crashCashout;
+  document.getElementById('promoBtn').onclick=activatePromo;
+  document.getElementById('copyRef').onclick=copyRef;
+  document.getElementById('withdrawBtn').onclick=withdraw;
+  document.getElementById('promoInput').onkeydown=e=>{if(e.key==='Enter')activatePromo();};
+  if(document.querySelector('.tab[data-tab="crash"]').classList.contains('active')) initCrash();
+});
+</script>
+</body>
+</html>
+"""
+
+# ===== ADMIN HTML =====
+ADMIN_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0D121D;color:#E8E8E8;font-family:sans-serif;padding:20px}.container{max-width:1200px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:center;padding:20px;background:#161F2E;border-radius:16px;margin-bottom:30px;border:1px solid #2A3A4F}.header h1{font-size:28px;background:linear-gradient(135deg,#FFC107,#F44336);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.badge{background:#2A3A4F;padding:8px 16px;border-radius:20px;border:1px solid #FFC107;color:#FFC107}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:30px}.stat{background:#161F2E;padding:20px;border-radius:12px;border:1px solid #2A3A4F;text-align:center}.stat .v{font-size:28px;font-weight:bold;background:linear-gradient(135deg,#FFC107,#FF6B00);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.stat .l{font-size:13px;color:#8899AA}.panel{background:#161F2E;border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid #2A3A4F}.panel h2{color:#FFC107;font-size:18px;margin-bottom:12px}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form-group{margin-bottom:12px}.form-group label{display:block;font-size:13px;color:#8899AA;margin-bottom:4px}.form-group input,.form-group select{width:100%;padding:10px 14px;background:#0D121D;border:1px solid #2A3A4F;border-radius:8px;color:#E8E8E8;font-size:14px}.form-group input:focus,.form-group select:focus{outline:none;border-color:#FFC107}.btn{padding:10px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:.3s}.btn-primary{background:linear-gradient(135deg,#FFC107,#FF6B00);color:#0D121D}.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,193,7,0.3)}.btn-success{background:#4CAF50;color:#fff}.btn-danger{background:#F44336;color:#fff}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:10px;color:#8899AA;border-bottom:1px solid #2A3A4F}td{padding:10px;border-bottom:1px solid #1A2A3F}.status{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600}.status-pending{background:#FFC107;color:#0D121D}.status-approved{background:#4CAF50;color:#fff}.status-rejected{background:#F44336;color:#fff}.tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}.tab{padding:10px 20px;background:#0D121D;border:1px solid #2A3A4F;border-radius:8px;cursor:pointer;color:#8899AA;transition:.3s}.tab.active{border-color:#FFC107;color:#FFC107;background:#1A2A3F}.tab:hover{border-color:#FFC107}.tab-content{display:none}.tab-content.active{display:block}.empty{text-align:center;padding:30px;color:#8899AA}.actions{display:flex;gap:6px}.actions .btn{padding:4px 12px;font-size:11px}.toast{position:fixed;bottom:20px;right:20px;padding:14px 20px;border-radius:12px;background:#161F2E;border:1px solid #2A3A4F;display:none;z-index:1000}.toast.success{border-color:#4CAF50}.toast.error{border-color:#F44336}@media(max-width:768px){.row{grid-template-columns:1fr}.header{flex-direction:column;gap:12px;text-align:center}}
+</style></head>
+<body>
+<div class="container">
+<div class="header"><h1>🎮 GiftUpgrader Admin</h1><div class="badge">👑 Admin Panel</div></div>
+<div class="stats" id="stats">
+<div class="stat"><div class="v" id="totalUsers">0</div><div class="l">Users</div></div>
+<div class="stat"><div class="v" id="totalWithdraws">0</div><div class="l">Pending</div></div>
+<div class="stat"><div class="v" id="totalPromos">0</div><div class="l">Promos</div></div>
+<div class="stat"><div class="v" id="totalReferrals">0</div><div class="l">Referrals</div></div>
+</div>
+<div class="tabs"><div class="tab active" data-tab="promos">🎫 Promos</div><div class="tab" data-tab="withdrawals">💳 Withdrawals</div><div class="tab" data-tab="users">👤 Users</div><div class="tab" data-tab="logs">📋 Logs</div></div>
+<div class="tab-content active" id="tab-promos">
+<div class="panel"><h2>Create Promocode</h2><form id="promoForm">
+<div class="row"><div class="form-group"><label>Code</label><input type="text" id="promoCode" placeholder="GIFT2024"></div><div class="form-group"><label>Type</label><select id="promoType"><option value="stars">⭐ Stars</option><option value="gift">🎁 Gift</option></select></div></div>
+<div class="row" id="starsField"><div class="form-group"><label>Stars</label><input type="number" id="promoStars" value="100"></div></div>
+<div class="row" id="giftField" style="display:none"><div class="form-group"><label>Case</label><select id="promoCase"><option value="tg_starter">TG STARTER</option><option value="pepe_memes">PEPE & MEMES</option><option value="telegram_gifts">TELEGRAM GIFTS</option><option value="fragment_nft">FRAGMENT NFT</option><option value="durov_selection">DUROV'S SELECTION</option></select></div></div>
+<div class="form-group"><label>Max Uses</label><input type="number" id="promoMaxUses" value="1"></div>
+<button type="submit" class="btn btn-primary">Create</button></form></div>
+<div class="panel"><h2>Active Promocodes</h2><div class="table-wrap"><table><thead><tr><th>Code</th><th>Type</th><th>Reward</th><th>Uses</th><th>Max</th><th>Created</th></tr></thead><tbody id="promoList"><tr><td colspan="6" class="empty">No promocodes</td></tr></tbody></table></div></div>
+</div>
+<div class="tab-content" id="tab-withdrawals">
+<div class="panel"><h2>Withdrawals</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Wallet</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody id="withdrawList"><tr><td colspan="7" class="empty">No withdrawals</td></tr></tbody></table></div></div>
+</div>
+<div class="tab-content" id="tab-users">
+<div class="panel"><h2>Give Stars</h2><form id="giveForm"><div class="row"><div class="form-group"><label>User ID</label><input type="number" id="giveUserId" placeholder="123456789"></div><div class="form-group"><label>Amount</label><input type="number" id="giveAmount" value="100"></div></div><button type="submit" class="btn btn-primary">Give</button></form></div>
+<div class="panel"><h2>Top Users</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>Username</th><th>Balance</th><th>Spent</th><th>Games</th><th>Wins</th></tr></thead><tbody id="userList"><tr><td colspan="6" class="empty">Loading...</td></tr></tbody></table></div></div>
+</div>
+<div class="tab-content" id="tab-logs">
+<div class="panel"><h2>Admin Logs</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Admin</th><th>Action</th><th>Details</th><th>Date</th></tr></thead><tbody id="logList"><tr><td colspan="5" class="empty">No logs</td></tr></tbody></table></div></div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let currentTab='promos';
+function showToast(m,t){const toast=document.getElementById('toast');toast.textContent=m;toast.className='toast '+t;toast.style.display='block';setTimeout(()=>toast.style.display='none',3000);}
+async function fetchData(url){try{const r=await fetch(url);if(!r.ok)throw new Error();return await r.json();}catch(e){return null;}}
+async function loadStats(){const d=await fetchData('/api/admin/stats');if(d){document.getElementById('totalUsers').textContent=d.total_users||0;document.getElementById('totalWithdraws').textContent=d.pending_withdrawals||0;document.getElementById('totalPromos').textContent=d.total_promos||0;document.getElementById('totalReferrals').textContent=d.total_referrals||0;}}
+async function loadPromos(){const d=await fetchData('/api/admin/promos');const tbody=document.getElementById('promoList');if(d&&d.length){tbody.innerHTML=d.map(p=>`<tr><td><strong>${p.code}</strong></td><td>${p.reward_type}</td><td>${p.reward_type==='stars'?'⭐ '+p.stars:'🎁 '+p.case_id}</td><td>${p.uses}/${p.max_uses}</td><td>${p.max_uses}</td><td>${new Date(p.created_at).toLocaleDateString()}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="6" class="empty">No promocodes</td></tr>';}}
+async function loadWithdrawals(){const d=await fetchData('/api/admin/withdrawals');const tbody=document.getElementById('withdrawList');if(d&&d.length){tbody.innerHTML=d.map(w=>`<tr><td>#${w.id}</td><td>${w.tg_id}</td><td>⭐ ${w.amount}</td><td>${w.wallet||'N/A'}</td><td><span class="status status-${w.status}">${w.status}</span></td><td>${new Date(w.created_at).toLocaleDateString()}</td><td>${w.status==='pending'?`<div class="actions"><button class="btn btn-success" onclick="updateWithdraw(${w.id},'approved')">✅</button><button class="btn btn-danger" onclick="updateWithdraw(${w.id},'rejected')">❌</button></div>`:'-'}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="7" class="empty">No withdrawals</td></tr>';}}
+async function loadUsers(){const d=await fetchData('/api/admin/users');const tbody=document.getElementById('userList');if(d&&d.length){tbody.innerHTML=d.map((u,i)=>`<tr><td>#${i+1}</td><td>${u.username}</td><td>⭐ ${u.balance}</td><td>⭐ ${u.total_spent}</td><td>${u.games_played||0}</td><td>${u.wins||0}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="6" class="empty">No users</td></tr>';}}
+async function loadLogs(){const d=await fetchData('/api/admin/logs');const tbody=document.getElementById('logList');if(d&&d.length){tbody.innerHTML=d.map(l=>`<tr><td>#${l.id}</td><td>${l.admin_id}</td><td>${l.action}</td><td>${l.details||'-'}</td><td>${new Date(l.created_at).toLocaleString()}</td></tr>`).join('');}else{tbody.innerHTML='<tr><td colspan="5" class="empty">No logs</td></tr>';}}
+async function updateWithdraw(id,status){if(!confirm('Set #'+id+' to '+status+'?'))return;const r=await fetch('/api/admin/withdraw/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({withdraw_id:id,status})});const d=await r.json();if(d.success){showToast('✅ #'+id+' '+status,'success');loadWithdrawals();loadStats();}else{showToast('❌ Error','error');}}
+document.querySelectorAll('.tab').forEach(t=>{t.onclick=function(){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));this.classList.add('active');document.getElementById('tab-'+this.dataset.tab).classList.add('active');currentTab=this.dataset.tab;if(currentTab==='withdrawals')loadWithdrawals();if(currentTab==='users')loadUsers();if(currentTab==='logs')loadLogs();}});
+document.getElementById('promoType').onchange=function(){if(this.value==='stars'){document.getElementById('starsField').style.display='block';document.getElementById('giftField').style.display='none';}else{document.getElementById('starsField').style.display='none';document.getElementById('giftField').style.display='block';}};
+document.getElementById('promoForm').onsubmit=async function(e){e.preventDefault();const data={code:document.getElementById('promoCode').value.toUpperCase(),reward_type:document.getElementById('promoType').value,case_id:document.getElementById('promoCase').value,stars:parseInt(document.getElementById('promoStars').value)||0,max_uses:parseInt(document.getElementById('promoMaxUses').value)||1};const r=await fetch('/api/admin/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const d=await r.json();if(d.success){showToast('✅ '+d.message,'success');loadPromos();loadStats();document.getElementById('promoForm').reset();}else{showToast('❌ '+(d.detail||'Error'),'error');}};
+document.getElementById('giveForm').onsubmit=async function(e){e.preventDefault();const data={user_id:parseInt(document.getElementById('giveUserId').value),amount:parseInt(document.getElementById('giveAmount').value)};const r=await fetch('/api/admin/give',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const d=await r.json();if(d.success){showToast('✅ '+d.message,'success');loadUsers();loadStats();document.getElementById('giveForm').reset();}else{showToast('❌ '+(d.detail||'Error'),'error');}};
+loadStats();loadPromos();loadWithdrawals();loadUsers();loadLogs();
+setInterval(()=>{loadStats();if(currentTab==='promos')loadPromos();if(currentTab==='withdrawals')loadWithdrawals();if(currentTab==='users')loadUsers();if(currentTab==='logs')loadLogs();},30000);
+</script>
+</body></html>"""
+
+# ===== API ROUTES =====
+@app.get("/", response_class=HTMLResponse)
+async def root(): return HTML
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin(user=Depends(verify_admin)): return ADMIN_HTML
+
+@app.get("/api/profile")
+async def profile(user=Depends(verify_telegram)):
+    tg_id=user['id']; username=user.get('first_name','Player')
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET username=? WHERE tg_id=?", (username, tg_id)); await db.commit()
+    u=await get_user(tg_id)
+    u.update({"tg_id":tg_id,"username":username,"is_admin":tg_id==ADMIN_TG_ID})
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as c:
+            r=await c.fetchone()
+            u["free_case_available"]=True if not r else (datetime.now()-datetime.fromisoformat(r[0])).total_seconds()>=86400
+    return u
+
+@app.get("/api/gifts")
+async def get_gifts(): return {"rarities":RARITY_COLORS,"gifts":NFT_GIFTS}
+
+@app.get("/api/cases")
+async def get_cases(): return CASES
+
+@app.post("/api/case/open")
+async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']; c=CASES.get(req.case_id)
+    if not c: raise HTTPException(400,"Invalid case")
+    if c["price"]>0 and (await get_user(tg_id))["balance"]<c["price"]: raise HTTPException(400,"Insufficient")
+    if req.case_id=="free_daily":
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cur:
+                r=await cur.fetchone()
+                if r and (datetime.now()-datetime.fromisoformat(r[0])).total_seconds()<86400: raise HTTPException(400,"Cooldown")
+            await db.execute("INSERT OR REPLACE INTO free_case_cooldowns (user_id,last_used) VALUES (?,?)", (tg_id,datetime.now().isoformat())); await db.commit()
+    if random.random()<0.3:
+        stars=round(random.uniform(c.get("min_stars",0), c.get("max_stars",10)),1)
+        async with aiosqlite.connect(DB_NAME) as db:
+            if c["price"]>0: await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (c["price"],c["price"],tg_id))
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars),tg_id)); await db.commit()
+        return {"success":True,"stars_earned":stars,"balance":(await get_user(tg_id))["balance"]}
+    rarity=random.choices(c["rarities"], weights=c["weights"])[0]; gift=random.choice(NFT_GIFTS[rarity])
+    async with aiosqlite.connect(DB_NAME) as db:
+        if c["price"]>0: await db.execute("UPDATE users SET balance=balance-?, total_spent=total_spent+? WHERE tg_id=?", (c["price"],c["price"],tg_id))
+        u=await get_user(tg_id); inv=u["inventory"]; inv.append({"id":gift["id"],"name":gift["name"],"rarity":rarity,"value":gift["value"],"emoji":gift["emoji"]})
+        await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv),tg_id)); await db.commit()
+    return {"success":True,"gift":gift,"rarity":rarity,"balance":(await get_user(tg_id))["balance"]}
+
+@app.post("/api/upgrade")
+async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']; u=await get_user(tg_id)
+    if req.item_index<0 or req.item_index>=len(u["inventory"]): raise HTTPException(400,"Item not found")
+    item=u["inventory"][req.item_index]
+    if item["value"]>=req.target_value: raise HTTPException(400,"Target must be higher")
+    target=None
+    for r,g in NFT_GIFTS.items():
+        for x in g:
+            if x["value"]==req.target_value: target={**x,"rarity":r}; break
+        if target: break
+    if not target: raise HTTPException(400,"Target not found")
+    chance=calc_upgrade_chance(item["value"], target["value"])/100
+    win=random.random()<chance
+    win_deg=chance*360
+    final=random.uniform(3,win_deg-3) if win and win_deg>6 else (win_deg/2 if win else random.uniform(win_deg+3,357))
+    if win:
+        u["inventory"][req.item_index]={"id":target["id"],"name":target["name"],"rarity":target["rarity"],"value":target["value"],"emoji":target["emoji"]}
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?", (json.dumps(u["inventory"]),tg_id)); await db.commit()
+    else:
+        del u["inventory"][req.item_index]
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(u["inventory"]),tg_id)); await db.commit()
+    return {"success":win,"chance":chance*100,"target":target,"angle":final,"message":f"{'🎉' if win else '💔'} {item['name']} → {target['name']}","balance":(await get_user(tg_id))["balance"]}
+
+@app.get("/api/inventory")
+async def get_inventory(user=Depends(verify_telegram)): return {"inventory":(await get_user(user['id']))["inventory"]}
+
+@app.post("/api/inventory/sell")
+async def sell(req:SellItemRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']; u=await get_user(tg_id)
+    if req.item_index<0 or req.item_index>=len(u["inventory"]): raise HTTPException(400,"Item not found")
+    item=u["inventory"].pop(req.item_index); price=int(item["value"]*0.7)
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance+?, inventory=? WHERE tg_id=?", (price,json.dumps(u["inventory"]),tg_id)); await db.commit()
+    return {"success":True,"sold":item["name"],"price":price,"balance":(await get_user(tg_id))["balance"]}
+
+# ===== MINES =====
+active_mines={}
+@app.post("/api/mines/start")
+async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']
+    if req.bet<10 or req.bet>50000 or req.mines<1 or req.mines>24: raise HTTPException(400,"Invalid")
+    u=await get_user(tg_id)
+    if u["balance"]<req.bet: raise HTTPException(400,"Insufficient")
+    grid=[0]*25; mp=random.sample(range(25), req.mines)
+    for p in mp: grid[p]=1
+    gid=str(uuid.uuid4())[:8]
+    active_mines[tg_id]={"game_id":gid,"bet":req.bet,"mines":req.mines,"grid":grid,"opened":[],"cashed_out":False,"multiplier":1.0}
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance-?, games_played=games_played+1 WHERE tg_id=?", (req.bet,tg_id)); await db.commit()
+    return {"game_id":gid,"bet":req.bet,"mines":req.mines,"balance":(await get_user(tg_id))["balance"]}
+
+@app.post("/api/mines/open")
+async def mines_open(req:MinesOpenRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']
+    if tg_id not in active_mines: raise HTTPException(400,"No game")
+    g=active_mines[tg_id]
+    if g["game_id"]!=req.game_id or g["cashed_out"] or req.cell in g["opened"] or req.cell<0 or req.cell>=25: raise HTTPException(400,"Invalid")
+    if g["grid"][req.cell]==1:
+        mp=[i for i,v in enumerate(g["grid"]) if v==1]; del active_mines[tg_id]
+        return {"status":"bomb","cell":req.cell,"opened":g["opened"],"mines":mp,"balance":(await get_user(tg_id))["balance"]}
+    g["opened"].append(req.cell); g["multiplier"]=calc_mines_multiplier(g["mines"], len(g["opened"]))
+    return {"status":"safe","cell":req.cell,"opened":g["opened"],"opened_count":len(g["opened"]),"multiplier":g["multiplier"]}
+
+@app.post("/api/mines/cashout")
+async def mines_cashout(req:MinesCashoutRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']
+    if tg_id not in active_mines: raise HTTPException(400,"No game")
+    g=active_mines[tg_id]
+    if g["game_id"]!=req.game_id or g["cashed_out"] or len(g["opened"])==0: raise HTTPException(400,"Invalid")
+    win=int(g["bet"]*g["multiplier"]); g["cashed_out"]=True
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance+?, wins=wins+1 WHERE tg_id=?", (win,tg_id)); await db.commit()
+    del active_mines[tg_id]
+    return {"status":"cashed_out","multiplier":g["multiplier"],"win":win,"balance":(await get_user(tg_id))["balance"]}
+
+# ===== WITHDRAW =====
+@app.post("/api/withdraw")
+async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
+    tg_id=user['id']
+    if req.amount<100 or req.amount>50000: raise HTTPException(400,"Invalid")
+    u=await get_user(tg_id)
+    if u["balance"]<req.amount: raise HTTPException(400,"Insufficient")
+    fee=int(req.amount*0.05)
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount,tg_id))
+        await db.execute("INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)", (tg_id,req.amount,req.wallet)); await db.commit()
+    return {"success":True,"requested":req.amount,"fee":fee,"payout":req.amount-fee,"balance":(await get_user(tg_id))["balance"]}
+
+@app.post("/api/admin/withdraw/status")
+async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_admin)):
+    if req.status not in ["approved","rejected"]: raise HTTPException(400,"Invalid")
+    async with aiosqlite.connect(DB_NAME) as db:
+        if req.status=="rejected":
+            async with db.execute("SELECT tg_id,amount FROM withdrawals WHERE id=?", (req.withdraw_id,)) as c:
+                r=await c.fetchone()
+                if r: await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (r[1],r[0]))
+        await db.execute("UPDATE withdrawals SET status=? WHERE id=?", (req.status,req.withdraw_id)); await db.commit()
+        await log_admin_action(user['id'], f"withdraw_{req.status}", f"#{req.withdraw_id} -> {req.status}")
+    return {"success":True}
+
+@app.get("/api/admin/withdrawals")
+async def admin_withdrawals(user=Depends(verify_admin)):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT id,tg_id,amount,wallet,status,created_at FROM withdrawals ORDER BY created_at DESC LIMIT 100") as c:
+            return [{"id":r[0],"tg_id":r[1],"amount":r[2],"wallet":r[3],"status":r[4],"created_at":r[5]} for r in await c.fetchall()]
+
+@app.get("/api/admin/stats")
+async def admin_stats(user=Depends(verify_admin)):
+    async with aiosqlite.connect(DB_NAME) as db:
+        tu=(await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
+        pw=(await (await db.execute("SELECT COUNT(*) FROM withdrawals WHERE status='pending'")).fetchone())[0]
+        tp=(await (await db.execute("SELECT COUNT(*) FROM promocodes")).fetchone())[0]
+        tr=(await (await db.execute("SELECT COUNT(*) FROM referrals")).fetchone())[0]
+        return {"total_users":tu,"pending_withdrawals":pw,"total_promos":tp,"total_referrals":tr}
+
+@app.get("/api/admin/promos")
+async def admin_promos(user=Depends(verify_admin)):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT code,reward_type,case_id,stars,max_uses,uses,created_at FROM promocodes ORDER BY created_at DESC") as c:
+            return [{"code":r[0],"reward_type":r[1],"case_id":r[2],"stars":r[3],"max_uses":r[4],"uses":r[5],"created_at":r[6]} for r in await c.fetchall()]
+
+@app.get("/api/admin/users")
+async def admin_users(user=Depends(verify_admin)):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT username,balance,total_spent,games_played,wins FROM users ORDER BY balance DESC LIMIT 50") as c:
+            return [{"username":r[0],"balance":r[1],"total_spent":r[2],"games_played":r[3],"wins":r[4]} for r in await c.fetchall()]
+
+@app.get("/api/admin/logs")
+async def admin_logs(user=Depends(verify_admin)):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT id,admin_id,action,details,created_at FROM admin_logs ORDER BY created_at DESC LIMIT 50") as c:
+            return [{"id":r[0],"admin_id":r[1],"action":r[2],"details":r[3],"created_at":r[4]} for r in await c.fetchall()]
+
+@app.post("/api/admin/give")
+async def admin_give(req:AdminGiveRequest, user=Depends(verify_admin)):
+    if req.user_id<=0 or req.amount<1 or req.amount>1000000: raise HTTPException(400,"Invalid")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT OR IGNORE INTO users (tg_id,balance) VALUES (?,50)", (req.user_id,))
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount,req.user_id)); await db.commit()
+        await log_admin_action(user['id'], "give_stars", f"Gave {req.amount} to {req.user_id}")
+    return {"success":True,"message":f"Added {req.amount} to {req.user_id}"}
+
+@app.post("/api/admin/promo")
+async def create_promo(req:PromoCreateRequest, user=Depends(verify_admin)):
+    code=req.code.strip().upper()
+    async with aiosqlite.connect(DB_NAME) as db:
+        if await (await db.execute("SELECT code FROM promocodes WHERE code=?", (code,))).fetchone():
+            raise HTTPException(400,"Exists")
+        await db.execute("INSERT INTO promocodes (code,reward_type,case_id,stars,max_uses,created_by) VALUES (?,?,?,?,?,?)",
+                         (code,req.reward_type,req.case_id,req.stars,req.max_uses,user['id'])); await db.commit()
+        await log_admin_action(user['id'], "create_promo", f"{code} ({req.reward_type})")
+    return {"success":True,"message":f"✅ {code} created!"}
+
+@app.post("/api/promo/activate")
+async def activate_promo(code:str, user=Depends(verify_telegram)):
+    tg_id=user['id']; code=code.upper()
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT reward_type,case_id,stars,max_uses,uses FROM promocodes WHERE code=?", (code,)) as c:
+            p=await c.fetchone()
+            if not p or p[3]>=p[4] or await (await db.execute("SELECT 1 FROM promo_uses WHERE user_id=? AND promo_code=?", (tg_id,code))).fetchone():
+                raise HTTPException(400,"Invalid or used")
+        if p[0]=="stars":
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (p[2],tg_id))
+            reward=f"⭐ {p[2]}"
+        else:
+            case=CASES.get(p[1])
+            if not case: raise HTTPException(400,"Invalid case")
+            rarity=random.choices(case["rarities"], weights=case["weights"])[0]; gift=random.choice(NFT_GIFTS[rarity])
+            u=await get_user(tg_id); inv=u["inventory"]; inv.append({"id":gift["id"],"name":gift["name"],"rarity":rarity,"value":gift["value"],"emoji":gift["emoji"]})
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv),tg_id))
+            reward=gift["name"]
+        await db.execute("INSERT INTO promo_uses (user_id,promo_code) VALUES (?,?)", (tg_id,code))
+        await db.execute("UPDATE promocodes SET uses=uses+1 WHERE code=?", (code,)); await db.commit()
+    return {"success":True,"message":"🎉 Activated!","reward":reward}
+
+@app.post("/api/referral/activate")
+async def activate_referral(referrer_id:int, user=Depends(verify_telegram)):
+    tg_id=user['id']
+    if tg_id==referrer_id: raise HTTPException(400,"Self refer")
+    async with aiosqlite.connect(DB_NAME) as db:
+        if not await (await db.execute("SELECT 1 FROM users WHERE tg_id=?", (referrer_id,))).fetchone():
+            raise HTTPException(400,"Referrer not found")
+        if await (await db.execute("SELECT 1 FROM referrals WHERE user_id=?", (tg_id,))).fetchone():
+            raise HTTPException(400,"Already referred")
+        await db.execute("INSERT INTO referrals (user_id,referrer_id) VALUES (?,?)", (tg_id,referrer_id)); await db.commit()
+    return {"success":True,"referrer":referrer_id}
+
+@app.get("/api/referral/stats")
+async def referral_stats(user=Depends(verify_telegram)):
+    tg_id=user['id']
+    async with aiosqlite.connect(DB_NAME) as db:
+        earned=(await (await db.execute("SELECT total_earned FROM referrals WHERE user_id=?", (tg_id,))).fetchone() or [0])[0]
+        count=(await (await db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (tg_id,))).fetchone())[0]
+    return {"total_earned":earned,"referrals_count":count,"percent":7}
+
+# ===== STARTUP =====
 @app.on_event("startup")
 async def startup():
     await init_db()
     asyncio.create_task(crash_loop())
 
-# ==================== MAIN ====================
-if __name__ == "__main__":
+if __name__=="__main__":
     import uvicorn
     uvicorn.run(socket_app, host="0.0.0.0", port=8000)
