@@ -1,7 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 aiosqlite
-httpx
 python-socketio
 pydantic
-python-multipart
