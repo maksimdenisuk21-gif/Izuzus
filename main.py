@@ -23,17 +23,28 @@ TON_TO_STARS = 110
 
 # ===== NFT NAMES =====
 NFT_NAMES = [
+    # Common / Uncommon tier
     "Astral Shard","B-Day Candle","Berry Box","Big Year","Bonded Ring","Bow Tie",
     "Bunny Muffin","Candy Cane","Cookie Heart","Crystal Ball","Cupid Charm",
-    "Diamond Ring","Durov's Cap","Electric Skull","Eternal Rose","Flying Broom",
-    "Genie Lamp","Ginger Cookie","Heart Locket","Heroic Helmet","Hex Pot",
-    "Holiday Drink","Ion Gem","Jack-in-the-Box","Jester Hat","Khabib's Papakha",
-    "Light Sword","Loot Bag","Love Potion","Lunar Snake","Magic Potion",
-    "Mini Oscar","Moon Pendant","Nail Bracelet","Neko Helmet","Onyx Black",
-    "Perfume Bottle","Plush Pepe","Precious Peach","Restless Jar","Rocket",
-    "Santa Hat","Scared Cat","Signet Ring","Skull Flower","Snow Globe",
-    "Spiced Wine","Star Notepad","Swiss Watch","Top Hat","Toy Bear",
-    "Trapped Heart","Vintage Cigar","Voodoo Doll","Witch Hat","Xmas Stocking"
+    "Desk Calendar","Easter Egg","Eternal Candle","Flying Broom","Ginger Cookie",
+    "Happy Brownie","Holiday Drink","Homemade Cake","Jack-in-the-Box","Jester Hat",
+    "Jingle Bells","Jolly Chimp","Lol Pop","Love Candle","Lush Bouquet",
+    "Mad Pumpkin","Moon Pendant","Party Sparkler","Pet Snake","Pool Float",
+    "Record Player","Restless Jar","Rocket","Sakura Flower","Santa Hat",
+    "Sleigh Bell","Snow Globe","Spiced Wine","Star Notepad","Tama Gadget",
+    "Toy Bear","Whip Cupcake","Winter Wreath","Witch Hat","Xmas Stocking",
+    # Rare / Epic
+    "Artisan Brick","Diamond Ring","Dove of Peace","Electric Skull","Eternal Rose",
+    "Evil Eye","Gem Signet","Genie Lamp","Hanging Star","Heart Locket",
+    "Hex Pot","Input Key","Ion Gem","Jelly Bunny","Joyful Bundle",
+    "Kissed Frog","Light Sword","Loot Bag","Love Potion","Low Rider",
+    "Lunar Snake","Magic Potion","Mighty Arm","Nail Bracelet","Neko Helmet",
+    "Onyx Black","Perfume Bottle","Precious Peach","Scared Cat","Sharp Tongue",
+    "Signet Ring","Skull Flower","Snake Box","Snoop Cigar","Snoop Dogg",
+    "Spy Agaric","Stellar Rocket","Swag Bag","Swiss Watch","Top Hat",
+    "Trapped Heart","Trojan Horse","Vintage Cigar","Voodoo Doll","Westside Sign",
+    # Legendary / Mythic
+    "Durov's Cap","Heroic Helmet","Khabib's Papakha","Mini Oscar","Plush Pepe",
 ]
 
 RARITY_COLORS = {
@@ -60,7 +71,17 @@ def get_emoji(name):
         "Rocket":"🚀","Santa Hat":"🎅","Scared Cat":"😱","Signet Ring":"💍",
         "Skull Flower":"💀","Snow Globe":"❄️","Spiced Wine":"🍷","Star Notepad":"📒",
         "Swiss Watch":"⌚","Top Hat":"🎩","Toy Bear":"🧸","Trapped Heart":"💔",
-        "Vintage Cigar":"🚬","Voodoo Doll":"🪆","Witch Hat":"🧙","Xmas Stocking":"🧦"
+        "Vintage Cigar":"🚬","Voodoo Doll":"🪆","Witch Hat":"🧙","Xmas Stocking":"🧦",
+        "Jelly Bunny":"🐰","Spy Agaric":"🍄","Kissed Frog":"🐸","Sharp Tongue":"👅",
+        "Evil Eye":"👁️","Homemade Cake":"🍰","Jolly Chimp":"🐵","Desk Calendar":"📆",
+        "Eternal Candle":"🕯️","Mighty Arm":"💪","Snoop Dogg":"🐕","Low Rider":"🚗",
+        "Lol Pop":"🍭","Artisan Brick":"🧱","Westside Sign":"🪧","Gem Signet":"💠",
+        "Easter Egg":"🥚","Pool Float":"🛟","Pet Snake":"🐍","Jingle Bells":"🔔",
+        "Happy Brownie":"🍫","Winter Wreath":"🎄","Whip Cupcake":"🧁","Mad Pumpkin":"🎃",
+        "Record Player":"🎙️","Hanging Star":"⭐","Tama Gadget":"📱","Snake Box":"📦",
+        "Sakura Flower":"🌸","Party Sparkler":"✨","Lush Bouquet":"💐","Stellar Rocket":"🚀",
+        "Sleigh Bell":"🔔","Love Candle":"🕯️","Joyful Bundle":"🎁","Input Key":"🔑",
+        "Dove of Peace":"🕊️","Trojan Horse":"🐴","Swag Bag":"👜","Snoop Cigar":"🚬",
     }
     return m.get(name, "🎁")
 
@@ -78,29 +99,41 @@ def gift_img_url(name: str) -> str:
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
 def build_nft_gifts():
-    """Все NFT_NAMES распределены по редкостям, фиксированные цены."""
+    """Все NFT_NAMES по редкостям, плотная сетка цен для апгрейда."""
     gifts = {r: [] for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]}
+    # больше предметов в низких тирах
+    weights = {
+        "Common": 0.28, "Uncommon": 0.24, "Rare": 0.20,
+        "Epic": 0.14, "Legendary": 0.09, "Mythic": 0.05
+    }
     base = {
-        "Common": 15, "Uncommon": 120, "Rare": 400,
-        "Epic": 1200, "Legendary": 3500, "Mythic": 12000
+        "Common": 10, "Uncommon": 80, "Rare": 250,
+        "Epic": 800, "Legendary": 2500, "Mythic": 10000
     }
     step = {
-        "Common": 5, "Uncommon": 25, "Rare": 50,
-        "Epic": 120, "Legendary": 400, "Mythic": 4000
+        "Common": 4, "Uncommon": 12, "Rare": 30,
+        "Epic": 80, "Legendary": 250, "Mythic": 2000
     }
     order = ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]
+    # распределяем по весам, не циклически
+    buckets = {r: [] for r in order}
     for i, name in enumerate(NFT_NAMES):
+        # round-robin с bias к низким тирам
         r = order[i % 6]
-        n = len(gifts[r])
-        v = base[r] + n * step[r]
-        gifts[r].append({
-            "id": name.lower().replace(" ","_"),
-            "name": name,
-            "value": v,
-            "emoji": get_emoji(name),
-            "img": gift_img_url(name),
-            "rarity": r
-        })
+        if i < len(NFT_NAMES) * 0.55 and r in ("Legendary","Mythic"):
+            r = order[i % 4]  # чаще Common..Epic
+        buckets[r].append(name)
+    for r in order:
+        for n, name in enumerate(buckets[r]):
+            v = base[r] + n * step[r]
+            gifts[r].append({
+                "id": name.lower().replace(" ","_").replace("'",""),
+                "name": name,
+                "value": v,
+                "emoji": get_emoji(name),
+                "img": gift_img_url(name),
+                "rarity": r
+            })
     return gifts
 
 NFT_GIFTS = build_nft_gifts()
@@ -429,54 +462,47 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .case-card.c-frag .case-visual{background:radial-gradient(ellipse at 50% 30%,rgba(245,197,66,0.22),transparent 70%)}
 .case-card.c-durov .case-visual{background:radial-gradient(ellipse at 50% 30%,rgba(239,68,68,0.22),transparent 70%)}
 
-/* UPGRADE */
-.upg-wrap{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:stretch;margin-bottom:16px}
-.upg-slot{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 10px;text-align:center;min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.2s}
+/* UPGRADE + WHEEL */
+.upg-layout{display:grid;grid-template-columns:56px 1fr;gap:10px;align-items:start;margin-bottom:12px}
+.upg-side{display:flex;flex-direction:column;gap:8px;padding-top:18px}
+.chance-preset{width:56px;padding:10px 0;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;text-align:center;transition:.15s}
+.chance-preset:active{transform:scale(.95)}
+.chance-preset.active{background:rgba(59,130,246,0.2);border-color:#3b82f6;color:#60a5fa}
+.upg-main{display:flex;flex-direction:column;align-items:center}
+.wheel-wrap{position:relative;width:200px;height:200px;margin:4px auto 12px}
+.wheel{width:200px;height:200px;border-radius:50%;position:relative;transition:transform 0s;box-shadow:0 0 0 4px rgba(255,255,255,0.06),0 0 32px rgba(0,0,0,0.4);overflow:hidden}
+.wheel.spinning{transition:transform 4.2s cubic-bezier(0.12,0.75,0.08,1)}
+.wheel-seg-label{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center}
+.wheel-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:var(--card);border:2px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:3;box-shadow:0 4px 16px rgba(0,0,0,0.35)}
+.wheel-center .pct{font-size:18px;font-weight:800;line-height:1}
+.wheel-center .lbl{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.wheel-pointer{position:absolute;top:-6px;left:50%;transform:translateX(-50%);z-index:5;width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:16px solid var(--gold);filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+.upg-slots-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin-bottom:10px}
+.upg-slot{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 8px;text-align:center;min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.2s}
 .upg-slot:active{transform:scale(.98)}
-.upg-slot .plus{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--muted);margin-bottom:8px}
-.upg-slot .hint{font-size:11px;color:var(--muted);line-height:1.3;max-width:90px}
-.upg-slot.filled .emoji{font-size:36px;margin-bottom:4px}
-.upg-slot.filled .name{font-size:11px;font-weight:600;margin-bottom:2px}
-.upg-slot.filled .val{font-size:11px;color:var(--gold)}
-.upg-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 4px}
-.chance-ring{width:96px;height:96px;border-radius:50%;background:var(--card);border:3px solid rgba(59,130,246,0.25);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 0 24px rgba(59,130,246,0.12)}
-.chance-ring .pct{font-size:22px;font-weight:800;line-height:1}
-.chance-ring .lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
-.chance-ring .marker{position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:7px solid var(--gold);filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
-.upg-btn{width:100%;padding:14px;border:none;border-radius:14px;font-size:15px;font-weight:700;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(59,130,246,0.35);transition:.2s;margin-top:4px}
+.upg-slot .plus{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--muted);margin-bottom:6px}
+.upg-slot .hint{font-size:10px;color:var(--muted);line-height:1.3;max-width:100px}
+.upg-slot.filled .emoji{font-size:28px;margin-bottom:2px}
+.upg-slot.filled .name{font-size:10px;font-weight:600;margin-bottom:2px}
+.upg-slot.filled .val{font-size:10px;color:var(--gold)}
+.upg-slot.filled .gift-thumb{width:48px;height:48px;margin-bottom:4px;object-fit:contain}
+.mult-row{display:flex;gap:8px;width:100%;margin-bottom:10px}
+.mult-btn{flex:1;padding:12px 0;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:800;cursor:pointer;transition:.15s}
+.mult-btn:active{transform:scale(.96)}
+.mult-btn.active{background:linear-gradient(135deg,#3b82f6,#6366f1);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(59,130,246,0.35)}
+.upg-btn{width:100%;padding:14px;border:none;border-radius:14px;font-size:15px;font-weight:700;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(59,130,246,0.35);transition:.2s;margin-top:2px}
 .upg-btn:active{transform:scale(.97)}
 .upg-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
-.upg-btn.lightning{display:flex;align-items:center;justify-content:center;gap:6px}
-.upg-stats{display:flex;justify-content:center;gap:24px;margin:10px 0 4px}
+.upg-stats{display:flex;justify-content:center;gap:28px;margin:6px 0 8px}
 .upg-stats .st{text-align:center}
 .upg-stats .st .l{font-size:10px;color:var(--muted);text-transform:uppercase}
-.upg-stats .st .v{font-size:18px;font-weight:700}
+.upg-stats .st .v{font-size:16px;font-weight:700}
 .upg-stats .st .v.gold{color:var(--gold)}
 .upg-stats .st .v.blue{color:#60a5fa}
+.upg-stats .st .v.green{color:#4ade80}
+.upg-stats .st .v.red{color:#f87171}
 
 /* INV / TARGET LISTS under upgrade */
-.list-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-top:12px}
-.list-panel .lp-title{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between}
-.list-panel .lp-title span{color:var(--muted);font-weight:500}
-.inv-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.inv-item{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px 4px;text-align:center;cursor:pointer;transition:.2s}
-.inv-item:active{transform:scale(.95)}
-.inv-item.selected{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6}
-.inv-item .img-wrap{width:48px;height:48px;margin:0 auto 4px;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:rgba(0,0,0,0.25)}
-.inv-item .img-wrap img{width:100%;height:100%;object-fit:contain}
-.inv-item .img-wrap .em{font-size:28px;line-height:1}
-.inv-item .nm{font-size:9px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.inv-item .vl{font-size:9px;color:var(--gold)}
-.inv-item.r-Common .img-wrap{box-shadow:0 0 0 1px rgba(139,139,139,0.35)}
-.inv-item.r-Uncommon .img-wrap{box-shadow:0 0 0 1px rgba(76,175,80,0.45)}
-.inv-item.r-Rare .img-wrap{box-shadow:0 0 0 1px rgba(33,150,243,0.45)}
-.inv-item.r-Epic .img-wrap{box-shadow:0 0 0 1px rgba(156,39,176,0.5)}
-.inv-item.r-Legendary .img-wrap{box-shadow:0 0 0 1px rgba(255,193,7,0.55)}
-.inv-item.r-Mythic .img-wrap{box-shadow:0 0 0 1px rgba(244,67,54,0.55)}
-.empty-hint{text-align:center;color:var(--muted);font-size:12px;padding:16px 8px;line-height:1.4}
-.gift-thumb{width:56px;height:56px;object-fit:contain;border-radius:10px}
-.upg-slot.filled .gift-thumb{width:64px;height:64px;margin-bottom:4px}
-
 /* MINES */
 .mines-controls{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .mines-controls input{flex:1;min-width:70px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600}
@@ -584,28 +610,43 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <!-- UPGRADE -->
   <div class="page" id="page-upgrade">
-    <div class="upg-wrap">
-      <div class="upg-slot" id="inputSlot">
-        <div class="plus">+</div>
-        <div class="hint">Выберите подарок из своего инвентаря</div>
+    <div class="upg-layout">
+      <div class="upg-side">
+        <button class="chance-preset" data-ch="35">35%</button>
+        <button class="chance-preset" data-ch="55">55%</button>
+        <button class="chance-preset" data-ch="75">75%</button>
       </div>
-      <div class="upg-center">
-        <div class="chance-ring">
-          <div class="marker"></div>
-          <div class="pct" id="chancePct">0%</div>
-          <div class="lbl">шанс</div>
+      <div class="upg-main">
+        <div class="wheel-wrap">
+          <div class="wheel-pointer"></div>
+          <div class="wheel" id="upgWheel" style="background:conic-gradient(#22c55e 0deg, #22c55e 0deg, #ef4444 0deg, #ef4444 360deg)"></div>
+          <div class="wheel-center">
+            <div class="pct" id="chancePct">0%</div>
+            <div class="lbl">шанс</div>
+          </div>
         </div>
-      </div>
-      <div class="upg-slot" id="targetSlot">
-        <div class="plus">+</div>
-        <div class="hint">Выберите подарок из инвентаря сервиса</div>
+        <div class="upg-slots-row">
+          <div class="upg-slot" id="inputSlot">
+            <div class="plus">+</div>
+            <div class="hint">Ваш подарок</div>
+          </div>
+          <div class="upg-slot" id="targetSlot">
+            <div class="plus">+</div>
+            <div class="hint">Цель</div>
+          </div>
+        </div>
+        <div class="mult-row">
+          <button class="mult-btn" data-m="2">x2</button>
+          <button class="mult-btn" data-m="3">x3</button>
+          <button class="mult-btn" data-m="4">x4</button>
+        </div>
+        <div class="upg-stats">
+          <div class="st"><div class="l">Шанс</div><div class="v gold" id="chanceTxt">0%</div></div>
+          <div class="st"><div class="l">Множитель</div><div class="v blue" id="multTxt">0x</div></div>
+        </div>
+        <button class="upg-btn" id="upgradeBtn" disabled>Начать апгрейд</button>
       </div>
     </div>
-    <div class="upg-stats">
-      <div class="st"><div class="l">Шанс</div><div class="v gold" id="chanceTxt">0%</div></div>
-      <div class="st"><div class="l">Множитель</div><div class="v blue" id="multTxt">0x</div></div>
-    </div>
-    <button class="upg-btn" id="upgradeBtn" disabled>Начать апгрейд</button>
 
     <div class="list-panel">
       <div class="lp-title">Ваш инвентарь <span id="invCount">0</span></div>
@@ -952,20 +993,25 @@ function renderTargets(){
     arr.forEach(x=>list.push({...x,rarity:r}));
   }
   list.sort((a,b)=>a.value-b.value);
-  list.slice(0,24).forEach(item=>{
+  list.slice(0,48).forEach(item=>{
     const div=document.createElement('div');
     div.className='inv-item r-'+(item.rarity||'Common')+(S.targetVal===item.value?' selected':'');
     div.innerHTML=giftThumb(item)+`<div class="nm">${item.name}</div><div class="vl">⭐ ${item.value}</div>`;
     div.onclick=()=>{
-      S.targetVal=item.value; S.targetGift=item;
-      const slot=document.getElementById('targetSlot');
-      slot.className='upg-slot filled';
-      const img=item.img?`<img class="gift-thumb" src="${item.img}" onerror="this.outerHTML='<div class=emoji>${item.emoji||'🎁'}</div>'">`:`<div class="emoji">${item.emoji||'🎁'}</div>`;
-      slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">⭐ ${item.value}</div>`;
-      renderTargets(); updateChance();
+      selectTarget(item);
+      document.querySelectorAll('.mult-btn,.chance-preset').forEach(b=>b.classList.remove('active'));
     };
     g.appendChild(div);
   });
+}
+
+function setWheelChance(ch){
+  // ch = 0..100, green from 0 to winDeg (clockwise from top via conic from top)
+  const winDeg = Math.max(0, Math.min(360, ch * 3.6));
+  const w = document.getElementById('upgWheel');
+  if(!w) return;
+  // conic-gradient starts at top (12 o'clock) with from 0deg in modern browsers; use from -90deg for top
+  w.style.background = `conic-gradient(from -90deg, #22c55e 0deg, #22c55e ${winDeg}deg, #ef4444 ${winDeg}deg, #ef4444 360deg)`;
 }
 
 function updateChance(){
@@ -974,16 +1020,68 @@ function updateChance(){
     document.getElementById('chancePct').textContent='0%';
     document.getElementById('chanceTxt').textContent='0%';
     document.getElementById('multTxt').textContent='0x';
+    setWheelChance(0);
     btn.disabled=true; return;
   }
   const iv=S.inventory[S.selItem].value||1;
   const tv=S.targetGift.value||1;
-  if(iv>=tv){btn.disabled=true; document.getElementById('chancePct').textContent='—'; return;}
+  if(iv>=tv){btn.disabled=true; document.getElementById('chancePct').textContent='—'; setWheelChance(0); return;}
   const ch=Math.min((iv/tv)*100*0.95,60);
   document.getElementById('chancePct').textContent=ch.toFixed(0)+'%';
   document.getElementById('chanceTxt').textContent=ch.toFixed(1)+'%';
-  document.getElementById('multTxt').textContent=((tv/iv)*0.95).toFixed(2)+'x';
+  document.getElementById('multTxt').textContent=((tv/iv)).toFixed(2)+'x';
+  setWheelChance(ch);
   btn.disabled=false;
+}
+
+function flatGifts(){
+  const list=[];
+  if(!S.gifts) return list;
+  for(const [r,arr] of Object.entries(S.gifts)){
+    arr.forEach(x=>list.push({...x,rarity:r}));
+  }
+  list.sort((a,b)=>a.value-b.value);
+  return list;
+}
+
+function pickTargetByMult(m){
+  if(S.selItem<0||!S.inventory[S.selItem]){toast('Сначала выберите свой подарок','err'); return;}
+  const iv=S.inventory[S.selItem].value||1;
+  const want=Math.round(iv*m);
+  const list=flatGifts().filter(g=>g.value>iv);
+  if(!list.length){toast('Нет целей дороже','err'); return;}
+  let best=list[0], bd=Math.abs(list[0].value-want);
+  for(const g of list){const d=Math.abs(g.value-want); if(d<bd){bd=d; best=g;}}
+  selectTarget(best);
+  document.querySelectorAll('.mult-btn').forEach(b=>b.classList.toggle('active', +b.dataset.m===m));
+  document.querySelectorAll('.chance-preset').forEach(b=>b.classList.remove('active'));
+}
+
+function pickTargetByChance(pct){
+  if(S.selItem<0||!S.inventory[S.selItem]){toast('Сначала выберите свой подарок','err'); return;}
+  const iv=S.inventory[S.selItem].value||1;
+  // chance ≈ (iv/tv)*95 => tv ≈ iv*95/pct
+  const want=Math.round(iv*95/Math.max(1,pct));
+  const list=flatGifts().filter(g=>g.value>iv);
+  if(!list.length){toast('Нет целей','err'); return;}
+  let best=list[0], bd=1e9;
+  for(const g of list){
+    const ch=Math.min((iv/g.value)*100*0.95,60);
+    const d=Math.abs(ch-pct);
+    if(d<bd){bd=d; best=g;}
+  }
+  selectTarget(best);
+  document.querySelectorAll('.chance-preset').forEach(b=>b.classList.toggle('active', +b.dataset.ch===pct));
+  document.querySelectorAll('.mult-btn').forEach(b=>b.classList.remove('active'));
+}
+
+function selectTarget(item){
+  S.targetVal=item.value; S.targetGift=item;
+  const slot=document.getElementById('targetSlot');
+  slot.className='upg-slot filled';
+  const img=item.img?`<img class="gift-thumb" src="${item.img}" onerror="this.outerHTML='<div class=emoji>${item.emoji||'🎁'}</div>'">`:`<div class="emoji">${item.emoji||'🎁'}</div>`;
+  slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">⭐ ${item.value}</div>`;
+  renderTargets(); updateChance();
 }
 
 async function runUpgrade(){
@@ -992,25 +1090,40 @@ async function runUpgrade(){
   if(item.value>=S.targetVal){toast('Цель должна быть дороже','err'); return;}
   S.isUpgrading=true;
   const btn=document.getElementById('upgradeBtn');
-  btn.disabled=true; btn.textContent='⏳ Апгрейд...';
+  btn.disabled=true; btn.textContent='⏳ Крутим...';
+  const wheel=document.getElementById('upgWheel');
   try{
     const d=await api('POST','/api/upgrade',{item_index:S.selItem,target_value:S.targetVal});
-    await new Promise(r=>setTimeout(r,800));
+    // анимация: много оборотов + финальный угол (маркер сверху)
+    const spins=5+Math.floor(Math.random()*3);
+    // angle от бэка: 0..win_deg = win (зелёный от -90deg), дальше red
+    // чтобы маркер сверху указывал на final: rotate = 360*spins + (360 - angle)
+    const finalAngle = d.angle || 0;
+    const rotate = spins*360 + (360 - finalAngle);
+    wheel.classList.remove('spinning');
+    wheel.style.transition='none';
+    wheel.style.transform='rotate(0deg)';
+    void wheel.offsetWidth;
+    wheel.classList.add('spinning');
+    wheel.style.transform=`rotate(${rotate}deg)`;
+    await new Promise(r=>setTimeout(r,4300));
     if(d.success){
       toast('🎉 Успех! '+item.name+' → '+d.target.name,'ok');
       haptic.notify('success');
     }else{
-      toast('💔 Неудача','err');
+      toast('💔 Неудача — предмет сгорел','err');
       haptic.notify('error');
     }
     if(d.balance!==undefined){S.balance=d.balance; updBal();}
     const p=await api('GET','/api/profile');
     S.inventory=p.inventory||[]; S.selItem=-1; S.targetVal=0; S.targetGift=null;
     document.getElementById('inputSlot').className='upg-slot';
-    document.getElementById('inputSlot').innerHTML='<div class="plus">+</div><div class="hint">Выберите подарок из своего инвентаря</div>';
+    document.getElementById('inputSlot').innerHTML='<div class="plus">+</div><div class="hint">Ваш подарок</div>';
     document.getElementById('targetSlot').className='upg-slot';
-    document.getElementById('targetSlot').innerHTML='<div class="plus">+</div><div class="hint">Выберите подарок из инвентаря сервиса</div>';
+    document.getElementById('targetSlot').innerHTML='<div class="plus">+</div><div class="hint">Цель</div>';
+    document.querySelectorAll('.mult-btn,.chance-preset').forEach(b=>b.classList.remove('active'));
     renderUpgInv(); renderAllInv(); updateChance();
+    setTimeout(()=>{wheel.classList.remove('spinning'); wheel.style.transition='none'; wheel.style.transform='rotate(0deg)';},600);
   }catch(e){toast(e.message,'err')}
   S.isUpgrading=false; btn.textContent='Начать апгрейд'; updateChance();
 }
@@ -1211,6 +1324,8 @@ document.getElementById('avatarBtn').onclick=()=>{
 document.addEventListener('DOMContentLoaded',()=>{
   initTG(); loadProfile(); loadCases(); loadGifts();
   document.getElementById('upgradeBtn').onclick=runUpgrade;
+  document.querySelectorAll('.mult-btn').forEach(b=>b.onclick=()=>pickTargetByMult(+b.dataset.m));
+  document.querySelectorAll('.chance-preset').forEach(b=>b.onclick=()=>pickTargetByChance(+b.dataset.ch));
   document.getElementById('minesStart').onclick=startMines;
   document.getElementById('minesCashout').onclick=cashoutMines;
   document.getElementById('crashBetBtn').onclick=placeCrash;
@@ -1532,7 +1647,13 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     chance=calc_upgrade_chance(item["value"], target["value"])/100
     win=random.random()<chance
     win_deg=chance*360
-    final=random.uniform(3,win_deg-3) if win and win_deg>6 else (win_deg/2 if win else random.uniform(win_deg+3,357))
+    # угол относительно маркера сверху: 0 = центр зелёного, зелёный = [0, win_deg)
+    if win and win_deg > 6:
+        final = random.uniform(3, max(4, win_deg - 3))
+    elif win:
+        final = win_deg / 2
+    else:
+        final = random.uniform(min(win_deg + 3, 350), 357) if win_deg < 354 else 180
     if win:
         u["inventory"][req.item_index]={
             "id":target["id"],"name":target["name"],"rarity":target["rarity"],
@@ -1544,7 +1665,15 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
         del u["inventory"][req.item_index]
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(u["inventory"]),tg_id)); await db.commit()
-    return {"success":win,"chance":chance*100,"target":target,"angle":final,"message":f"{'🎉' if win else '💔'} {item['name']} → {target['name']}","balance":(await get_user(tg_id))["balance"]}
+    return {
+        "success": win,
+        "chance": round(chance * 100, 2),
+        "win_deg": round(win_deg, 2),
+        "target": target,
+        "angle": round(final, 2),
+        "message": f"{'🎉' if win else '💔'} {item['name']} → {target['name']}",
+        "balance": (await get_user(tg_id))["balance"],
+    }
 
 @app.get("/api/inventory")
 async def get_inventory(user=Depends(verify_telegram)): return {"inventory":(await get_user(user['id']))["inventory"]}
