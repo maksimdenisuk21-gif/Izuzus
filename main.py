@@ -78,42 +78,46 @@ def gift_img_url(name: str) -> str:
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
 def build_nft_gifts():
-    """Фиксированные цены — апгрейд находит target_value после рестарта сервера."""
-    gifts = {}
+    """Все NFT_NAMES распределены по редкостям, фиксированные цены."""
+    gifts = {r: [] for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]}
     base = {
-        "Common": 20, "Uncommon": 150, "Rare": 500,
-        "Epic": 1500, "Legendary": 4000, "Mythic": 15000
+        "Common": 15, "Uncommon": 120, "Rare": 400,
+        "Epic": 1200, "Legendary": 3500, "Mythic": 12000
     }
     step = {
-        "Common": 8, "Uncommon": 30, "Rare": 60,
-        "Epic": 150, "Legendary": 500, "Mythic": 5000
+        "Common": 5, "Uncommon": 25, "Rare": 50,
+        "Epic": 120, "Legendary": 400, "Mythic": 4000
     }
-    idx = 0
-    for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]:
-        gifts[r] = []
-        for i in range(8):
-            if idx >= len(NFT_NAMES): idx = 0
-            name = NFT_NAMES[idx]; idx += 1
-            v = base[r] + i * step[r]
-            gifts[r].append({
-                "id": name.lower().replace(" ","_"),
-                "name": name,
-                "value": v,
-                "emoji": get_emoji(name),
-                "img": gift_img_url(name),
-                "rarity": r
-            })
+    order = ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]
+    for i, name in enumerate(NFT_NAMES):
+        r = order[i % 6]
+        n = len(gifts[r])
+        v = base[r] + n * step[r]
+        gifts[r].append({
+            "id": name.lower().replace(" ","_"),
+            "name": name,
+            "value": v,
+            "emoji": get_emoji(name),
+            "img": gift_img_url(name),
+            "rarity": r
+        })
     return gifts
 
 NFT_GIFTS = build_nft_gifts()
 
 CASES = {
-    "free_daily": {"name":"🎁 FREE DAILY","price":0,"cooldown":86400,"rarities":["Common"],"weights":[100],"min_stars":0.5,"max_stars":15},
-    "tg_starter": {"name":"🚀 TG STARTER","price":50,"rarities":["Common","Uncommon"],"weights":[50,50],"min_stars":10,"max_stars":80},
-    "pepe_memes": {"name":"🐸 PEPE & MEMES","price":200,"rarities":["Uncommon","Rare"],"weights":[45,55],"min_stars":50,"max_stars":400},
-    "telegram_gifts": {"name":"🎁 TELEGRAM GIFTS","price":500,"rarities":["Rare","Epic"],"weights":[40,60],"min_stars":100,"max_stars":1200},
-    "fragment_nft": {"name":"💎 FRAGMENT NFT","price":1500,"rarities":["Epic","Legendary"],"weights":[45,55],"min_stars":300,"max_stars":4000},
-    "durov_selection": {"name":"👑 DUROV'S SELECTION","price":5000,"rarities":["Legendary","Mythic"],"weights":[50,50],"min_stars":1000,"max_stars":30000}
+    "free_daily": {"name":"🎁 FREE DAILY","price":0,"cooldown":86400,"rarities":["Common"],"weights":[100],"min_stars":1,"max_stars":20,"icon":"🎁","color":"free"},
+    "newbie": {"name":"🌱 NEWBIE","price":25,"rarities":["Common","Uncommon"],"weights":[70,30],"min_stars":5,"max_stars":40,"icon":"🌱","color":"c-starter"},
+    "tg_starter": {"name":"🚀 TG STARTER","price":50,"rarities":["Common","Uncommon"],"weights":[50,50],"min_stars":10,"max_stars":80,"icon":"🚀","color":"c-starter"},
+    "candy": {"name":"🍭 CANDY BOX","price":100,"rarities":["Common","Uncommon","Rare"],"weights":[40,40,20],"min_stars":20,"max_stars":150,"icon":"🍭","color":"c-pepe"},
+    "pepe_memes": {"name":"🐸 PEPE & MEMES","price":200,"rarities":["Uncommon","Rare"],"weights":[45,55],"min_stars":50,"max_stars":400,"icon":"🐸","color":"c-pepe"},
+    "love": {"name":"💘 LOVE BOX","price":300,"rarities":["Uncommon","Rare","Epic"],"weights":[40,40,20],"min_stars":60,"max_stars":600,"icon":"💘","color":"c-tg"},
+    "telegram_gifts": {"name":"✈️ TELEGRAM GIFTS","price":500,"rarities":["Rare","Epic"],"weights":[40,60],"min_stars":100,"max_stars":1200,"icon":"✈️","color":"c-tg"},
+    "magic": {"name":"🔮 MAGIC","price":800,"rarities":["Rare","Epic","Legendary"],"weights":[45,40,15],"min_stars":150,"max_stars":2000,"icon":"🔮","color":"c-frag"},
+    "fragment_nft": {"name":"💎 FRAGMENT NFT","price":1500,"rarities":["Epic","Legendary"],"weights":[45,55],"min_stars":300,"max_stars":4000,"icon":"💎","color":"c-frag"},
+    "gold": {"name":"👑 GOLD VAULT","price":3000,"rarities":["Epic","Legendary","Mythic"],"weights":[40,45,15],"min_stars":500,"max_stars":8000,"icon":"👑","color":"c-durov"},
+    "durov_selection": {"name":"🔥 DUROV'S PICK","price":5000,"rarities":["Legendary","Mythic"],"weights":[50,50],"min_stars":1000,"max_stars":30000,"icon":"🔥","color":"c-durov"},
+    "mythic": {"name":"☄️ MYTHIC ONLY","price":10000,"rarities":["Mythic"],"weights":[100],"min_stars":2000,"max_stars":50000,"icon":"☄️","color":"c-durov"},
 }
 
 # ===== MODELS =====
@@ -173,8 +177,8 @@ async def log_admin_action(admin_id, action, details=""):
         await db.commit()
 
 # ===== AUTH =====
-# DEV_MODE=1 — demo без Telegram; на проде со Stars: DEV_MODE=0
-DEV_MODE = os.getenv("DEV_MODE", "0") == "1"
+# DEV_MODE=1 — мягкий auth (удобно с Netlify); 0 = строгий hash Telegram
+DEV_MODE = os.getenv("DEV_MODE", "1") == "1"
 PUBLIC_URL = os.getenv("PUBLIC_URL", "https://izuzus-2.onrender.com").rstrip("/")
 PENDING_DEPOSITS: Dict[str, dict] = {}  # invoice payload -> {tg_id, amount}
 
@@ -190,30 +194,53 @@ def tg_api(method: str, data: dict) -> dict:
     with urllib.request.urlopen(req, timeout=25) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
-def verify_telegram(authorization: str = Header(None)):
-    # Демо-пользователь без Telegram (только если DEV_MODE)
-    if not authorization:
+def _parse_init_data(authorization: str):
+    data = urllib.parse.parse_qs(authorization)
+    h = data.get("hash", [None])[0]
+    if not h:
+        return None
+    sd = sorted([f"{k}={v[0]}" for k, v in data.items() if k != "hash"])
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    if hmac.new(secret, "\n".join(sd).encode(), hashlib.sha256).hexdigest() != h:
+        return None
+    return json.loads(data.get("user", ["{}"])[0])
+
+def verify_telegram(
+    authorization: str = Header(None),
+    x_telegram_init_data: str = Header(None, alias="X-Telegram-Init-Data"),
+):
+    """Auth из Mini App. Поддерживает Authorization и X-Telegram-Init-Data (Netlify/прокси)."""
+    raw = authorization or x_telegram_init_data
+    if not raw:
+        # без Telegram — demo только если DEV_MODE
         if DEV_MODE:
             return {"id": 100001, "first_name": "Demo", "username": "demo"}
         raise HTTPException(401, "Open inside Telegram Mini App")
-    if authorization.strip().lower() in ("dev", "demo"):
+    if raw.strip().lower() in ("dev", "demo"):
         if DEV_MODE:
             return {"id": 100001, "first_name": "Demo", "username": "demo"}
-        raise HTTPException(401)
+        raise HTTPException(401, "DEV disabled")
     if not BOT_TOKEN:
         raise HTTPException(401)
     try:
-        data = urllib.parse.parse_qs(authorization)
-        h = data.get('hash', [None])[0]
-        if not h: raise HTTPException(401)
-        sd = sorted([f"{k}={v[0]}" for k,v in data.items() if k!='hash'])
-        secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-        if hmac.new(secret, "\n".join(sd).encode(), hashlib.sha256).hexdigest() != h: raise HTTPException(401)
-        return json.loads(data.get('user', ['{}'])[0])
+        user = _parse_init_data(raw)
+        if user and user.get("id"):
+            return user
+        # если hash не сошёлся — возможно старый токен; в DEV пускаем
+        if DEV_MODE:
+            try:
+                data = urllib.parse.parse_qs(raw)
+                u = json.loads(data.get("user", ["{}"])[0])
+                if u.get("id"):
+                    return u
+            except Exception:
+                pass
+            return {"id": 100001, "first_name": "Demo", "username": "demo"}
+        raise HTTPException(401, "Invalid Telegram auth")
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(401)
+        raise HTTPException(401, "Auth error")
 
 def verify_admin(user=Depends(verify_telegram)):
     if user['id'] != ADMIN_TG_ID: raise HTTPException(403)
@@ -412,10 +439,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .upg-slot.filled .name{font-size:11px;font-weight:600;margin-bottom:2px}
 .upg-slot.filled .val{font-size:11px;color:var(--gold)}
 .upg-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 4px}
-.chance-ring{width:110px;height:110px;border-radius:50%;background:var(--card);border:3px solid rgba(59,130,246,0.25);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 0 30px rgba(59,130,246,0.12)}
-.chance-ring .pct{font-size:28px;font-weight:800;line-height:1}
-.chance-ring .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
-.chance-ring .marker{position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:10px solid var(--gold)}
+.chance-ring{width:96px;height:96px;border-radius:50%;background:var(--card);border:3px solid rgba(59,130,246,0.25);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 0 24px rgba(59,130,246,0.12)}
+.chance-ring .pct{font-size:22px;font-weight:800;line-height:1}
+.chance-ring .lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.chance-ring .marker{position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:7px solid var(--gold);filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
 .upg-btn{width:100%;padding:14px;border:none;border-radius:14px;font-size:15px;font-weight:700;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(59,130,246,0.35);transition:.2s;margin-top:4px}
 .upg-btn:active{transform:scale(.97)}
 .upg-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
@@ -659,6 +686,22 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<!-- CASE PREVIEW MODAL -->
+<div id="caseOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:480px;max-height:85vh;overflow:auto;background:#12182a;border-radius:20px 20px 0 0;padding:18px 14px 24px;border:1px solid rgba(255,255,255,.08)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div id="caseModalTitle" style="font-size:16px;font-weight:700">Кейс</div>
+        <div id="caseModalPrice" style="font-size:13px;color:#60a5fa;margin-top:2px"></div>
+      </div>
+      <button onclick="document.getElementById('caseOverlay').style.display='none'" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#161d32;color:#7a8699;font-size:16px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:12px;color:#7a8699;margin-bottom:10px">Что может выпасть:</div>
+    <div id="caseModalGrid" class="inv-grid" style="grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px"></div>
+    <button id="caseModalOpen" class="btn-full">Открыть</button>
+  </div>
+</div>
+
 <!-- DEPOSIT MODAL -->
 <div id="depOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-end;justify-content:center">
   <div style="width:100%;max-width:480px;background:#12182a;border-radius:20px 20px 0 0;padding:20px 16px 28px;border:1px solid rgba(255,255,255,.08)">
@@ -689,6 +732,7 @@ const S = {
    Вариант 2: localStorage.setItem('API_BASE','https://your-app.onrender.com')
    Вариант 3: если HTML отдаёт тот же Render — оставь пустым
 */
+// ВСЕГДА бьём в Render (Netlify = только оболочка для BotFather)
 const API_BASE = (function(){
   const DEFAULT='https://izuzus-2.onrender.com';
   try{
@@ -697,30 +741,35 @@ const API_BASE = (function(){
     const ls=localStorage.getItem('API_BASE');
     if(ls) return ls.replace(/\/$/,'');
   }catch(e){}
-  // same-origin на Render
-  if(/izuzus-2\.onrender\.com/i.test(location.hostname)) return '';
-  // Netlify / другой хост → твой backend
+  if(/izuzus-2\.onrender\.com/i.test(location.hostname)) return ''; // same origin
   return DEFAULT;
 })();
 
 function toast(msg,type='info'){
   const t=document.getElementById('toast');
   t.textContent=msg; t.className='toast '+type; t.style.display='block';
-  setTimeout(()=>t.style.display='none',3200);
+  setTimeout(()=>t.style.display='none',3500);
 }
 
 async function api(method,url,body=null){
-  if(!API_BASE && /netlify\.app|github\.io|vercel\.app/i.test(location.hostname)){
-    throw new Error('Укажи API: открой ?api=https://ТВОЙ-BACKEND.onrender.com');
-  }
   const full=(API_BASE||'')+url;
   const h={'Content-Type':'application/json'};
-  if(window.Telegram?.WebApp?.initData) h.Authorization=window.Telegram.WebApp.initData;
-  else if(API_BASE) h.Authorization='dev'; // demo на внешнем бэке
-  const r=await fetch(full,{method,headers:h,body:body?JSON.stringify(body):null});
+  const initData=window.Telegram?.WebApp?.initData||'';
+  if(initData){
+    h['Authorization']=initData;
+    h['X-Telegram-Init-Data']=initData;
+  }else{
+    h['Authorization']='dev';
+  }
+  let r;
+  try{
+    r=await fetch(full,{method,headers:h,body:body?JSON.stringify(body):null,mode:'cors'});
+  }catch(netErr){
+    throw new Error('Нет связи с сервером ('+(API_BASE||'same')+'). Подожди 30с — Render просыпается.');
+  }
   if(!r.ok){
     const e=await r.json().catch(()=>({}));
-    const detail=typeof e.detail==='string'?e.detail:(e.detail?JSON.stringify(e.detail):'Ошибка API '+r.status);
+    const detail=typeof e.detail==='string'?e.detail:(e.detail?JSON.stringify(e.detail):('HTTP '+r.status));
     throw new Error(detail);
   }
   return r.json();
@@ -769,7 +818,11 @@ async function loadProfile(){
 }
 
 async function loadCases(){
-  try{S.cases=await api('GET','/api/cases'); renderCases();}catch(e){}
+  try{
+    S.cases=await api('GET','/api/cases');
+    if(!S.gifts){try{const d=await api('GET','/api/gifts'); S.gifts=d.gifts;}catch(e){}}
+    renderCases();
+  }catch(e){toast('Кейсы: '+e.message,'err')}
 }
 
 async function loadGifts(){
@@ -777,28 +830,70 @@ async function loadGifts(){
     const d=await api('GET','/api/gifts');
     S.gifts=d.gifts;
     renderTargets();
+    if(S.cases && Object.keys(S.cases).length) renderCases();
   }catch(e){}
+}
+
+function casePreviewImgs(c){
+  // берём картинки NFT из редкостей кейса
+  if(!S.gifts) return '';
+  const imgs=[];
+  for(const r of (c.rarities||[])){
+    const pool=S.gifts[r]||[];
+    for(const g of pool.slice(0,2)){
+      if(g.img) imgs.push(g.img);
+      if(imgs.length>=3) break;
+    }
+    if(imgs.length>=3) break;
+  }
+  if(!imgs.length) return `<div class="case-emoji">${c.icon||'📦'}</div>`;
+  return `<div style="display:flex;gap:4px;align-items:center;justify-content:center;z-index:1;position:relative">${imgs.map(src=>`<img src="${src}" style="width:36px;height:36px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))" onerror="this.style.display='none'">`).join('')}</div>`;
 }
 
 function renderCases(){
   const promo=document.getElementById('promoCases');
   const all=document.getElementById('allCases');
   promo.innerHTML=''; all.innerHTML='';
-  const icons={free_daily:'🎁',tg_starter:'🚀',pepe_memes:'🐸',telegram_gifts:'✈️',fragment_nft:'💎',durov_selection:'👑'};
-  const cls={free_daily:'free',tg_starter:'c-starter',pepe_memes:'c-pepe',telegram_gifts:'c-tg',fragment_nft:'c-frag',durov_selection:'c-durov'};
   for(const [id,c] of Object.entries(S.cases||{})){
     const isFree=c.price===0;
     const card=document.createElement('div');
-    card.className='case-card '+(cls[id]||'')+(isFree?' free':'');
+    card.className='case-card '+(c.color||'')+(isFree?' free':'');
     card.innerHTML=`
       <div class="case-badge">${(c.rarities||[]).join(' · ')}</div>
-      <div class="case-visual"><div class="case-box"></div><div class="case-emoji">${icons[id]||'📦'}</div></div>
+      <div class="case-visual"><div class="case-box"></div>${casePreviewImgs(c)}</div>
       <div class="case-name">${c.name.replace(/^[^\s]+\s/,'')}</div>
       <div class="case-price">${isFree?(S.freeCase?'Бесплатно':'⏳ 24ч'):'⭐ '+c.price}</div>
     `;
-    card.onclick=()=>openCase(id);
+    card.onclick=()=>showCaseModal(id);
     if(isFree) promo.appendChild(card); else all.appendChild(card);
   }
+}
+
+async function showCaseModal(id){
+  const c=S.cases[id];
+  if(!c) return;
+  let contents={items:[]};
+  try{contents=await api('GET','/api/case/'+id+'/contents');}catch(e){}
+  const ov=document.getElementById('caseOverlay');
+  if(!ov){openCase(id); return;}
+  document.getElementById('caseModalTitle').textContent=c.name;
+  document.getElementById('caseModalPrice').textContent=c.price===0?'Бесплатно':'⭐ '+c.price;
+  const grid=document.getElementById('caseModalGrid');
+  grid.innerHTML='';
+  const items=contents.items||[];
+  if(!items.length && S.gifts){
+    (c.rarities||[]).forEach(r=>{(S.gifts[r]||[]).forEach(g=>items.push({...g,rarity:r}));});
+  }
+  items.slice(0,24).forEach(it=>{
+    const d=document.createElement('div');
+    d.className='inv-item r-'+(it.rarity||'Common');
+    d.innerHTML=giftThumb(it)+`<div class="nm">${it.name}</div><div class="vl">⭐ ${it.value}</div>`;
+    grid.appendChild(d);
+  });
+  const btn=document.getElementById('caseModalOpen');
+  btn.textContent=c.price===0?'Открыть бесплатно':'Открыть за ⭐ '+c.price;
+  btn.onclick=()=>{ov.style.display='none'; openCase(id);};
+  ov.style.display='flex';
 }
 
 async function openCase(id){
@@ -1274,6 +1369,24 @@ async def get_gifts(): return {"rarities":RARITY_COLORS,"gifts":NFT_GIFTS}
 
 @app.get("/api/cases")
 async def get_cases(): return CASES
+
+@app.get("/api/case/{case_id}/contents")
+async def case_contents(case_id: str):
+    c = CASES.get(case_id)
+    if not c:
+        raise HTTPException(404, "Case not found")
+    items = []
+    total_w = sum(c["weights"]) or 1
+    for r, w in zip(c["rarities"], c["weights"]):
+        pool = NFT_GIFTS.get(r, [])
+        chance = round(100 * w / total_w, 1)
+        for g in pool:
+            items.append({**g, "drop_chance": chance, "rarity": r})
+    # превью-картинки для карточки кейса
+    preview = []
+    for r in c["rarities"]:
+        preview.extend(NFT_GIFTS.get(r, [])[:2])
+    return {"case": c, "items": items, "preview": preview[:6]}
 
 @app.get("/api/live")
 async def get_live():
