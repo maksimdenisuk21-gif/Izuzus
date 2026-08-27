@@ -2,7 +2,7 @@
 import os, hmac, hashlib, json, urllib.parse, random, time, uuid, asyncio, math
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -127,6 +127,24 @@ class AdminGiveRequest(BaseModel): user_id:int; amount:int
 class WithdrawRequest(BaseModel): amount:int; wallet:str
 class PromoCreateRequest(BaseModel): code:str; reward_type:str; case_id:str=None; stars:int=0; max_uses:int=1
 class AdminWithdrawStatusRequest(BaseModel): withdraw_id:int; status:str
+class DepositRequest(BaseModel): amount:int
+class DepositConfirmRequest(BaseModel): payload:str
+
+# LIVE wins feed (in-memory, last 40)
+LIVE_WINS: List[dict] = []
+
+def push_live(item: dict, username: str = "Player"):
+    LIVE_WINS.insert(0, {
+        "name": item.get("name", "Gift"),
+        "emoji": item.get("emoji", "🎁"),
+        "img": item.get("img", ""),
+        "value": item.get("value", 0),
+        "rarity": item.get("rarity", ""),
+        "user": username[:16],
+        "ts": time.time()
+    })
+    if len(LIVE_WINS) > 40:
+        del LIVE_WINS[40:]
 
 # ===== DB =====
 async def init_db():
@@ -155,8 +173,22 @@ async def log_admin_action(admin_id, action, details=""):
         await db.commit()
 
 # ===== AUTH =====
-# DEV_MODE=1 — можно открыть сайт без Telegram (для теста на Render/локально)
-DEV_MODE = os.getenv("DEV_MODE", "1") == "1"
+# DEV_MODE=1 — demo без Telegram; на проде со Stars: DEV_MODE=0
+DEV_MODE = os.getenv("DEV_MODE", "0") == "1"
+PUBLIC_URL = os.getenv("PUBLIC_URL", "https://izuzus-2.onrender.com").rstrip("/")
+PENDING_DEPOSITS: Dict[str, dict] = {}  # invoice payload -> {tg_id, amount}
+
+def tg_api(method: str, data: dict) -> dict:
+    """Вызов Telegram Bot API"""
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 def verify_telegram(authorization: str = Header(None)):
     # Демо-пользователь без Telegram (только если DEV_MODE)
@@ -344,7 +376,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .live-label{font-size:11px;color:var(--muted);font-weight:600;flex-shrink:0}
 .live-scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1}
 .live-scroll::-webkit-scrollbar{display:none}
-.live-item{width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.live-item{width:40px;height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden}
+.live-item img{width:32px;height:32px;object-fit:contain}
 
 /* SECTION TITLE */
 .sec-title{font-size:15px;font-weight:700;margin:14px 0 10px;display:flex;align-items:center;justify-content:space-between}
@@ -489,8 +522,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="logo-icon">🎁</div>
     </div>
     <div class="balance-pill">
-      <div class="bal-item"><span class="ic">💎</span> <span id="balStars">0</span></div>
-      <button class="add-bal" id="addBalBtn">+</button>
+      <div class="bal-item"><span class="ic">⭐</span> <span id="balStars">0</span></div>
+      <button class="add-bal" id="addBalBtn" title="Пополнить">+</button>
     </div>
     <div class="avatar" id="avatarBtn">C</div>
   </div>
@@ -626,6 +659,20 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<!-- DEPOSIT MODAL -->
+<div id="depOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:480px;background:#12182a;border-radius:20px 20px 0 0;padding:20px 16px 28px;border:1px solid rgba(255,255,255,.08)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700">⭐ Пополнить баланс</div>
+      <button id="depClose" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#161d32;color:#7a8699;font-size:16px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:12px;color:#7a8699;margin-bottom:12px">Оплата звёздами Telegram (Stars). Выбери сумму:</div>
+    <div id="depAmounts" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px"></div>
+    <button id="depCustom" class="btn-full" style="margin-top:4px">Другая сумма</button>
+    <div style="font-size:11px;color:#7a8699;margin-top:10px;text-align:center">1 ⭐ = 1 к балансу · мгновенно</div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -637,17 +684,45 @@ const S = {
   cases:{}, freeCase:true, gifts:null
 };
 
+/* ===== API URL: на Netlify укажи бэкенд Render =====
+   Вариант 1: ?api=https://your-app.onrender.com
+   Вариант 2: localStorage.setItem('API_BASE','https://your-app.onrender.com')
+   Вариант 3: если HTML отдаёт тот же Render — оставь пустым
+*/
+const API_BASE = (function(){
+  const DEFAULT='https://izuzus-2.onrender.com';
+  try{
+    const q=new URLSearchParams(location.search).get('api');
+    if(q){localStorage.setItem('API_BASE',q.replace(/\/$/,'')); return q.replace(/\/$/,'');}
+    const ls=localStorage.getItem('API_BASE');
+    if(ls) return ls.replace(/\/$/,'');
+  }catch(e){}
+  // same-origin на Render
+  if(/izuzus-2\.onrender\.com/i.test(location.hostname)) return '';
+  // Netlify / другой хост → твой backend
+  return DEFAULT;
+})();
+
 function toast(msg,type='info'){
   const t=document.getElementById('toast');
   t.textContent=msg; t.className='toast '+type; t.style.display='block';
-  setTimeout(()=>t.style.display='none',2800);
+  setTimeout(()=>t.style.display='none',3200);
 }
 
 async function api(method,url,body=null){
+  if(!API_BASE && /netlify\.app|github\.io|vercel\.app/i.test(location.hostname)){
+    throw new Error('Укажи API: открой ?api=https://ТВОЙ-BACKEND.onrender.com');
+  }
+  const full=(API_BASE||'')+url;
   const h={'Content-Type':'application/json'};
   if(window.Telegram?.WebApp?.initData) h.Authorization=window.Telegram.WebApp.initData;
-  const r=await fetch(url,{method,headers:h,body:body?JSON.stringify(body):null});
-  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||'Ошибка API');}
+  else if(API_BASE) h.Authorization='dev'; // demo на внешнем бэке
+  const r=await fetch(full,{method,headers:h,body:body?JSON.stringify(body):null});
+  if(!r.ok){
+    const e=await r.json().catch(()=>({}));
+    const detail=typeof e.detail==='string'?e.detail:(e.detail?JSON.stringify(e.detail):'Ошибка API '+r.status);
+    throw new Error(detail);
+  }
   return r.json();
 }
 
@@ -719,7 +794,7 @@ function renderCases(){
       <div class="case-badge">${(c.rarities||[]).join(' · ')}</div>
       <div class="case-visual"><div class="case-box"></div><div class="case-emoji">${icons[id]||'📦'}</div></div>
       <div class="case-name">${c.name.replace(/^[^\s]+\s/,'')}</div>
-      <div class="case-price">${isFree?(S.freeCase?'Бесплатно':'⏳ 24ч'):'💎 '+c.price}</div>
+      <div class="case-price">${isFree?(S.freeCase?'Бесплатно':'⏳ 24ч'):'⭐ '+c.price}</div>
     `;
     card.onclick=()=>openCase(id);
     if(isFree) promo.appendChild(card); else all.appendChild(card);
@@ -732,7 +807,7 @@ async function openCase(id){
     if(d.success){
       S.balance=d.balance||S.balance; updBal();
       const p=await api('GET','/api/profile'); S.inventory=p.inventory||[]; renderAllInv(); renderUpgInv();
-      if(d.stars_earned) toast('💎 +'+d.stars_earned,'ok');
+      if(d.stars_earned) toast('⭐ +'+d.stars_earned,'ok');
       else if(d.gift) toast((d.gift.emoji||'🎁')+' '+d.gift.name+' ('+d.rarity+')','ok');
       haptic.notify('success');
       if(id==='free_daily'){S.freeCase=false; renderCases();}
@@ -760,7 +835,7 @@ function renderUpgInv(){
     const div=document.createElement('div');
     const rar=item.rarity||'Common';
     div.className='inv-item r-'+rar+(S.selItem===idx?' selected':'');
-    div.innerHTML=giftThumb(item)+`<div class="nm">${item.name}</div><div class="vl">💎 ${item.value}</div>`;
+    div.innerHTML=giftThumb(item)+`<div class="nm">${item.name}</div><div class="vl">⭐ ${item.value}</div>`;
     div.onclick=()=>{S.selItem=idx; fillInputSlot(item); renderUpgInv(); updateChance();};
     g.appendChild(div);
   });
@@ -770,7 +845,7 @@ function fillInputSlot(item){
   const slot=document.getElementById('inputSlot');
   slot.className='upg-slot filled';
   const img=item.img?`<img class="gift-thumb" src="${item.img}" onerror="this.outerHTML='<div class=emoji>${item.emoji||'🎁'}</div>'">`:`<div class="emoji">${item.emoji||'🎁'}</div>`;
-  slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">💎 ${item.value}</div>`;
+  slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">⭐ ${item.value}</div>`;
 }
 
 function renderTargets(){
@@ -785,13 +860,13 @@ function renderTargets(){
   list.slice(0,24).forEach(item=>{
     const div=document.createElement('div');
     div.className='inv-item r-'+(item.rarity||'Common')+(S.targetVal===item.value?' selected':'');
-    div.innerHTML=giftThumb(item)+`<div class="nm">${item.name}</div><div class="vl">💎 ${item.value}</div>`;
+    div.innerHTML=giftThumb(item)+`<div class="nm">${item.name}</div><div class="vl">⭐ ${item.value}</div>`;
     div.onclick=()=>{
       S.targetVal=item.value; S.targetGift=item;
       const slot=document.getElementById('targetSlot');
       slot.className='upg-slot filled';
       const img=item.img?`<img class="gift-thumb" src="${item.img}" onerror="this.outerHTML='<div class=emoji>${item.emoji||'🎁'}</div>'">`:`<div class="emoji">${item.emoji||'🎁'}</div>`;
-      slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">💎 ${item.value}</div>`;
+      slot.innerHTML=`${img}<div class="name">${item.name}</div><div class="val">⭐ ${item.value}</div>`;
       renderTargets(); updateChance();
     };
     g.appendChild(div);
@@ -857,7 +932,7 @@ function renderAllInv(){
     const rar=item.rarity||'Common';
     div.className='inv-item r-'+rar;
     div.style.padding='12px 6px';
-    div.innerHTML=giftThumb(item)+`<div class="nm" style="font-size:11px">${item.name}</div><div class="vl">💎 ${item.value}</div>
+    div.innerHTML=giftThumb(item)+`<div class="nm" style="font-size:11px">${item.name}</div><div class="vl">⭐ ${item.value}</div>
       <button style="margin-top:6px;font-size:10px;padding:3px 10px;border:none;border-radius:6px;background:rgba(239,68,68,0.15);color:#f87171;cursor:pointer" data-i="${idx}">Продать</button>`;
     div.querySelector('button').onclick=async(e)=>{e.stopPropagation(); await sellItem(idx);};
     g.appendChild(div);
@@ -871,7 +946,7 @@ async function sellItem(idx){
       S.balance=d.balance||S.balance; updBal();
       const p=await api('GET','/api/profile'); S.inventory=p.inventory||[];
       renderAllInv(); renderUpgInv();
-      toast('💰 +'+d.price+' 💎','ok'); haptic.impact('light');
+      toast('💰 +'+d.price+' ⭐','ok'); haptic.impact('light');
     }
   }catch(e){toast(e.message,'err')}
 }
@@ -917,7 +992,7 @@ async function cashoutMines(){
   try{
     const d=await api('POST','/api/mines/cashout',{game_id:S.mines.id});
     S.balance=d.balance||S.balance; updBal(); S.mines.cashed=true;
-    toast('💰 +'+d.win+' 💎 (x'+d.multiplier+')','ok'); haptic.notify('success');
+    toast('💰 +'+d.win+' ⭐ (x'+d.multiplier+')','ok'); haptic.notify('success');
     document.getElementById('minesCashout').style.display='none'; renderMines();
   }catch(e){toast(e.message,'err')}
 }
@@ -936,7 +1011,8 @@ function renderMines(){
 /* CRASH */
 function initCrash(){
   if(S.crash.socket) return;
-  const socket=io(); S.crash.socket=socket; S.crash.connected=false;
+  const socket=io(API_BASE||undefined,{transports:['websocket','polling']}); S.crash.socket=socket; S.crash.connected=false;
+  socket.on('live_win',()=>{loadLive();});
   socket.on('connect',()=>{S.crash.connected=true;});
   socket.on('crash_state',d=>{
     const st=document.getElementById('crashStatus');
@@ -963,7 +1039,7 @@ function initCrash(){
     loadProfile();
     if(d.bets) document.getElementById('crashBets').innerHTML=d.bets.map(b=>`<span>${b.username}: ${b.win>0?'✅+'+b.win:'❌'}</span>`).join('');
   });
-  socket.on('cashout_success',d=>{toast('💰 +'+d.win+' 💎','ok'); haptic.notify('success'); S.balance=d.balance||S.balance; updBal(); document.getElementById('crashCashBtn').style.display='none';});
+  socket.on('cashout_success',d=>{toast('💰 +'+d.win+' ⭐','ok'); haptic.notify('success'); S.balance=d.balance||S.balance; updBal(); document.getElementById('crashCashBtn').style.display='none';});
   socket.on('bet_placed',d=>{toast('✅ Ставка '+d.amount,'ok'); S.balance=d.balance||S.balance; updBal();});
   socket.on('error',d=>toast(d.message,'err'));
 }
@@ -1004,7 +1080,7 @@ async function activatePromo(){
 }
 
 async function withdraw(){
-  const amt=prompt('Сумма (мин 100 💎):','100');
+  const amt=prompt('Сумма (мин 100 ⭐):','100');
   if(!amt) return; const v=parseInt(amt);
   if(isNaN(v)||v<100){toast('Минимум 100','err'); return;}
   const wallet=prompt('Адрес кошелька (TON):','');
@@ -1047,9 +1123,72 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('promoBtn').onclick=activatePromo;
   document.getElementById('copyRef').onclick=copyRef;
   document.getElementById('withdrawBtn').onclick=withdraw;
-  document.getElementById('addBalBtn').onclick=()=>toast('Пополнение через бота','info');
+  document.getElementById('addBalBtn').onclick=openDeposit;
+  document.getElementById('depClose').onclick=()=>{document.getElementById('depOverlay').style.display='none';};
+  document.getElementById('depOverlay').onclick=e=>{if(e.target.id==='depOverlay')e.target.style.display='none';};
+  document.getElementById('depCustom').onclick=()=>{
+    const v=prompt('Сумма в ⭐ (мин 10):','50');
+    if(v) doDeposit(parseInt(v));
+  };
+  const amounts=[50,100,250,500,1000,2500];
+  const box=document.getElementById('depAmounts');
+  amounts.forEach(a=>{
+    const b=document.createElement('button');
+    b.className='btn-sm';
+    b.style.cssText='padding:14px 8px;font-size:14px;width:100%';
+    b.innerHTML='⭐ '+a;
+    b.onclick=()=>doDeposit(a);
+    box.appendChild(b);
+  });
   renderMines();
+  loadLive();
+  setInterval(loadLive, 12000);
 });
+
+function openDeposit(){
+  document.getElementById('depOverlay').style.display='flex';
+}
+
+async function doDeposit(amount){
+  if(!amount||amount<10){toast('Минимум 10 ⭐','err'); return;}
+  document.getElementById('depOverlay').style.display='none';
+  try{
+    const d=await api('POST','/api/deposit',{amount:amount});
+    if(d.invoice_url && window.Telegram?.WebApp?.openInvoice){
+      window.Telegram.WebApp.openInvoice(d.invoice_url, async status=>{
+        if(status==='paid'){
+          try{
+            if(d.payload){
+              const c=await api('POST','/api/deposit/confirm',{payload:d.payload});
+              S.balance=c.balance||S.balance; updBal();
+            }
+            toast('⭐ Баланс пополнен!','ok');
+            loadProfile();
+          }catch(e){toast('Оплачено, обновляю...','info'); loadProfile();}
+        }else if(status==='cancelled') toast('Оплата отменена','info');
+        else toast('Статус: '+status,'info');
+      });
+    }else if(d.success && d.balance!==undefined){
+      S.balance=d.balance; updBal();
+      toast('⭐ +'+amount+' на баланс','ok');
+    }else{
+      toast(d.message||'Не удалось создать счёт','err');
+    }
+  }catch(e){toast(e.message,'err')}
+}
+
+async function loadLive(){
+  try{
+    const d=await api('GET','/api/live');
+    const sc=document.getElementById('liveScroll');
+    if(!sc||!d.items||!d.items.length) return;
+    sc.innerHTML=d.items.map(it=>{
+      const em=it.emoji||'🎁';
+      const img=it.img?`<img src="${it.img}" style="width:28px;height:28px;object-fit:contain" onerror="this.outerHTML='<span style=font-size:18px>${em}</span>'">`:`<span style="font-size:18px">${em}</span>`;
+      return `<div class="live-item" title="${(it.name||'')+' · '+(it.user||'')}">${img}</div>`;
+    }).join('');
+  }catch(e){}
+}
 </script>
 </body>
 </html>
@@ -1136,6 +1275,104 @@ async def get_gifts(): return {"rarities":RARITY_COLORS,"gifts":NFT_GIFTS}
 @app.get("/api/cases")
 async def get_cases(): return CASES
 
+@app.get("/api/live")
+async def get_live():
+    if LIVE_WINS:
+        return {"items": LIVE_WINS[:24]}
+    # демо-лента пока никто не открывал кейсы
+    demo = []
+    for r in ["Common", "Uncommon", "Rare"]:
+        for g in NFT_GIFTS.get(r, [])[:3]:
+            demo.append({"name": g["name"], "emoji": g["emoji"], "img": g.get("img", ""), "user": "Player", "value": g["value"]})
+    return {"items": demo[:16]}
+
+@app.post("/api/deposit")
+async def deposit(req: DepositRequest, user=Depends(verify_telegram)):
+    """Пополнение через Telegram Stars (XTR) — createInvoiceLink."""
+    tg_id = user["id"]
+    amount = int(req.amount)
+    if amount < 10 or amount > 100000:
+        raise HTTPException(400, "Сумма 10–100000 ⭐")
+
+    # Demo-юзер без Telegram — только DEV
+    if tg_id == 100001 and DEV_MODE:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+            await db.commit()
+        return {"success": True, "balance": (await get_user(tg_id))["balance"], "message": f"+{amount} ⭐ (demo)"}
+
+    payload = f"dep:{tg_id}:{amount}:{uuid.uuid4().hex[:10]}"
+    PENDING_DEPOSITS[payload] = {"tg_id": tg_id, "amount": amount, "ts": time.time()}
+
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: tg_api("createInvoiceLink", {
+                "title": f"Пополнение {amount} ⭐",
+                "description": f"Зачисление {amount} звёзд на баланс GiftUpgrader",
+                "payload": payload,
+                "currency": "XTR",
+                "prices": [{"label": f"{amount} Stars", "amount": amount}],
+            })
+        )
+        if not result.get("ok"):
+            raise HTTPException(502, result.get("description", "Telegram API error"))
+        invoice_url = result["result"]
+        return {"success": True, "invoice_url": invoice_url, "payload": payload, "amount": amount}
+    except HTTPException:
+        raise
+    except Exception as e:
+        # fallback DEV если Stars недоступны
+        if DEV_MODE:
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+                await db.commit()
+            return {"success": True, "balance": (await get_user(tg_id))["balance"], "message": f"+{amount} ⭐ (dev fallback)"}
+        raise HTTPException(502, f"Stars invoice failed: {e}")
+
+@app.post("/api/deposit/confirm")
+async def deposit_confirm(req: DepositConfirmRequest, user=Depends(verify_telegram)):
+    """Клиент: openInvoice → paid. Начисляем по payload."""
+    tg_id = user["id"]
+    info = PENDING_DEPOSITS.pop(req.payload, None)
+    if not info or info["tg_id"] != tg_id:
+        raise HTTPException(400, "Неизвестный платёж")
+    amount = int(info["amount"])
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+        await db.commit()
+    return {"success": True, "balance": (await get_user(tg_id))["balance"], "amount": amount}
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Webhook бота: pre_checkout + successful_payment (зачисление Stars)."""
+    data = await request.json()
+    pcq = data.get("pre_checkout_query")
+    if pcq:
+        try:
+            qid = pcq["id"]
+            await asyncio.get_event_loop().run_in_executor(
+                None, lambda: tg_api("answerPreCheckoutQuery", {"pre_checkout_query_id": qid, "ok": True})
+            )
+        except Exception:
+            pass
+        return {"ok": True}
+
+    msg = data.get("message") or data.get("edited_message") or {}
+    sp = msg.get("successful_payment")
+    if sp and sp.get("currency") == "XTR":
+        payload = sp.get("invoice_payload") or ""
+        info = PENDING_DEPOSITS.pop(payload, None)
+        amount = int(sp.get("total_amount") or (info or {}).get("amount") or 0)
+        tg_id = (info or {}).get("tg_id") or (msg.get("from") or {}).get("id")
+        if tg_id and amount > 0:
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("INSERT OR IGNORE INTO users (tg_id, balance) VALUES (?, 50)", (tg_id,))
+                await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
+                await db.commit()
+        return {"ok": True}
+    return {"ok": True}
+
 @app.post("/api/case/open")
 async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     tg_id=user['id']; c=CASES.get(req.case_id)
@@ -1159,6 +1396,12 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         u=await get_user(tg_id); inv=u["inventory"]
         inv.append({"id":gift["id"],"name":gift["name"],"rarity":rarity,"value":gift["value"],"emoji":gift["emoji"],"img":gift.get("img","")})
         await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv),tg_id)); await db.commit()
+    uname = user.get("first_name") or user.get("username") or "Player"
+    push_live({**gift, "rarity": rarity}, uname)
+    try:
+        await sio.emit("live_win", {"name": gift["name"], "emoji": gift["emoji"], "img": gift.get("img", ""), "user": uname})
+    except Exception:
+        pass
     return {"success":True,"gift":gift,"rarity":rarity,"balance":(await get_user(tg_id))["balance"]}
 
 @app.post("/api/upgrade")
@@ -1368,6 +1611,14 @@ async def referral_stats(user=Depends(verify_telegram)):
 async def startup():
     await init_db()
     asyncio.create_task(crash_loop())
+    # Webhook для Stars successful_payment
+    try:
+        wh = f"{PUBLIC_URL}/telegram/webhook"
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: tg_api("setWebhook", {"url": wh, "allowed_updates": ["message", "pre_checkout_query"]})
+        )
+    except Exception as e:
+        print("setWebhook skip:", e)
 
 if __name__=="__main__":
     import uvicorn
