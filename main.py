@@ -93,62 +93,194 @@ def gift_short_name(name: str) -> str:
     s = "".join(c if c.isalnum() or c == " " else "" for c in s)
     return "_".join(s.split())
 
-def gift_img_url(name: str) -> str:
-    sn = gift_short_name(name)
-    # публичный CDN с webp-картинками подарков
+def gift_img_url(name: str, sn: str = None) -> str:
+    if not sn:
+        sn = gift_short_name(name)
+    sn = sn.lower().replace(" ", "_").replace("'", "").replace("'", "")
+    # реальные фото с CDN
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
+def gift_img_url_frag(name: str, sn: str = None) -> str:
+    """Fallback Fragment medium.jpg"""
+    if not sn:
+        sn = gift_short_name(name)
+    slug = sn.lower().replace("_", "").replace(" ", "").replace("'", "")
+    return f"https://nft.fragment.com/gift/{slug}-1.medium.jpg"
+
+# Auto-built from Fragment/TG_Photos floors (TON * 300 ≈ ⭐)
+GIFTS_CATALOG = [
+  {"name": "Мишка", "sn": "teddy_bear", "value": 15, "rarity": "Common", "emoji": "\ud83e\uddf8", "regular": True},
+  {"name": "Сердце", "sn": "heart", "value": 15, "rarity": "Common", "emoji": "\u2764\ufe0f", "regular": True},
+  {"name": "Конфета", "sn": "candy", "value": 15, "rarity": "Common", "emoji": "\ud83c\udf6c", "regular": True},
+  {"name": "Подарок", "sn": "gift", "value": 25, "rarity": "Common", "emoji": "\ud83c\udf81", "regular": True},
+  {"name": "Звезда", "sn": "star", "value": 25, "rarity": "Common", "emoji": "\u2b50", "regular": True},
+  {"name": "Торт", "sn": "cake", "value": 50, "rarity": "Common", "emoji": "\ud83c\udf82", "regular": True},
+  {"name": "Ракета", "sn": "rocket", "value": 50, "rarity": "Common", "emoji": "\ud83d\ude80", "regular": True},
+  {"name": "Букет", "sn": "bouquet", "value": 50, "rarity": "Common", "emoji": "\ud83d\udc90", "regular": True},
+  {"name": "Ёлка", "sn": "christmas_tree", "value": 50, "rarity": "Common", "emoji": "\ud83c\udf84", "regular": True},
+  {"name": "Шампанское", "sn": "champagne", "value": 50, "rarity": "Common", "emoji": "\ud83c\udf7e", "regular": True},
+  {"name": "Цветы", "sn": "flowers", "value": 50, "rarity": "Common", "emoji": "\ud83c\udf38", "regular": True},
+  {"name": "Мишка тенор", "sn": "teddy_bear", "value": 50, "rarity": "Common", "emoji": "\ud83e\uddf8", "regular": True},
+  {"name": "Пасхальный мишка", "sn": "easter_egg", "value": 50, "rarity": "Common", "emoji": "\ud83d\udc23", "regular": True},
+  {"name": "Кольцо", "sn": "ring", "value": 100, "rarity": "Common", "emoji": "\ud83d\udc8d", "regular": True},
+  {"name": "Алмаз", "sn": "diamond", "value": 100, "rarity": "Common", "emoji": "\ud83d\udc8e", "regular": True},
+  {"name": "Кубок", "sn": "trophy", "value": 100, "rarity": "Common", "emoji": "\ud83c\udfc6", "regular": True},
+  {"name": "Artisan Brick", "sn": "artisan_brick", "value": 16386, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Astral Shard", "sn": "astral_shard", "value": 36000, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "B-Day Candle", "sn": "bday_candle", "value": 1320, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Berry Box", "sn": "berry_box", "value": 2160, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Big Year", "sn": "big_year", "value": 945, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Bling Binky", "sn": "bling_binky", "value": 6804, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Bonded Ring", "sn": "bonded_ring", "value": 11064, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Bow Tie", "sn": "bow_tie", "value": 1305, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Bunny Muffin", "sn": "bunny_muffin", "value": 2070, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Candy Cane", "sn": "candy_cane", "value": 930, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Clover Pin", "sn": "clover_pin", "value": 1227, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Cookie Heart", "sn": "cookie_heart", "value": 1290, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Crystal Ball", "sn": "crystal_ball", "value": 3270, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Cupid Charm", "sn": "cupid_charm", "value": 5996, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Desk Calendar", "sn": "desk_calendar", "value": 1284, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Diamond Ring", "sn": "diamond_ring", "value": 8226, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Durov’s Cap", "sn": "durovs_cap", "value": 126000, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Easter Egg", "sn": "easter_egg", "value": 963, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Electric Skull", "sn": "electric_skull", "value": 6843, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Eternal Candle", "sn": "eternal_candle", "value": 1482, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Eternal Rose", "sn": "eternal_rose", "value": 7173, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Evil Eye", "sn": "evil_eye", "value": 1974, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Faith Amulet", "sn": "faith_amulet", "value": 1371, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Flying Broom", "sn": "flying_broom", "value": 2985, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Fresh Socks", "sn": "fresh_socks", "value": 1125, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Gem Signet", "sn": "gem_signet", "value": 17349, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Genie Lamp", "sn": "genie_lamp", "value": 9441, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Ginger Cookie", "sn": "ginger_cookie", "value": 1050, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Hanging Star", "sn": "hanging_star", "value": 2280, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Happy Brownie", "sn": "happy_brownie", "value": 1146, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Heart Locket", "sn": "heart_locket", "value": 302022, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Heroic Helmet", "sn": "heroic_helmet", "value": 54453, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Hex Pot", "sn": "hex_pot", "value": 1122, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Holiday Drink", "sn": "holiday_drink", "value": 966, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Homemade Cake", "sn": "homemade_cake", "value": 1332, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Hypno Lollipop", "sn": "hypno_lollipop", "value": 1020, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Ice Cream", "sn": "ice_cream", "value": 960, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Input Key", "sn": "input_key", "value": 1488, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Instant Ramen", "sn": "instant_ramen", "value": 939, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Ion Gem", "sn": "ion_gem", "value": 19203, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Ionic Dryer", "sn": "ionic_dryer", "value": 4194, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Jack-in-the-Box", "sn": "jackinthebox", "value": 1170, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Jelly Bunny", "sn": "jelly_bunny", "value": 2064, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Jester Hat", "sn": "jester_hat", "value": 990, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Jingle Bells", "sn": "jingle_bells", "value": 1980, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Jolly Chimp", "sn": "jolly_chimp", "value": 1947, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Joyful Bundle", "sn": "joyful_bundle", "value": 1941, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Khabib’s Papakha", "sn": "khabibs_papakha", "value": 6600, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Kissed Frog", "sn": "kissed_frog", "value": 11871, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Light Sword", "sn": "light_sword", "value": 1650, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Lol Pop", "sn": "lol_pop", "value": 951, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Loot Bag", "sn": "loot_bag", "value": 34044, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Love Candle", "sn": "love_candle", "value": 2100, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Love Potion", "sn": "love_potion", "value": 3897, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Low Rider", "sn": "low_rider", "value": 14409, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Lunar Snake", "sn": "lunar_snake", "value": 885, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Lush Bouquet", "sn": "lush_bouquet", "value": 1587, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Mad Pumpkin", "sn": "mad_pumpkin", "value": 2850, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Magic Potion", "sn": "magic_potion", "value": 14700, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Mighty Arm", "sn": "mighty_arm", "value": 34086, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Mini Oscar", "sn": "mini_oscar", "value": 20352, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Money Pot", "sn": "money_pot", "value": 1200, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Moon Pendant", "sn": "moon_pendant", "value": 1605, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Mousse Cake", "sn": "mousse_cake", "value": 1323, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Nail Bracelet", "sn": "nail_bracelet", "value": 30000, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Neko Helmet", "sn": "neko_helmet", "value": 9960, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Party Sparkler", "sn": "party_sparkler", "value": 1080, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Perfume Bottle", "sn": "perfume_bottle", "value": 18702, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Pet Snake", "sn": "pet_snake", "value": 990, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Plush Pepe", "sn": "plush_pepe", "value": 1589400, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Precious Peach", "sn": "precious_peach", "value": 80964, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Pretty Posy", "sn": "pretty_posy", "value": 1347, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Record Player", "sn": "record_player", "value": 3333, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Restless Jar", "sn": "restless_jar", "value": 1320, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Sakura Flower", "sn": "sakura_flower", "value": 2400, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Santa Hat", "sn": "santa_hat", "value": 1050, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Scared Cat", "sn": "scared_cat", "value": 52830, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Sharp Tongue", "sn": "sharp_tongue", "value": 11691, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Signet Ring", "sn": "signet_ring", "value": 9444, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Skull Flower", "sn": "skull_flower", "value": 2697, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Sky Stilettos", "sn": "sky_stilettos", "value": 5070, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Sleigh Bell", "sn": "sleigh_bell", "value": 1776, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Snake Box", "sn": "snake_box", "value": 933, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Snoop Cigar", "sn": "snoop_cigar", "value": 3723, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Snoop Dogg", "sn": "snoop_dogg", "value": 1386, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Snow Globe", "sn": "snow_globe", "value": 1209, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Snow Mittens", "sn": "snow_mittens", "value": 1227, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Spiced Wine", "sn": "spiced_wine", "value": 1260, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Spring Basket", "sn": "spring_basket", "value": 1470, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Spy Agaric", "sn": "spy_agaric", "value": 1254, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Star Notepad", "sn": "star_notepad", "value": 1128, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Stellar Rocket", "sn": "stellar_rocket", "value": 1260, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Swag Bag", "sn": "swag_bag", "value": 1494, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Swiss Watch", "sn": "swiss_watch", "value": 12900, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Tama Gadget", "sn": "tama_gadget", "value": 945, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Top Hat", "sn": "top_hat", "value": 2775, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Toy Bear", "sn": "toy_bear", "value": 10497, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Trapped Heart", "sn": "trapped_heart", "value": 3860, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "UFC Strike", "sn": "ufc_strike", "value": 3978, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Valentine Box", "sn": "valentine_box", "value": 2898, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Vintage Cigar", "sn": "vintage_cigar", "value": 10599, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Voodoo Doll", "sn": "voodoo_doll", "value": 10167, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Westside Sign", "sn": "westside_sign", "value": 25500, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Whip Cupcake", "sn": "whip_cupcake", "value": 990, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Winter Wreath", "sn": "winter_wreath", "value": 963, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Witch Hat", "sn": "witch_hat", "value": 1314, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Xmas Stocking", "sn": "xmas_stocking", "value": 927, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Timeless Book", "sn": "timeless_book", "value": 1080, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Vice Cream", "sn": "vice_cream", "value": 936, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Victory Medal", "sn": "victory_medal", "value": 1164, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Pool Float", "sn": "pool_float", "value": 918, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Surge Board", "sn": "surge_board", "value": 1892, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Chill Flame", "sn": "chill_flame", "value": 885, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Mood Pack", "sn": "mood_pack", "value": 1140, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Rare Bird", "sn": "rare_bird", "value": 6684, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Durov’s Glasses", "sn": "durovs_glasses", "value": 40002, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Liberty Figure", "sn": "liberty_figure", "value": 1056, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Triple Meow", "sn": "triple_meow", "value": 300, "rarity": "Uncommon", "emoji": "🎁", "regular": False},
+  {"name": "1 May", "sn": "may", "value": 7500, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Telegram Pin", "sn": "telegram_pin", "value": 1543500, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Case", "sn": "case", "value": 10500, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Coconut Drink", "sn": "coconut_drink", "value": 1044, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Coffin", "sn": "coffin", "value": 5921, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Durov's Figurine", "sn": "durovs_figurine", "value": 389970, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Easter Cake", "sn": "easter_cake", "value": 2967, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Eight Roses", "sn": "eight_roses", "value": 6000, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Gravestone", "sn": "gravestone", "value": 14993, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Heart Pendant", "sn": "heart_pendant", "value": 16500, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "REDO", "sn": "redo", "value": 60000, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Red Star", "sn": "red_star", "value": 7500, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Sand Castle", "sn": "sand_castle", "value": 2028, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Durov's Boots", "sn": "durovs_boots", "value": 20947, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Durov's Coat", "sn": "durovs_coat", "value": 24507, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Trojan Horse", "sn": "trojan_horse", "value": 13545, "rarity": "Rare", "emoji": "🎁", "regular": False},
+  {"name": "Gift 5897607679345427347", "sn": "gift_5897607679345427347", "value": 1596, "rarity": "Rare", "emoji": "🎁", "regular": False},
+]
+
 def build_nft_gifts():
-    """Реалистичные цены TG-подарков + дешёвые ordinary gifts."""
+    """Все подарки Telegram: обычные + коллекционные NFT с floor≈⭐ и фото."""
     gifts = {r: [] for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]}
-    # Дешёвые обычные подарки (не NFT) — для баланса кейсов
-    cheap = [
-        ("Букет", 50, "💐"), ("Ракета", 50, "🚀"), ("Кольцо", 100, "💍"),
-        ("Торт", 75, "🎂"), ("Шарик", 50, "🎈"), ("Сердце", 60, "❤️"),
-        ("Звезда", 80, "⭐"), ("Конфета", 55, "🍬"), ("Цветок", 50, "🌸"),
-        ("Корона мини", 120, "👑"), ("Кубок", 90, "🏆"), ("Подарок", 70, "🎁"),
-        ("Огонь", 65, "🔥"), ("Алмаз мини", 150, "💎"), ("Кот", 85, "🐱"),
-        ("Печенье", 50, "🍪"), ("Чай", 55, "🍵"), ("Солнце", 60, "☀️"),
-        ("Луна", 70, "🌙"), ("Радуга", 80, "🌈"),
-    ]
-    for name, val, emo in cheap:
-        gifts["Common"].append({
-            "id": name.lower().replace(" ","_"),
-            "name": name, "value": val, "emoji": emo,
-            "img": "", "rarity": "Common"
-        })
-    # Реалистичные диапазоны для NFT-имён
-    base = {
-        "Common": 50, "Uncommon": 150, "Rare": 350,
-        "Epic": 800, "Legendary": 2200, "Mythic": 15000
-    }
-    step = {
-        "Common": 8, "Uncommon": 20, "Rare": 45,
-        "Epic": 100, "Legendary": 400, "Mythic": 3000
-    }
-    order = ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]
-    buckets = {r: [] for r in order}
-    for i, name in enumerate(NFT_NAMES):
-        r = order[i % 6]
-        if i < len(NFT_NAMES) * 0.5 and r in ("Legendary","Mythic"):
-            r = order[i % 4]
-        buckets[r].append(name)
-    for r in order:
-        for n, name in enumerate(buckets[r]):
-            v = base[r] + n * step[r]
-            # известные дорогие
-            low = name.lower()
-            if "pepe" in low: v = max(v, 80000)
-            elif "durov" in low: v = max(v, 25000)
-            elif "rolex" in low or "swiss" in low: v = max(v, 12000)
-            elif "gucci" in low or "perfume" in low: v = max(v, 5000)
-            gifts[r].append({
-                "id": name.lower().replace(" ","_").replace("'",""),
-                "name": name, "value": int(v),
-                "emoji": get_emoji(name),
-                "img": gift_img_url(name),
-                "rarity": r
-            })
+    for g in GIFTS_CATALOG:
+        r = g.get("rarity") or "Common"
+        if r not in gifts:
+            r = "Common"
+        name = g["name"]
+        sn = g.get("sn") or gift_short_name(name)
+        item = {
+            "id": sn,
+            "name": name,
+            "value": int(g["value"]),
+            "emoji": g.get("emoji") or get_emoji(name),
+            "img": gift_img_url(name, sn),
+            "rarity": r,
+            "regular": bool(g.get("regular")),
+        }
+        gifts[r].append(item)
     return gifts
 
 NFT_GIFTS = build_nft_gifts()
@@ -165,28 +297,28 @@ CASES = {
     },
     # ===== STARS =====
     "star_case_1": {
-        "name": "⭐ STAR CASE I", "price": 50, "category": "stars",
+        "name": "⭐ STAR CASE I", "price": 55, "category": "stars",
         "icon": "⭐", "color": "c-starter",
         "star_drops": [5, 15, 25, 35, 40, 55, 70, 100],
         "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "8 дропов 5–100⭐"
     },
     "star_case_2": {
-        "name": "⭐ STAR CASE II", "price": 100, "category": "stars",
+        "name": "⭐ STAR CASE II", "price": 110, "category": "stars",
         "icon": "✨", "color": "c-starter",
         "star_drops": [10, 25, 40, 60, 80, 120, 180, 250],
         "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "10–250⭐"
     },
     "star_case_3": {
-        "name": "⭐ STAR CASE III", "price": 250, "category": "stars",
+        "name": "⭐ STAR CASE III", "price": 280, "category": "stars",
         "icon": "🌟", "color": "c-pepe",
         "star_drops": [25, 50, 100, 150, 200, 350, 500, 800],
         "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "25–800⭐"
     },
     "star_case_4": {
-        "name": "⭐ STAR CASE IV", "price": 500, "category": "stars",
+        "name": "⭐ STAR CASE IV", "price": 550, "category": "stars",
         "icon": "💫", "color": "c-tg",
         "star_drops": [50, 100, 200, 300, 450, 700, 1000, 1500],
         "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
@@ -194,28 +326,28 @@ CASES = {
     },
     # ===== NFT =====
     "nft_starter": {
-        "name": "🌱 NFT STARTER", "price": 200, "category": "nft",
+        "name": "🌱 NFT STARTER", "price": 220, "category": "nft",
         "icon": "🌱", "color": "c-starter",
         "rarities": ["Common", "Uncommon", "Rare"], "weights": [55, 35, 10],
         "min_stars": 15, "max_stars": 80, "stars_chance": 0.25,
         "desc": "Common–Rare + иногда ⭐"
     },
     "nft_candy": {
-        "name": "🍭 CANDY NFT", "price": 350, "category": "nft",
+        "name": "🍭 CANDY NFT", "price": 400, "category": "nft",
         "icon": "🍭", "color": "c-pepe",
         "rarities": ["Uncommon", "Rare", "Epic"], "weights": [55, 35, 10],
         "min_stars": 30, "max_stars": 120, "stars_chance": 0.2,
         "desc": "Uncommon–Epic"
     },
     "nft_pepe": {
-        "name": "🐸 PEPE BOX", "price": 600, "category": "nft",
+        "name": "🐸 PEPE BOX", "price": 650, "category": "nft",
         "icon": "🐸", "color": "c-pepe",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 50, "max_stars": 200, "stars_chance": 0.18,
         "desc": "Шанс на Legendary"
     },
     "nft_magic": {
-        "name": "🔮 MAGIC VAULT", "price": 900, "category": "nft",
+        "name": "🔮 MAGIC VAULT", "price": 1000, "category": "nft",
         "icon": "🔮", "color": "c-frag",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 80, "max_stars": 300, "stars_chance": 0.15,
@@ -223,7 +355,7 @@ CASES = {
     },
     # ===== BRANDS =====
     "brand_gucci": {
-        "name": "👜 GUCCI DROP", "price": 800, "category": "brands",
+        "name": "👜 GUCCI DROP", "price": 900, "category": "brands",
         "icon": "👜", "color": "c-tg",
         "rarities": ["Epic", "Legendary"], "weights": [65, 35],
         "min_stars": 100, "max_stars": 400, "stars_chance": 0.22,
@@ -231,7 +363,7 @@ CASES = {
         "desc": "Бренд-стиль · сумки, часы, духи"
     },
     "brand_rolex": {
-        "name": "⌚ ROLEX CASE", "price": 1200, "category": "brands",
+        "name": "⌚ ROLEX CASE", "price": 1350, "category": "brands",
         "icon": "⌚", "color": "c-frag",
         "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "min_stars": 150, "max_stars": 500, "stars_chance": 0.2,
@@ -239,7 +371,7 @@ CASES = {
         "desc": "Часы и люкс"
     },
     "brand_snoop": {
-        "name": "🐕 SNOOP DROP", "price": 700, "category": "brands",
+        "name": "🐕 SNOOP DROP", "price": 800, "category": "brands",
         "icon": "🐕", "color": "c-pepe",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 80, "max_stars": 350, "stars_chance": 0.2,
@@ -248,7 +380,7 @@ CASES = {
     },
     # ===== ONLY NFT =====
     "only_onyx": {
-        "name": "🖤 ONYX BLACK", "price": 1500, "category": "only_nft",
+        "name": "🖤 ONYX BLACK", "price": 1700, "category": "only_nft",
         "icon": "🖤", "color": "c-durov",
         "rarities": ["Epic", "Legendary"], "weights": [65, 35],
         "stars_chance": 0.0,
@@ -256,7 +388,7 @@ CASES = {
         "desc": "Только NFT · тёмный стиль"
     },
     "only_crystal": {
-        "name": "💎 CRYSTAL VAULT", "price": 2000, "category": "only_nft",
+        "name": "💎 CRYSTAL VAULT", "price": 2300, "category": "only_nft",
         "icon": "💎", "color": "c-frag",
         "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "stars_chance": 0.0,
@@ -264,7 +396,7 @@ CASES = {
         "desc": "Только NFT · кристаллы и гемы"
     },
     "only_durov": {
-        "name": "🧢 DUROV ONLY", "price": 3500, "category": "only_nft",
+        "name": "🧢 DUROV ONLY", "price": 4000, "category": "only_nft",
         "icon": "🧢", "color": "c-durov",
         "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "stars_chance": 0.0,
@@ -273,7 +405,7 @@ CASES = {
     },
     # ===== ALL-IN =====
     "allin_pepe": {
-        "name": "🐸 ALL-IN PEPE", "price": 40, "category": "allin",
+        "name": "🐸 ALL-IN PEPE", "price": 45, "category": "allin",
         "icon": "🐸", "color": "c-pepe",
         "allin": True,
         "lose_stars": [0, 1, 2, 3, 5],
@@ -291,7 +423,7 @@ CASES = {
         "desc": "25⭐ · микрошанс на Rolex"
     },
     "allin_cap": {
-        "name": "🧢 ALL-IN CAP", "price": 60, "category": "allin",
+        "name": "🧢 ALL-IN CAP", "price": 65, "category": "allin",
         "icon": "🧢", "color": "c-durov",
         "allin": True,
         "lose_stars": [0, 1, 2, 5],
@@ -300,7 +432,7 @@ CASES = {
         "desc": "60⭐ · микрошанс на Cap"
     },
     "allin_helmet": {
-        "name": "⛑️ ALL-IN HELMET", "price": 80, "category": "allin",
+        "name": "⛑️ ALL-IN HELMET", "price": 90, "category": "allin",
         "icon": "⛑️", "color": "c-durov",
         "allin": True,
         "lose_stars": [0, 1, 3],
@@ -310,28 +442,28 @@ CASES = {
     },
     # ===== RICH =====
     "rich_gold": {
-        "name": "👑 GOLD RICH", "price": 1200, "category": "rich",
+        "name": "👑 GOLD RICH", "price": 1350, "category": "rich",
         "icon": "👑", "color": "c-durov",
         "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "min_stars": 200, "max_stars": 800, "stars_chance": 0.12,
         "desc": "От 1200⭐ · жирные дропы"
     },
     "rich_diamond": {
-        "name": "💎 DIAMOND RICH", "price": 2500, "category": "rich",
+        "name": "💎 DIAMOND RICH", "price": 2850, "category": "rich",
         "icon": "💎", "color": "c-frag",
         "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 400, "max_stars": 1500, "stars_chance": 0.1,
         "desc": "Legendary + Mythic"
     },
     "rich_mythic": {
-        "name": "☄️ MYTHIC RICH", "price": 5000, "category": "rich",
+        "name": "☄️ MYTHIC RICH", "price": 5750, "category": "rich",
         "icon": "☄️", "color": "c-durov",
         "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 800, "max_stars": 3000, "stars_chance": 0.08,
         "desc": "Топ-тир"
     },
     "rich_durov": {
-        "name": "🔥 DUROV RICH", "price": 8000, "category": "rich",
+        "name": "🔥 DUROV RICH", "price": 9200, "category": "rich",
         "icon": "🔥", "color": "c-durov",
         "rarities": ["Mythic"], "weights": [100],
         "min_stars": 1500, "max_stars": 8000, "stars_chance": 0.05,
@@ -2086,7 +2218,7 @@ async def get_inventory(user=Depends(verify_telegram)): return {"inventory":(awa
 async def sell(req:SellItemRequest, user=Depends(verify_telegram)):
     tg_id=user['id']; u=await get_user(tg_id)
     if req.item_index<0 or req.item_index>=len(u["inventory"]): raise HTTPException(400,"Item not found")
-    item=u["inventory"].pop(req.item_index); price=int(item["value"]*0.7)
+    item=u["inventory"].pop(req.item_index); price=int(item.get("value") or 0)  # без комиссии
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance+?, inventory=? WHERE tg_id=?", (price,json.dumps(u["inventory"]),tg_id)); await db.commit()
     return {"success":True,"sold":item["name"],"price":price,"balance":(await get_user(tg_id))["balance"]}
