@@ -23,7 +23,7 @@ TON_TREASURY = _os.environ.get("TON_TREASURY", "").strip()
 TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "300"))
 TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = сразу начислить (dev); verify = ждать сеть
 DB_NAME = "database.db"
-HOUSE_EDGE = 0.08
+HOUSE_EDGE = 0.07
 TON_TO_STARS = 110
 
 # ===== NFT NAMES =====
@@ -563,7 +563,7 @@ CASES = {
 }
 
 # ===== MODELS =====
-class UpgradeRequest(BaseModel): item_index:int; target_value:int
+class UpgradeRequest(BaseModel): item_index:int; target_value:int; target_name:str|None=None
 class CaseOpenRequest(BaseModel): case_id:str
 class SellItemRequest(BaseModel): item_index:int
 class MinesStartRequest(BaseModel): bet:int; mines:int
@@ -577,6 +577,31 @@ class DepositRequest(BaseModel): amount:int
 class DepositConfirmRequest(BaseModel): payload:str
 
 # LIVE wins feed (in-memory, last 40)
+
+# ===== ANTI-FLOOD =====
+RATE_LIMITS: dict = {}  # tg_id -> {action: last_ts}
+RATE_COOLDOWN = {
+    "upgrade": 1.4,
+    "case_open": 1.2,
+    "mines_start": 1.0,
+    "mines_open": 0.25,
+    "crash_bet": 0.8,
+    "pvp": 1.5,
+    "shop_buy": 0.8,
+    "sell": 0.4,
+}
+
+def check_rate(tg_id: int, action: str):
+    import time as _t
+    now = _t.time()
+    bucket = RATE_LIMITS.setdefault(int(tg_id), {})
+    last = bucket.get(action, 0)
+    need = RATE_COOLDOWN.get(action, 1.0)
+    if now - last < need:
+        left = round(need - (now - last), 2)
+        raise HTTPException(429, f"Слишком быстро, подожди {left}с")
+    bucket[action] = now
+
 LIVE_WINS: List[dict] = []
 
 def push_live(item: dict, username: str = "Player"):
@@ -701,7 +726,7 @@ def verify_admin(user=Depends(verify_telegram)):
 
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    """Шанс апгрейда с house edge ~18%, кап 72%."""
+    """Шанс апгрейда: edge = HOUSE_EDGE + 9% (~16% при HE=0.07), кап 75%."""
     try:
         iv = float(in_val or 0)
         tv = float(target or 1)
@@ -710,8 +735,8 @@ def calc_upgrade_chance(in_val, target):
     if tv <= 0 or iv <= 0:
         return 1.0
     raw = (iv / tv) * 100.0
-    edge = max(float(HOUSE_EDGE), 0.18)
-    return max(0.5, min(72.0, raw * (1.0 - edge)))
+    edge = float(HOUSE_EDGE) + 0.09  # ~16%
+    return max(0.5, min(75.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -1912,7 +1937,23 @@ async def profile(user=Depends(verify_telegram)):
     return u
 
 @app.get("/api/gifts")
-async def get_gifts(): return {"rarities":RARITY_COLORS,"gifts":NFT_GIFTS}
+async def get_gifts():
+    # уникальные по имени (одна цена на предмет)
+    out={r:[] for r in NFT_GIFTS}
+    seen=set()
+    # сортируем все по value, потом раскладываем
+    flat=[]
+    for r,arr in NFT_GIFTS.items():
+        for g in arr:
+            flat.append((r,g))
+    flat.sort(key=lambda x: int(x[1].get("value") or 0))
+    for r,g in flat:
+        n=(g.get("name") or "").strip().lower()
+        if not n or n in seen: continue
+        seen.add(n)
+        out[r].append(g)
+    return {"rarities":RARITY_COLORS,"gifts":out}
+
 
 @app.get("/api/cases")
 async def get_cases(): return CASES
@@ -2111,6 +2152,7 @@ async def telegram_webhook(request: Request):
 @app.post("/api/case/open")
 async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     tg_id = user["id"]
+    check_rate(tg_id, "case_open")
     c = CASES.get(req.case_id)
     if not c:
         raise HTTPException(400, "Invalid case")
@@ -2302,9 +2344,9 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             wts = [max(1, int((mx / v) ** power)) for v in vals]
             return random.choices(pool, weights=wts)[0]
         roll = random.random()
-        if roll < 0.85 and under:
+        if roll < 0.82 and under:
             gift = _pick(under, 1.4)
-        elif roll < 0.97 and (mild or under):
+        elif roll < 0.96 and (mild or under):
             gift = _pick(mild or under, 1.5)
         else:
             gift = _pick(high or mild or under, 1.2)
@@ -2369,6 +2411,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
 @app.post("/api/upgrade")
 async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     tg_id = user["id"]
+    check_rate(tg_id, "upgrade")
     u = await get_user(tg_id)
     inv = list(u.get("inventory") or [])
     if req.item_index < 0 or req.item_index >= len(inv):
@@ -2382,15 +2425,27 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     if tv <= iv:
         raise HTTPException(400, "Цель должна быть дороже предмета")
     target = None
-    # 1) exact value
-    for r, arr in NFT_GIFTS.items():
-        for x in arr:
-            if int(x.get("value") or 0) == tv:
-                target = {**x, "rarity": r}
+    tname = (getattr(req, "target_name", None) or "").strip().lower()
+    # 1) exact name (приоритет — без прыжка на другой предмет)
+    if tname:
+        for r, arr in NFT_GIFTS.items():
+            for x in arr:
+                if (x.get("name") or "").strip().lower() == tname:
+                    if int(x.get("value") or 0) > iv:
+                        target = {**x, "rarity": r}
+                        break
+            if target:
                 break
-        if target:
-            break
-    # 2) closest value > item value
+    # 2) exact value
+    if not target:
+        for r, arr in NFT_GIFTS.items():
+            for x in arr:
+                if int(x.get("value") or 0) == tv:
+                    target = {**x, "rarity": r}
+                    break
+            if target:
+                break
+    # 3) closest value > item value
     if not target:
         best = None
         best_d = 10**18
@@ -2463,6 +2518,74 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
 @app.get("/api/inventory")
 async def get_inventory(user=Depends(verify_telegram)): return {"inventory":(await get_user(user['id']))["inventory"]}
 
+
+class ShopBuyRequest(BaseModel):
+    name: str
+
+@app.get("/api/shop")
+async def shop_list(user=Depends(verify_telegram)):
+    """Каталог магазина: цена = value * 1.20"""
+    items=[]
+    seen=set()
+    for r, arr in NFT_GIFTS.items():
+        for g in arr:
+            n=(g.get("name") or "").strip()
+            if not n or n in seen: continue
+            v=int(g.get("value") or 0)
+            if v < 15 or v > 200000: continue  # без mythic-джеков
+            if g.get("regular") and v < 50: continue
+            seen.add(n)
+            price=int(round(v * 1.20))
+            items.append({
+                "name": n, "value": v, "price": price,
+                "emoji": g.get("emoji") or "🎁",
+                "img": g.get("img") or gift_img_url(n),
+                "rarity": r,
+            })
+    items.sort(key=lambda x: x["price"])
+    return {"items": items, "markup": 0.20}
+
+@app.post("/api/shop/buy")
+async def shop_buy(req: ShopBuyRequest, user=Depends(verify_telegram)):
+    tg_id=user["id"]
+    check_rate(tg_id, "shop_buy")
+    name=(req.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Укажи предмет")
+    found=None; rarity="Rare"
+    for r, arr in NFT_GIFTS.items():
+        for g in arr:
+            if (g.get("name") or "").strip().lower()==name.lower():
+                found={**g}; rarity=r; break
+        if found: break
+    if not found:
+        raise HTTPException(404, "Предмет не найден")
+    val=int(found.get("value") or 0)
+    if val < 15 or val > 200000:
+        raise HTTPException(400, "Этот предмет нельзя купить")
+    price=int(round(val * 1.20))
+    u=await get_user(tg_id)
+    if u["balance"] < price:
+        raise HTTPException(400, "Недостаточно ⭐")
+    gift={
+        "id": found.get("id") or gift_short_name(name),
+        "name": found.get("name") or name,
+        "rarity": rarity,
+        "value": val,
+        "emoji": found.get("emoji") or "🎁",
+        "img": found.get("img") or gift_img_url(name),
+    }
+    inv=list(u.get("inventory") or [])
+    inv.append(gift)
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE users SET balance=balance-?, inventory=?, total_spent=total_spent+? WHERE tg_id=?",
+            (price, json.dumps(inv), price, tg_id),
+        )
+        await db.commit()
+    bal=(await get_user(tg_id))["balance"]
+    return {"success": True, "item": gift, "price": price, "balance": bal}
+
 @app.post("/api/inventory/sell")
 async def sell(req:SellItemRequest, user=Depends(verify_telegram)):
     tg_id=user['id']; u=await get_user(tg_id)
@@ -2477,6 +2600,7 @@ active_mines={}
 @app.post("/api/mines/start")
 async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
     tg_id=user['id']
+    check_rate(tg_id, "mines_start")
     if req.bet< 50 or req.bet>50000 or req.mines<1 or req.mines>24: raise HTTPException(400,"Мин. ставка 50⭐")
     u=await get_user(tg_id)
     if u["balance"]<req.bet: raise HTTPException(400,"Insufficient")
@@ -2491,6 +2615,7 @@ async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
 @app.post("/api/mines/open")
 async def mines_open(req:MinesOpenRequest, user=Depends(verify_telegram)):
     tg_id=user['id']
+    check_rate(tg_id, "mines_open")
     if tg_id not in active_mines: raise HTTPException(400,"No game")
     g=active_mines[tg_id]
     if g["game_id"]!=req.game_id or g["cashed_out"] or req.cell in g["opened"] or req.cell<0 or req.cell>=25: raise HTTPException(400,"Invalid")
