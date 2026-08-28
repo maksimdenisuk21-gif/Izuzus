@@ -18,7 +18,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_TG_ID = 7092015279
 DB_NAME = "database.db"
-HOUSE_EDGE = 0.05
+HOUSE_EDGE = 0.08
 TON_TO_STARS = 110
 
 # ===== NFT NAMES =====
@@ -99,30 +99,52 @@ def gift_img_url(name: str) -> str:
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
 def build_nft_gifts():
-    """Все NFT_NAMES по редкостям. Мин. цена NFT ~80⭐ (дешёвых за 10 нет)."""
+    """Реалистичные цены TG-подарков + дешёвые ordinary gifts."""
     gifts = {r: [] for r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]}
+    # Дешёвые обычные подарки (не NFT) — для баланса кейсов
+    cheap = [
+        ("Букет", 50, "💐"), ("Ракета", 50, "🚀"), ("Кольцо", 100, "💍"),
+        ("Торт", 75, "🎂"), ("Шарик", 50, "🎈"), ("Сердце", 60, "❤️"),
+        ("Звезда", 80, "⭐"), ("Конфета", 55, "🍬"), ("Цветок", 50, "🌸"),
+        ("Корона мини", 120, "👑"), ("Кубок", 90, "🏆"), ("Подарок", 70, "🎁"),
+        ("Огонь", 65, "🔥"), ("Алмаз мини", 150, "💎"), ("Кот", 85, "🐱"),
+        ("Печенье", 50, "🍪"), ("Чай", 55, "🍵"), ("Солнце", 60, "☀️"),
+        ("Луна", 70, "🌙"), ("Радуга", 80, "🌈"),
+    ]
+    for name, val, emo in cheap:
+        gifts["Common"].append({
+            "id": name.lower().replace(" ","_"),
+            "name": name, "value": val, "emoji": emo,
+            "img": "", "rarity": "Common"
+        })
+    # Реалистичные диапазоны для NFT-имён
     base = {
-        "Common": 80, "Uncommon": 180, "Rare": 400,
-        "Epic": 900, "Legendary": 2500, "Mythic": 12000
+        "Common": 50, "Uncommon": 150, "Rare": 350,
+        "Epic": 800, "Legendary": 2200, "Mythic": 15000
     }
     step = {
-        "Common": 12, "Uncommon": 25, "Rare": 55,
-        "Epic": 120, "Legendary": 350, "Mythic": 2500
+        "Common": 8, "Uncommon": 20, "Rare": 45,
+        "Epic": 100, "Legendary": 400, "Mythic": 3000
     }
     order = ["Common","Uncommon","Rare","Epic","Legendary","Mythic"]
     buckets = {r: [] for r in order}
     for i, name in enumerate(NFT_NAMES):
         r = order[i % 6]
-        if i < len(NFT_NAMES) * 0.55 and r in ("Legendary","Mythic"):
+        if i < len(NFT_NAMES) * 0.5 and r in ("Legendary","Mythic"):
             r = order[i % 4]
         buckets[r].append(name)
     for r in order:
         for n, name in enumerate(buckets[r]):
             v = base[r] + n * step[r]
+            # известные дорогие
+            low = name.lower()
+            if "pepe" in low: v = max(v, 80000)
+            elif "durov" in low: v = max(v, 25000)
+            elif "rolex" in low or "swiss" in low: v = max(v, 12000)
+            elif "gucci" in low or "perfume" in low: v = max(v, 5000)
             gifts[r].append({
                 "id": name.lower().replace(" ","_").replace("'",""),
-                "name": name,
-                "value": v,
+                "name": name, "value": int(v),
                 "emoji": get_emoji(name),
                 "img": gift_img_url(name),
                 "rarity": r
@@ -146,56 +168,56 @@ CASES = {
         "name": "⭐ STAR CASE I", "price": 50, "category": "stars",
         "icon": "⭐", "color": "c-starter",
         "star_drops": [5, 15, 25, 35, 40, 55, 70, 100],
-        "star_weights": [42, 33, 24, 18, 8, 6, 1, 1],
+        "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "8 дропов 5–100⭐"
     },
     "star_case_2": {
         "name": "⭐ STAR CASE II", "price": 100, "category": "stars",
         "icon": "✨", "color": "c-starter",
         "star_drops": [10, 25, 40, 60, 80, 120, 180, 250],
-        "star_weights": [39, 33, 24, 18, 9, 6, 2, 1],
+        "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "10–250⭐"
     },
     "star_case_3": {
         "name": "⭐ STAR CASE III", "price": 250, "category": "stars",
         "icon": "🌟", "color": "c-pepe",
         "star_drops": [25, 50, 100, 150, 200, 350, 500, 800],
-        "star_weights": [36, 30, 24, 21, 9, 7, 2, 1],
+        "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "25–800⭐"
     },
     "star_case_4": {
         "name": "⭐ STAR CASE IV", "price": 500, "category": "stars",
         "icon": "💫", "color": "c-tg",
         "star_drops": [50, 100, 200, 300, 450, 700, 1000, 1500],
-        "star_weights": [33, 30, 24, 21, 10, 7, 2, 1],
+        "star_weights": [40, 28, 20, 14, 10, 7, 5, 4],
         "desc": "50–1500⭐"
     },
     # ===== NFT =====
     "nft_starter": {
         "name": "🌱 NFT STARTER", "price": 200, "category": "nft",
         "icon": "🌱", "color": "c-starter",
-        "rarities": ["Common", "Uncommon", "Rare"], "weights": [80, 56, 7],
+        "rarities": ["Common", "Uncommon", "Rare"], "weights": [55, 35, 10],
         "min_stars": 15, "max_stars": 80, "stars_chance": 0.25,
         "desc": "Common–Rare + иногда ⭐"
     },
     "nft_candy": {
         "name": "🍭 CANDY NFT", "price": 350, "category": "nft",
         "icon": "🍭", "color": "c-pepe",
-        "rarities": ["Uncommon", "Rare", "Epic"], "weights": [72, 64, 7],
+        "rarities": ["Uncommon", "Rare", "Epic"], "weights": [55, 35, 10],
         "min_stars": 30, "max_stars": 120, "stars_chance": 0.2,
         "desc": "Uncommon–Epic"
     },
     "nft_pepe": {
         "name": "🐸 PEPE BOX", "price": 600, "category": "nft",
         "icon": "🐸", "color": "c-pepe",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [80, 56, 7],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 50, "max_stars": 200, "stars_chance": 0.18,
         "desc": "Шанс на Legendary"
     },
     "nft_magic": {
         "name": "🔮 MAGIC VAULT", "price": 900, "category": "nft",
         "icon": "🔮", "color": "c-frag",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [64, 64, 10],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 80, "max_stars": 300, "stars_chance": 0.15,
         "desc": "Magic & potions"
     },
@@ -203,7 +225,7 @@ CASES = {
     "brand_gucci": {
         "name": "👜 GUCCI DROP", "price": 800, "category": "brands",
         "icon": "👜", "color": "c-tg",
-        "rarities": ["Epic", "Legendary"], "weights": [112, 15],
+        "rarities": ["Epic", "Legendary"], "weights": [65, 35],
         "min_stars": 100, "max_stars": 400, "stars_chance": 0.22,
         "force_names": ["Swag Bag", "Perfume Bottle", "Top Hat", "Swiss Watch", "Diamond Ring", "Nail Bracelet"],
         "desc": "Бренд-стиль · сумки, часы, духи"
@@ -211,7 +233,7 @@ CASES = {
     "brand_rolex": {
         "name": "⌚ ROLEX CASE", "price": 1200, "category": "brands",
         "icon": "⌚", "color": "c-frag",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [88, 56, 5],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "min_stars": 150, "max_stars": 500, "stars_chance": 0.2,
         "force_names": ["Swiss Watch", "Signet Ring", "Diamond Ring", "Gem Signet", "Top Hat", "Vintage Cigar"],
         "desc": "Часы и люкс"
@@ -219,7 +241,7 @@ CASES = {
     "brand_snoop": {
         "name": "🐕 SNOOP DROP", "price": 700, "category": "brands",
         "icon": "🐕", "color": "c-pepe",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [72, 64, 7],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 80, "max_stars": 350, "stars_chance": 0.2,
         "force_names": ["Snoop Dogg", "Snoop Cigar", "Low Rider", "Vintage Cigar", "Swag Bag", "Westside Sign"],
         "desc": "Snoop collab vibes"
@@ -228,7 +250,7 @@ CASES = {
     "only_onyx": {
         "name": "🖤 ONYX BLACK", "price": 1500, "category": "only_nft",
         "icon": "🖤", "color": "c-durov",
-        "rarities": ["Epic", "Legendary"], "weights": [88, 22],
+        "rarities": ["Epic", "Legendary"], "weights": [65, 35],
         "stars_chance": 0.0,
         "force_names": ["Onyx Black", "Electric Skull", "Skull Flower", "Voodoo Doll", "Evil Eye", "Neko Helmet", "Heroic Helmet"],
         "desc": "Только NFT · тёмный стиль"
@@ -236,7 +258,7 @@ CASES = {
     "only_crystal": {
         "name": "💎 CRYSTAL VAULT", "price": 2000, "category": "only_nft",
         "icon": "💎", "color": "c-frag",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [80, 56, 7],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "stars_chance": 0.0,
         "force_names": ["Astral Shard", "Ion Gem", "Crystal Ball", "Gem Signet", "Diamond Ring", "Perfume Bottle", "Mini Oscar"],
         "desc": "Только NFT · кристаллы и гемы"
@@ -244,7 +266,7 @@ CASES = {
     "only_durov": {
         "name": "🧢 DUROV ONLY", "price": 3500, "category": "only_nft",
         "icon": "🧢", "color": "c-durov",
-        "rarities": ["Legendary", "Mythic"], "weights": [104, 17],
+        "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "stars_chance": 0.0,
         "force_names": ["Durov's Cap", "Heroic Helmet", "Plush Pepe", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
         "desc": "Топ-коллекции"
@@ -290,21 +312,21 @@ CASES = {
     "rich_gold": {
         "name": "👑 GOLD RICH", "price": 1200, "category": "rich",
         "icon": "👑", "color": "c-durov",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [72, 64, 7],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "min_stars": 200, "max_stars": 800, "stars_chance": 0.12,
         "desc": "От 1200⭐ · жирные дропы"
     },
     "rich_diamond": {
         "name": "💎 DIAMOND RICH", "price": 2500, "category": "rich",
         "icon": "💎", "color": "c-frag",
-        "rarities": ["Legendary", "Mythic"], "weights": [96, 20],
+        "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 400, "max_stars": 1500, "stars_chance": 0.1,
         "desc": "Legendary + Mythic"
     },
     "rich_mythic": {
         "name": "☄️ MYTHIC RICH", "price": 5000, "category": "rich",
         "icon": "☄️", "color": "c-durov",
-        "rarities": ["Legendary", "Mythic"], "weights": [64, 30],
+        "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 800, "max_stars": 3000, "stars_chance": 0.08,
         "desc": "Топ-тир"
     },
@@ -456,14 +478,16 @@ def calc_upgrade_chance(in_val, target):
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
-    if opened >= safe: return round((1-HOUSE_EDGE)*100, 2)
+    if opened >= safe: return round((1-HOUSE_EDGE*1.4)*80, 2)
     p = 1.0
     for i in range(opened): p *= (safe-i)/(total-i)
-    caps = {1:5, 3:15, 5:40, 10:150, 15:500, 20:1500, 24:3000}
-    return round(min((1-HOUSE_EDGE)/p, caps[min(caps.keys(), key=lambda k: abs(k-mines))]), 2)
+    # сильнее house edge + ниже капы — сложнее фармить
+    edge = max(HOUSE_EDGE, 0.12)
+    caps = {1:3.5, 3:10, 5:25, 10:80, 15:250, 20:800, 24:1500}
+    return round(min((1-edge)/p, caps[min(caps.keys(), key=lambda k: abs(k-mines))]), 2)
 
 # ===== CRASH =====
-CRASH_MIN_BET, CRASH_MAX_BET = 25, 5000
+CRASH_MIN_BET, CRASH_MAX_BET = 50000, 5000
 CRASH_BETTING_TIME, CRASH_COOLDOWN, CRASH_SPEED = 6, 3, 0.08
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 crash_nonce = 0
@@ -2072,7 +2096,7 @@ active_mines={}
 @app.post("/api/mines/start")
 async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
     tg_id=user['id']
-    if req.bet<10 or req.bet>50000 or req.mines<1 or req.mines>24: raise HTTPException(400,"Invalid")
+    if req.bet< 50 or req.bet>50000 or req.mines<1 or req.mines>24: raise HTTPException(400,"Мин. ставка 50⭐")
     u=await get_user(tg_id)
     if u["balance"]<req.bet: raise HTTPException(400,"Insufficient")
     grid=[0]*25; mp=random.sample(range(25), req.mines)
@@ -2111,13 +2135,16 @@ async def mines_cashout(req:MinesCashoutRequest, user=Depends(verify_telegram)):
 @app.post("/api/withdraw")
 async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
     tg_id=user['id']
-    if req.amount<100 or req.amount>50000: raise HTTPException(400,"Invalid")
+    if req.amount<50 or req.amount>50000: raise HTTPException(400,"Мин. вывод 50⭐")
     u=await get_user(tg_id)
     if u["balance"]<req.amount: raise HTTPException(400,"Insufficient")
     fee=int(req.amount*0.05)
+    uname = user.get("username") or user.get("first_name") or str(tg_id)
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount,tg_id))
-        await db.execute("INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)", (tg_id,req.amount,req.wallet)); await db.commit()
+        # wallet stores "username|wallet" so admin sees both
+        wallet_info = f"{uname}|{req.wallet or '-'}"
+        await db.execute("INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)", (tg_id,req.amount,wallet_info)); await db.commit()
     return {"success":True,"requested":req.amount,"fee":fee,"payout":req.amount-fee,"balance":(await get_user(tg_id))["balance"]}
 
 @app.post("/api/admin/withdraw/status")
@@ -2136,7 +2163,13 @@ async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_ad
 async def admin_withdrawals(user=Depends(verify_admin)):
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT id,tg_id,amount,wallet,status,created_at FROM withdrawals ORDER BY created_at DESC LIMIT 100") as c:
-            return [{"id":r[0],"tg_id":r[1],"amount":r[2],"wallet":r[3],"status":r[4],"created_at":r[5]} for r in await c.fetchall()]
+            rows = await c.fetchall()
+            out = []
+            for r in rows:
+                w = r[3] or ""
+                uname, wallet = (w.split("|",1)+[""])[:2] if "|" in w else ("?", w)
+                out.append({"id":r[0],"tg_id":r[1],"username":uname,"amount":r[2],"wallet":wallet,"status":r[4],"created_at":r[5]})
+            return out
 
 @app.get("/api/admin/stats")
 async def admin_stats(user=Depends(verify_admin)):
@@ -2296,6 +2329,152 @@ async def referral_stats(user=Depends(verify_telegram)):
         earned=(await (await db.execute("SELECT total_earned FROM referrals WHERE user_id=?", (tg_id,))).fetchone() or [0])[0]
         count=(await (await db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (tg_id,))).fetchone())[0]
     return {"total_earned":earned,"referrals_count":count,"percent":7}
+
+
+
+# ===== PvP multi (шанс = доля ставки в банке) =====
+PVP_LOBBY = {}  # id -> {players:[{id,name,bet}], min_bet, ts, status}
+PVP_MIN_BET = 50
+
+class PvpCreateRequest(BaseModel):
+    bet: int
+
+class PvpJoinRequest(BaseModel):
+    lobby_id: str
+    bet: int = 50
+
+class PvpStartRequest(BaseModel):
+    lobby_id: str
+
+@app.get("/api/pvp/list")
+async def pvp_list(user=Depends(verify_telegram)):
+    now = datetime.now().timestamp()
+    dead = [k for k,v in PVP_LOBBY.items() if now - v.get("ts",0) > 600 or v.get("status")=="done"]
+    for k in dead: PVP_LOBBY.pop(k, None)
+    out = []
+    for k,v in PVP_LOBBY.items():
+        if v.get("status") != "open": continue
+        pot = sum(p["bet"] for p in v["players"])
+        out.append({
+            "id": k,
+            "players": len(v["players"]),
+            "pot": pot,
+            "min_bet": v.get("min_bet", PVP_MIN_BET),
+            "names": [p["name"] for p in v["players"][:6]],
+            "creator_id": v["players"][0]["id"] if v["players"] else 0,
+        })
+    return out
+
+@app.post("/api/pvp/create")
+async def pvp_create(req:PvpCreateRequest, user=Depends(verify_telegram)):
+    if req.bet < PVP_MIN_BET: raise HTTPException(400, f"Мин. ставка {PVP_MIN_BET}")
+    tg_id = user["id"]
+    u = await get_user(tg_id)
+    if u["balance"] < req.bet: raise HTTPException(400, "Insufficient")
+    # leave other lobbies as creator only - refund if alone
+    for k,v in list(PVP_LOBBY.items()):
+        if v.get("status")!="open": continue
+        if any(p["id"]==tg_id for p in v["players"]):
+            raise HTTPException(400, "Уже в лобби")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.bet, tg_id))
+        await db.commit()
+    lid = secrets.token_hex(4)
+    uname = user.get("first_name") or user.get("username") or str(tg_id)
+    PVP_LOBBY[lid] = {
+        "players": [{"id": tg_id, "name": uname, "bet": req.bet}],
+        "min_bet": req.bet,
+        "ts": datetime.now().timestamp(),
+        "status": "open",
+    }
+    return {"success": True, "lobby_id": lid, "bet": req.bet, "balance": (await get_user(tg_id))["balance"]}
+
+@app.post("/api/pvp/join")
+async def pvp_join(req:PvpJoinRequest, user=Depends(verify_telegram)):
+    lobby = PVP_LOBBY.get(req.lobby_id)
+    if not lobby or lobby.get("status") != "open":
+        raise HTTPException(400, "Лобби не найдено")
+    tg_id = user["id"]
+    if any(p["id"]==tg_id for p in lobby["players"]):
+        raise HTTPException(400, "Уже в лобби")
+    if len(lobby["players"]) >= 10:
+        raise HTTPException(400, "Лобби полное")
+    bet = int(req.bet or lobby.get("min_bet", PVP_MIN_BET))
+    if bet < PVP_MIN_BET:
+        raise HTTPException(400, f"Мин. ставка {PVP_MIN_BET}")
+    u = await get_user(tg_id)
+    if u["balance"] < bet: raise HTTPException(400, "Insufficient")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (bet, tg_id))
+        await db.commit()
+    uname = user.get("first_name") or user.get("username") or str(tg_id)
+    lobby["players"].append({"id": tg_id, "name": uname, "bet": bet})
+    lobby["ts"] = datetime.now().timestamp()
+    pot = sum(p["bet"] for p in lobby["players"])
+    return {
+        "success": True,
+        "players": len(lobby["players"]),
+        "pot": pot,
+        "balance": (await get_user(tg_id))["balance"],
+        "joined": True,
+    }
+
+@app.post("/api/pvp/start")
+async def pvp_start(req:PvpStartRequest, user=Depends(verify_telegram)):
+    lobby = PVP_LOBBY.get(req.lobby_id)
+    if not lobby or lobby.get("status") != "open":
+        raise HTTPException(400, "Лобби не найдено")
+    if len(lobby["players"]) < 2:
+        raise HTTPException(400, "Нужно минимум 2 игрока")
+    # любой участник может запустить
+    tg_id = user["id"]
+    if not any(p["id"]==tg_id for p in lobby["players"]):
+        raise HTTPException(400, "Ты не в лобби")
+    lobby["status"] = "done"
+    players = lobby["players"]
+    total = sum(p["bet"] for p in players)
+    weights = [p["bet"] for p in players]
+    winner = random.choices(players, weights=weights)[0]
+    payout = int(total * 0.97)
+    async with aiosqlite.connect(DB_NAME) as db:
+        for p in players:
+            if p["id"] == winner["id"]:
+                await db.execute(
+                    "UPDATE users SET balance=balance+?, wins=wins+1, games_played=games_played+1 WHERE tg_id=?",
+                    (payout, p["id"]),
+                )
+            else:
+                await db.execute("UPDATE users SET games_played=games_played+1 WHERE tg_id=?", (p["id"],))
+        await db.commit()
+    PVP_LOBBY.pop(req.lobby_id, None)
+    return {
+        "success": True,
+        "winner_id": winner["id"],
+        "winner_name": winner["name"],
+        "payout": payout,
+        "pot": total,
+        "your_win": winner["id"] == tg_id,
+        "players": len(players),
+        "balance": (await get_user(tg_id))["balance"],
+    }
+
+@app.post("/api/pvp/cancel")
+async def pvp_cancel(user=Depends(verify_telegram)):
+    tg_id = user["id"]
+    for k,v in list(PVP_LOBBY.items()):
+        if v.get("status") != "open": continue
+        pl = v["players"]
+        me = next((p for p in pl if p["id"]==tg_id), None)
+        if not me: continue
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (me["bet"], tg_id))
+            await db.commit()
+        v["players"] = [p for p in pl if p["id"] != tg_id]
+        if not v["players"]:
+            PVP_LOBBY.pop(k, None)
+        return {"success": True, "balance": (await get_user(tg_id))["balance"]}
+    return {"success": False, "message": "Нет лобби"}
+
 
 # ===== STARTUP =====
 @app.on_event("startup")
