@@ -1674,7 +1674,7 @@ async def case_contents(case_id: str):
         bait = []
         for rname in ("Legendary", "Mythic"):
             for g in NFT_GIFTS.get(rname, [])[:2]:
-                bait.append({**g, "drop_chance": 0, "name": g["name"] + " (байт)"})
+                bait.append({**g, "drop_chance": 0, "name": g["name"]})
         return {"case": c, "items": items + bait, "preview": items[:6]}
     if c.get("allin"):
         items.append({"name": "Пусто / 0–5⭐", "value": 0, "emoji": "💀", "rarity": "Common", "drop_chance": 99.99, "img": ""})
