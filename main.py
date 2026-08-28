@@ -22,7 +22,15 @@ import os as _os
 TON_TREASURY = _os.environ.get("TON_TREASURY", "").strip()
 TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "300"))
 TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = сразу начислить (dev); verify = ждать сеть
-DB_NAME = "database.db"
+# На free Render диск эфемерный. Если подключён Disk — укажи SQLITE_PATH=/var/data/database.db
+import pathlib as _pathlib
+_db_env = os.getenv("SQLITE_PATH") or os.getenv("DB_PATH") or "database.db"
+DB_NAME = _db_env
+try:
+    _pathlib.Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
 HOUSE_EDGE = 0.07
 TON_TO_STARS = 110
 
@@ -570,7 +578,7 @@ class MinesStartRequest(BaseModel): bet:int; mines:int
 class MinesOpenRequest(BaseModel): game_id:str; cell:int
 class MinesCashoutRequest(BaseModel): game_id:str
 class AdminGiveRequest(BaseModel): user_id:int; amount:int
-class WithdrawRequest(BaseModel): amount:int; wallet:str
+class WithdrawRequest(BaseModel): amount:int; username:str; wallet:str|None=None
 class PromoCreateRequest(BaseModel): code:str; reward_type:str; case_id:str=None; stars:int=0; max_uses:int=1
 class AdminWithdrawStatusRequest(BaseModel): withdraw_id:int; status:str
 class DepositRequest(BaseModel): amount:int
@@ -589,6 +597,7 @@ RATE_COOLDOWN = {
     "pvp": 1.5,
     "shop_buy": 0.8,
     "sell": 0.4,
+    "withdraw": 5.0,
 }
 
 def check_rate(tg_id: int, action: str):
@@ -2436,8 +2445,8 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
                         break
             if target:
                 break
-    # 2) exact value
-    if not target:
+    # 2) exact value (только если имя не задано)
+    if not target and not tname:
         for r, arr in NFT_GIFTS.items():
             for x in arr:
                 if int(x.get("value") or 0) == tv:
@@ -2445,8 +2454,8 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
                     break
             if target:
                 break
-    # 3) closest value > item value
-    if not target:
+    # 3) closest value > item — только без имени; с именем не прыгаем на другой предмет
+    if not target and not tname:
         best = None
         best_d = 10**18
         for r, arr in NFT_GIFTS.items():
@@ -2459,6 +2468,8 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
                     best_d = d
                     best = {**x, "rarity": r}
         target = best
+    if not target and tname:
+        raise HTTPException(400, f"Цель «{tname}» не найдена в каталоге")
     # 3) synthetic target if catalog miss (дешёвый предмет → цель из фронта)
     if not target:
         target = {
@@ -2640,18 +2651,32 @@ async def mines_cashout(req:MinesCashoutRequest, user=Depends(verify_telegram)):
 # ===== WITHDRAW =====
 @app.post("/api/withdraw")
 async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
+    """Заявка на вывод: сумма + Telegram username. Админ подтверждает вручную."""
     tg_id=user['id']
-    if req.amount<50 or req.amount>50000: raise HTTPException(400,"Мин. вывод 50⭐")
+    check_rate(tg_id, "withdraw")
+    if req.amount<50 or req.amount>500000: raise HTTPException(400,"Мин. вывод 50⭐")
+    dest=(req.username or "").strip().lstrip("@")
+    if len(dest)<3 or len(dest)>32 or not dest.replace("_","").isalnum():
+        raise HTTPException(400,"Укажи корректный Telegram username")
     u=await get_user(tg_id)
-    if u["balance"]<req.amount: raise HTTPException(400,"Insufficient")
-    fee=int(req.amount*0.05)
-    uname = user.get("username") or user.get("first_name") or str(tg_id)
+    if u["balance"]<req.amount: raise HTTPException(400,"Недостаточно ⭐")
+    # холд: списываем сразу, при reject вернём
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount,tg_id))
-        # wallet stores "username|wallet" so admin sees both
-        wallet_info = f"{uname}|{req.wallet or '-'}"
-        await db.execute("INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)", (tg_id,req.amount,wallet_info)); await db.commit()
-    return {"success":True,"requested":req.amount,"fee":fee,"payout":req.amount-fee,"balance":(await get_user(tg_id))["balance"]}
+        wallet_info = f"@{dest}|user:{tg_id}"
+        await db.execute(
+            "INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)",
+            (tg_id, req.amount, wallet_info),
+        )
+        await db.commit()
+    return {
+        "success": True,
+        "requested": req.amount,
+        "username": "@"+dest,
+        "status": "pending",
+        "message": "Заявка создана. Админ обработает вручную.",
+        "balance": (await get_user(tg_id))["balance"],
+    }
 
 @app.post("/api/admin/withdraw/status")
 async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_admin)):
@@ -2664,6 +2689,58 @@ async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_ad
         await db.execute("UPDATE withdrawals SET status=? WHERE id=?", (req.status,req.withdraw_id)); await db.commit()
         await log_admin_action(user['id'], f"withdraw_{req.status}", f"#{req.withdraw_id} -> {req.status}")
     return {"success":True}
+
+
+@app.get("/api/admin/export")
+async def admin_export(user=Depends(verify_admin)):
+    """Скачать JSON бэкап пользователей (на free Render БД слетает — сохраняй)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT tg_id,username,balance,total_spent,total_deposited,inventory,games_played,wins,cases_opened,created_at FROM users") as c:
+            users=[dict(r) for r in await c.fetchall()]
+        async with db.execute("SELECT id,tg_id,amount,wallet,status,created_at FROM withdrawals") as c:
+            wds=[dict(r) for r in await c.fetchall()]
+    return {"users": users, "withdrawals": wds, "exported_at": __import__("datetime").datetime.utcnow().isoformat()+"Z"}
+
+@app.post("/api/admin/import")
+async def admin_import(payload: dict, user=Depends(verify_admin)):
+    """Восстановить users из JSON бэкапа (merge по tg_id)."""
+    users = payload.get("users") or []
+    if not isinstance(users, list) or not users:
+        raise HTTPException(400, "Нужен {users:[...]}")
+    n=0
+    async with aiosqlite.connect(DB_NAME) as db:
+        for u in users:
+            try:
+                tg=int(u.get("tg_id") or 0)
+                if not tg: continue
+                inv=u.get("inventory") or "[]"
+                if not isinstance(inv, str):
+                    inv=json.dumps(inv, ensure_ascii=False)
+                await db.execute(
+                    """INSERT INTO users (tg_id,username,balance,total_spent,total_deposited,inventory,games_played,wins,cases_opened)
+                       VALUES (?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(tg_id) DO UPDATE SET
+                         username=excluded.username,
+                         balance=excluded.balance,
+                         total_spent=excluded.total_spent,
+                         total_deposited=excluded.total_deposited,
+                         inventory=excluded.inventory,
+                         games_played=excluded.games_played,
+                         wins=excluded.wins,
+                         cases_opened=excluded.cases_opened
+                    """,
+                    (tg, u.get("username") or "Player", int(u.get("balance") or 0),
+                     int(u.get("total_spent") or 0), int(u.get("total_deposited") or 0),
+                     inv, int(u.get("games_played") or 0), int(u.get("wins") or 0),
+                     int(u.get("cases_opened") or 0)),
+                )
+                n+=1
+            except Exception as e:
+                print("import skip", e)
+        await db.commit()
+    await log_admin_action(user["id"], "import_users", f"restored {n}")
+    return {"success": True, "imported": n}
 
 @app.get("/api/admin/withdrawals")
 async def admin_withdrawals(user=Depends(verify_admin)):
