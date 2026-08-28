@@ -1999,13 +1999,24 @@ async def case_contents(case_id: str):
 @app.get("/api/live")
 async def get_live():
     if LIVE_WINS:
-        return {"items": LIVE_WINS[:24]}
-    # демо-лента пока никто не открывал кейсы
+        # дотягиваем img если пустой
+        items = []
+        for it in LIVE_WINS[:24]:
+            img = it.get("img") or gift_img_url(it.get("name", ""))
+            items.append({**it, "img": img})
+        return {"items": items}
+    # демо-лента с реальными картинками
     demo = []
-    for r in ["Common", "Uncommon", "Rare"]:
-        for g in NFT_GIFTS.get(r, [])[:3]:
-            demo.append({"name": g["name"], "emoji": g["emoji"], "img": g.get("img", ""), "user": "Player", "value": g["value"]})
-    return {"items": demo[:16]}
+    for r in ["Common", "Uncommon", "Rare", "Epic"]:
+        for g in NFT_GIFTS.get(r, [])[:4]:
+            demo.append({
+                "name": g["name"],
+                "emoji": g.get("emoji") or "🎁",
+                "img": g.get("img") or gift_img_url(g.get("name", "")),
+                "user": "Live",
+                "value": g.get("value", 0),
+            })
+    return {"items": demo[:20]}
 
 @app.post("/api/deposit")
 async def deposit(req: DepositRequest, user=Depends(verify_telegram)):
