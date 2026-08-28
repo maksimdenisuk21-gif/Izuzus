@@ -98,11 +98,29 @@ def gift_short_name(name: str) -> str:
     s = "".join(c if c.isalnum() or c == " " else "" for c in s)
     return "_".join(s.split())
 
+# RU/alias → рабочие short_name на CDN TG_Photos
+GIFT_SN_CDN = {
+    "мишка": "toy_bear", "сердце": "cookie_heart", "конфета": "lol_pop",
+    "подарок": "joyful_bundle", "звезда": "hanging_star", "торт": "homemade_cake",
+    "ракета": "stellar_rocket", "букет": "lush_bouquet", "ёлка": "winter_wreath",
+    "елка": "winter_wreath", "шампанское": "spiced_wine", "цветы": "sakura_flower",
+    "кольцо": "diamond_ring", "алмаз": "diamond_ring", "кубок": "mini_oscar",
+    "teddy_bear": "toy_bear", "heart": "cookie_heart", "candy": "lol_pop",
+    "gift": "joyful_bundle", "rocket": "stellar_rocket", "bouquet": "lush_bouquet",
+    "cake": "homemade_cake", "christmas_tree": "winter_wreath", "star": "hanging_star",
+}
+
 def gift_img_url(name: str, sn: str = None) -> str:
-    if not sn:
+    key = (name or "").lower().strip()
+    if key in GIFT_SN_CDN:
+        sn = GIFT_SN_CDN[key]
+    elif sn and sn.lower() in GIFT_SN_CDN:
+        sn = GIFT_SN_CDN[sn.lower()]
+    elif not sn:
         sn = gift_short_name(name)
-    sn = sn.lower().replace(" ", "_").replace("'", "").replace("'", "")
-    # реальные фото с CDN
+    sn = (sn or "toy_bear").lower().replace(" ", "_").replace("'", "").replace("'", "")
+    if sn in GIFT_SN_CDN:
+        sn = GIFT_SN_CDN[sn]
     return f"https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/{sn}.webp"
 
 def gift_img_url_frag(name: str, sn: str = None) -> str:
@@ -378,8 +396,8 @@ CASES = {
         "icon": "👜", "color": "c-tg",
         "rarities": ["Epic", "Legendary"], "weights": [65, 35],
         "min_stars": 80, "max_stars": 300, "stars_chance": 0.18,
-        "force_names": ["Bow Tie", "Top Hat", "Swag Bag", "Diamond Ring", "Perfume Bottle", "Swiss Watch", "Nail Bracelet"],
-        "desc": "Чаще Bow Tie/Top Hat, редко Swiss Watch"
+        "force_names": ["Мишка", "Кольцо", "Bow Tie", "Top Hat", "Swag Bag", "Diamond Ring", "Perfume Bottle", "Swiss Watch"],
+        "desc": "Чаще дешёвое, редко Swiss Watch"
     },
     "brand_rolex": {
         "name": "⌚ ROLEX CASE", "price": 1350, "category": "brands",
@@ -394,8 +412,8 @@ CASES = {
         "icon": "🐕", "color": "c-pepe",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
         "min_stars": 60, "max_stars": 250, "stars_chance": 0.18,
-        "force_names": ["Snoop Dogg", "Swag Bag", "Snoop Cigar", "Vintage Cigar", "Low Rider", "Westside Sign"],
-        "desc": "Чаще Snoop/сумка, редко Low Rider"
+        "force_names": ["Мишка", "Ракета", "Snoop Dogg", "Swag Bag", "Snoop Cigar", "Vintage Cigar", "Low Rider"],
+        "desc": "Чаще дешёвое, редко Low Rider"
     },
     # ===== ONLY NFT =====
     "only_onyx": {
@@ -465,29 +483,32 @@ CASES = {
         "icon": "👑", "color": "c-durov",
         "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
         "min_stars": 200, "max_stars": 800, "stars_chance": 0.12,
-        "desc": "От 1200⭐ · жирные дропы"
+        "force_names": ["Кольцо", "Алмаз", "Evil Eye", "Top Hat", "Crystal Ball", "Diamond Ring", "Swiss Watch", "Mini Oscar"],
+        "desc": "Чаще 100–3k, редко Swiss/Oscar"
     },
     "rich_diamond": {
         "name": "💎 DIAMOND RICH", "price": 2850, "category": "rich",
         "icon": "💎", "color": "c-frag",
         "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 400, "max_stars": 1500, "stars_chance": 0.1,
-        "desc": "Legendary + Mythic"
+        "force_names": ["Алмаз", "Кубок", "Diamond Ring", "Swiss Watch", "Perfume Bottle", "Mini Oscar", "Ion Gem", "Heroic Helmet"],
+        "desc": "Чаще среднее, редко Helmet"
     },
     "rich_mythic": {
         "name": "☄️ MYTHIC RICH", "price": 5750, "category": "rich",
         "icon": "☄️", "color": "c-durov",
         "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
         "min_stars": 800, "max_stars": 3000, "stars_chance": 0.08,
-        "desc": "Топ-тир"
+        "force_names": ["Алмаз", "Crystal Ball", "Diamond Ring", "Swiss Watch", "Mini Oscar", "Ion Gem", "Heroic Helmet", "Precious Peach"],
+        "desc": "Чаще < цены, редко Peach"
     },
     "rich_durov": {
         "name": "🔥 DUROV RICH", "price": 9200, "category": "rich",
         "icon": "🔥", "color": "c-durov",
         "rarities": ["Mythic"], "weights": [100],
         "min_stars": 1500, "max_stars": 8000, "stars_chance": 0.05,
-        "force_names": ["Plush Pepe", "Durov's Cap", "Heroic Helmet", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
-        "desc": "Только Mythic коллекция"
+        "force_names": ["Алмаз", "Кубок", "Mini Oscar", "Swiss Watch", "Khabib's Papakha", "Heroic Helmet", "Precious Peach", "Durov's Cap", "Plush Pepe"],
+        "desc": "Чаще среднее, микро Pepe"
     },
     # ===== EXTRA NFT CASES (реальные дешёвые из каталога) =====
     "snoop_pack": {
@@ -680,7 +701,17 @@ def verify_admin(user=Depends(verify_telegram)):
 
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    return max(1, min(85, (in_val/target)*100*(1-HOUSE_EDGE)))
+    """Шанс апгрейда с house edge ~18%, кап 72%."""
+    try:
+        iv = float(in_val or 0)
+        tv = float(target or 1)
+    except Exception:
+        return 1.0
+    if tv <= 0 or iv <= 0:
+        return 1.0
+    raw = (iv / tv) * 100.0
+    edge = max(float(HOUSE_EDGE), 0.18)
+    return max(0.5, min(72.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -2202,8 +2233,8 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
 
     # ---------- NFT drop ----------
     force = c.get("force_names") or []
+    price = max(1, int(c.get("price") or 1))
     if force:
-        # только предметы из каталога, цена = catalog value (единая)
         candidates = []
         flat = []
         for r, arr in NFT_GIFTS.items():
@@ -2211,25 +2242,47 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
                 flat.append({**g, "rarity": r})
         for name in force:
             found = None
-            nl = name.lower().strip()
+            nl = (name or "").lower().strip()
+            sn = gift_short_name(name)
             for g in flat:
-                if g["name"].lower()==nl or g.get("id","").lower()==nl or gift_short_name(g["name"])==gift_short_name(name):
+                if (g["name"] or "").lower()==nl or (g.get("id") or "").lower()==nl or gift_short_name(g["name"])==sn:
                     found = {**g}
                     break
             if not found:
-                # skip unknown — не синтезируем фейковые 500
                 continue
+            # всегда нормальный img
+            if not found.get("img"):
+                found["img"] = gift_img_url(found.get("name",""), found.get("id"))
             candidates.append(found)
         if not candidates:
-            # fallback any from rarities
             for r in (c.get("rarities") or ["Common"]):
-                candidates.extend([{**g,"rarity":r} for g in NFT_GIFTS.get(r,[])[:8]])
-        # веса в пользу дешёвых → EV < price (дом в плюсе, RTP ~70–85%)
-        vals = [max(1, int(g.get("value") or 1)) for g in candidates]
-        mx = max(vals) or 1
-        wts = [max(1, int((mx / v) ** 1.15)) for v in vals]
-        gift = random.choices(candidates, weights=wts)[0]
-        rarity = gift.get("rarity") or "Epic"
+                candidates.extend([{**g,"rarity":r} for g in NFT_GIFTS.get(r,[])[:10]])
+        # --- баланс EV: 85% <= price, 12% <= price*2.5, 3% выше ---
+        under = [g for g in candidates if int(g.get("value") or 0) <= price]
+        mild  = [g for g in candidates if price < int(g.get("value") or 0) <= int(price * 2.5)]
+        high  = [g for g in candidates if int(g.get("value") or 0) > int(price * 2.5)]
+        # если нет under — подмешиваем дешёвые Common
+        if not under:
+            under = [{**g,"rarity":"Common"} for g in NFT_GIFTS.get("Common", []) if int(g.get("value") or 0) <= price][:12]
+        if not under:
+            under = [{**g,"rarity":"Common"} for g in NFT_GIFTS.get("Common", [])[:6]]
+        def _pick(pool, power=1.6):
+            if not pool:
+                return None
+            vals = [max(1, int(g.get("value") or 1)) for g in pool]
+            mx = max(vals) or 1
+            wts = [max(1, int((mx / v) ** power)) for v in vals]
+            return random.choices(pool, weights=wts)[0]
+        roll = random.random()
+        if roll < 0.85 and under:
+            gift = _pick(under, 1.4)
+        elif roll < 0.97 and (mild or under):
+            gift = _pick(mild or under, 1.5)
+        else:
+            gift = _pick(high or mild or under, 1.2)
+        if not gift:
+            gift = under[0] if under else candidates[0]
+        rarity = gift.get("rarity") or "Common"
     else:
         rarities = c.get("rarities") or ["Common"]
         weights = list(c.get("weights") or [100] * len(rarities))
@@ -2239,19 +2292,26 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             weights = [max(1, w) for w in weights]
         rarity = random.choices(rarities, weights=weights)[0]
         pool = list(NFT_GIFTS.get(rarity) or NFT_GIFTS["Common"])
-        # не даём дропать NFT дороже ~3x цены кейса (кроме Mythic-тиров)
         price = max(1, int(c.get("price") or 1))
-        if price > 0 and rarity not in ("Mythic",):
-            capped = [g for g in pool if int(g.get("value") or 0) <= price * 4]
+        # 80% — не дороже цены кейса; иначе до 2.5x
+        if random.random() < 0.80:
+            capped = [g for g in pool if int(g.get("value") or 0) <= price]
+            if not capped:
+                capped = [g for g in NFT_GIFTS.get("Common", []) if int(g.get("value") or 0) <= price] or list(NFT_GIFTS.get("Common", [])[:6])
+            pool = capped or pool
+        else:
+            capped = [g for g in pool if int(g.get("value") or 0) <= int(price * 2.5)]
             if capped:
                 pool = capped
         if pool:
             vals = [max(1, int(g.get("value") or 1)) for g in pool]
             mx = max(vals) or 1
-            wts = [max(1, int((mx / v) ** 1.8)) for v in vals]
+            wts = [max(1, int((mx / v) ** 1.9)) for v in vals]
             gift = random.choices(pool, weights=wts)[0]
         else:
-            gift = {"id": "star", "name": "⭐", "value": 10, "emoji": "⭐", "img": "", "rarity": "Common"}
+            gift = {"id": "star", "name": "⭐", "value": 10, "emoji": "⭐", "img": gift_img_url("Мишка"), "rarity": "Common"}
+        if not gift.get("img"):
+            gift = {**gift, "img": gift_img_url(gift.get("name",""), gift.get("id"))}
         gift = {**gift, "rarity": rarity}
 
     await charge_and_inc()
@@ -2278,58 +2338,96 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
 
 @app.post("/api/upgrade")
 async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
-    tg_id=user['id']; u=await get_user(tg_id)
-    if req.item_index<0 or req.item_index>=len(u["inventory"]): raise HTTPException(400,"Item not found")
-    item=u["inventory"][req.item_index]
-    if item["value"]>=req.target_value: raise HTTPException(400,"Target must be higher")
-    target=None
+    tg_id = user["id"]
+    u = await get_user(tg_id)
+    inv = list(u.get("inventory") or [])
+    if req.item_index < 0 or req.item_index >= len(inv):
+        raise HTTPException(400, "Item not found")
+    item = inv[req.item_index]
+    try:
+        iv = int(float(item.get("value") or 0))
+        tv = int(float(req.target_value or 0))
+    except Exception:
+        raise HTTPException(400, "Bad values")
+    if tv <= iv:
+        raise HTTPException(400, "Цель должна быть дороже предмета")
+    target = None
     # 1) exact value
-    for r,g in NFT_GIFTS.items():
-        for x in g:
-            if x["value"]==req.target_value:
-                target={**x,"rarity":r}; break
-        if target: break
+    for r, arr in NFT_GIFTS.items():
+        for x in arr:
+            if int(x.get("value") or 0) == tv:
+                target = {**x, "rarity": r}
+                break
+        if target:
+            break
     # 2) closest value > item value
     if not target:
-        best=None; best_d=10**18
-        for r,g in NFT_GIFTS.items():
-            for x in g:
-                v=int(x.get("value") or 0)
-                if v <= int(item["value"]): continue
-                d=abs(v - int(req.target_value))
+        best = None
+        best_d = 10**18
+        for r, arr in NFT_GIFTS.items():
+            for x in arr:
+                v = int(x.get("value") or 0)
+                if v <= iv:
+                    continue
+                d = abs(v - tv)
                 if d < best_d:
-                    best_d=d; best={**x,"rarity":r}
-        target=best
-    if not target: raise HTTPException(400,"Нет целей дороже этого предмета")
-    chance=calc_upgrade_chance(item["value"], target["value"])/100
-    win=random.random()<chance
-    win_deg=chance*360
-    # угол относительно маркера сверху: 0 = центр зелёного, зелёный = [0, win_deg)
+                    best_d = d
+                    best = {**x, "rarity": r}
+        target = best
+    # 3) synthetic target if catalog miss (дешёвый предмет → цель из фронта)
+    if not target:
+        target = {
+            "id": f"target_{tv}",
+            "name": f"Gift ⭐{tv}",
+            "value": tv,
+            "emoji": "🎁",
+            "img": gift_img_url("Мишка"),
+            "rarity": "Rare" if tv < 2000 else ("Epic" if tv < 10000 else "Legendary"),
+        }
+    if not target.get("img"):
+        target["img"] = gift_img_url(target.get("name", ""), target.get("id"))
+    chance = calc_upgrade_chance(iv, int(target.get("value") or tv)) / 100.0
+    win = random.random() < chance
+    win_deg = chance * 360.0
     if win and win_deg > 6:
         final = random.uniform(3, max(4, win_deg - 3))
     elif win:
-        final = win_deg / 2
+        final = max(1.0, win_deg / 2)
     else:
-        final = random.uniform(min(win_deg + 3, 350), 357) if win_deg < 354 else 180
+        final = random.uniform(min(win_deg + 3, 350), 357) if win_deg < 354 else 180.0
     if win:
-        u["inventory"][req.item_index]={
-            "id":target["id"],"name":target["name"],"rarity":target["rarity"],
-            "value":target["value"],"emoji":target["emoji"],"img":target.get("img","")
+        inv[req.item_index] = {
+            "id": target.get("id") or "gift",
+            "name": target.get("name") or "Gift",
+            "rarity": target.get("rarity") or "Rare",
+            "value": int(target.get("value") or tv),
+            "emoji": target.get("emoji") or "🎁",
+            "img": target.get("img") or "",
         }
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?", (json.dumps(u["inventory"]),tg_id)); await db.commit()
+            await db.execute(
+                "UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?",
+                (json.dumps(inv), tg_id),
+            )
+            await db.commit()
+        push_live(inv[req.item_index], user.get("first_name") or user.get("username") or "Player")
     else:
-        del u["inventory"][req.item_index]
+        del inv[req.item_index]
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(u["inventory"]),tg_id)); await db.commit()
+            await db.execute(
+                "UPDATE users SET inventory=? WHERE tg_id=?",
+                (json.dumps(inv), tg_id),
+            )
+            await db.commit()
+    bal = (await get_user(tg_id))["balance"]
     return {
         "success": win,
         "chance": round(chance * 100, 2),
         "win_deg": round(win_deg, 2),
         "target": target,
         "angle": round(final, 2),
-        "message": f"{'🎉' if win else '💔'} {item['name']} → {target['name']}",
-        "balance": (await get_user(tg_id))["balance"],
+        "message": f"{'🎉' if win else '💔'} {item.get('name','?')} → {target.get('name','?')}",
+        "balance": bal,
     }
 
 @app.get("/api/inventory")
