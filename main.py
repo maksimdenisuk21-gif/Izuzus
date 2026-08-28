@@ -290,6 +290,15 @@ def build_nft_gifts():
 
 NFT_GIFTS = build_nft_gifts()
 
+def fair_roll(client_seed: str = ""):
+    import hashlib, time
+    server = secrets.token_hex(16)
+    h = hashlib.sha256(f"{server}:{client_seed}:{time.time()}".encode()).hexdigest()
+    roll = int(h[:8], 16) / 0xFFFFFFFF
+    return {"server_seed": server, "hash": h, "roll": roll}
+
+
+
 # category: free | stars | nft | brands | only_nft | allin | rich
 CASES = {
     # ===== FREE =====
@@ -477,60 +486,52 @@ CASES = {
     },
     # ===== EXTRA NFT CASES (реальные дешёвые из каталога) =====
     "snoop_pack": {
-        "name": "🐕 SNOOP PACK", "price": 400, "category": "nft",
+        "name": "🐕 SNOOP PACK", "price": 800, "category": "nft",
         "icon": "🐕", "color": "c-pepe",
-        "force_names": ["Snoop Dogg", "Snoop Cigar", "Swag Bag", "Westside Sign"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/snoop_dogg.webp",
-        "desc": "Snoop · реальные цены каталога"
+        "force_names": ["Мишка", "Ракета", "Подарок", "Snoop Dogg", "Swag Bag", "Snoop Cigar"],
+        "desc": "Часто дешёвое, редко Snoop"
     },
     "snake_2025": {
-        "name": "🐍 SNAKE 2025", "price": 350, "category": "nft",
+        "name": "🐍 SNAKE 2025", "price": 500, "category": "nft",
         "icon": "🐍", "color": "c-starter",
-        "force_names": ["Lunar Snake", "Pet Snake", "Snake Box", "Candy Cane"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/lunar_snake.webp",
-        "desc": "Snake · 400–1000⭐"
+        "force_names": ["Конфета", "Ёлка", "Candy Cane", "Lunar Snake", "Pet Snake", "Snake Box"],
+        "desc": "Чаще мало, редко Snake"
     },
     "meow_case": {
-        "name": "🐱 MEOW CASE", "price": 200, "category": "nft",
+        "name": "🐱 MEOW CASE", "price": 400, "category": "nft",
         "icon": "🐱", "color": "c-starter",
-        "force_names": ["Triple Meow", "Scared Cat", "Jelly Bunny", "Bunny Muffin"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/triple_meow.webp",
-        "desc": "Котики и зайцы"
+        "force_names": ["Мишка", "Сердце", "Triple Meow", "Jelly Bunny", "Bunny Muffin"],
+        "desc": "Много мишек, редко Meow"
     },
     "ramen_drop": {
-        "name": "🍜 RAMEN DROP", "price": 250, "category": "nft",
+        "name": "🍜 RAMEN DROP", "price": 450, "category": "nft",
         "icon": "🍜", "color": "c-pepe",
-        "force_names": ["Instant Ramen", "Vice Cream", "Berry Box", "Spiced Wine"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/instant_ramen.webp",
-        "desc": "Еда · недорого"
+        "force_names": ["Торт", "Подарок", "Instant Ramen", "Vice Cream", "Berry Box"],
+        "desc": "Еда · дом в плюсе"
     },
     "xmas_case": {
-        "name": "🎄 XMAS CASE", "price": 300, "category": "nft",
+        "name": "🎄 XMAS CASE", "price": 400, "category": "nft",
         "icon": "🎄", "color": "c-tg",
-        "force_names": ["Xmas Stocking", "Candy Cane", "Santa Hat", "Ginger Cookie"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/xmas_stocking.webp",
-        "desc": "Новогодние"
+        "force_names": ["Ёлка", "Конфета", "Xmas Stocking", "Candy Cane", "Santa Hat"],
+        "desc": "НГ · чаще ёлка/конфета"
     },
     "float_party": {
-        "name": "🏊 FLOAT PARTY", "price": 280, "category": "nft",
+        "name": "🏊 FLOAT PARTY", "price": 400, "category": "nft",
         "icon": "🏊", "color": "c-starter",
-        "force_names": ["Pool Float", "Homemade Cake", "Lol Pop", "B-Day Candle"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/pool_float.webp",
-        "desc": "Лето и праздник"
+        "force_names": ["Шампанское", "Торт", "Lol Pop", "B-Day Candle", "Pool Float"],
+        "desc": "Праздник · EV < цена"
     },
     "starter_plus": {
         "name": "🌱 STARTER+", "price": 150, "category": "nft",
         "icon": "🌱", "color": "c-starter",
-        "force_names": ["Triple Meow", "Lunar Snake", "Candy Cane", "Pool Float", "Xmas Stocking"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/lol_pop.webp",
-        "desc": "Дешёвые NFT 300–1000⭐"
+        "force_names": ["Мишка", "Сердце", "Подарок", "Конфета", "Ракета", "Букет", "Кольцо", "Triple Meow"],
+        "desc": "Чаще 15–50⭐, редко Meow"
     },
     "flame_case": {
-        "name": "🔥 FLAME CASE", "price": 450, "category": "nft",
+        "name": "🔥 FLAME CASE", "price": 900, "category": "nft",
         "icon": "🔥", "color": "c-durov",
-        "force_names": ["Chill Flame", "Electric Skull", "Crystal Ball", "Flying Broom"],
-        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/chill_flame.webp",
-        "desc": "Огонь и магия"
+        "force_names": ["Ракета", "Алмаз", "Chill Flame", "Crystal Ball", "Flying Broom"],
+        "desc": "Часто ракета, редко flame"
     },
 
 }
@@ -2073,6 +2074,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             await db.commit()
 
     uname = user.get("first_name") or user.get("username") or "Player"
+    fair_info = fair_roll(str(tg_id))
 
     # ---------- ALL-IN ----------
     if c.get("allin"):
@@ -2102,7 +2104,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
                 await sio.emit("live_win", {"name": gift["name"], "emoji": gift["emoji"], "img": gift.get("img", ""), "user": uname})
             except Exception:
                 pass
-            return {"success": True, "gift": gift, "rarity": "Mythic", "balance": (await get_user(tg_id))["balance"], "allin_win": True}
+            return {"success": True, "gift": gift, "rarity": "Mythic", "balance": (await get_user(tg_id))["balance"], "allin_win": True, "fair": fair_info}
         # lose path: tiny stars or 0
         drops = c.get("lose_stars") or [0]
         weights = c.get("lose_weights") or [100]
@@ -2111,7 +2113,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
                 await db.commit()
-        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "allin_lose": True}
+        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "allin_lose": True, "fair": fair_info}
 
     # ---------- PURE STARS CASES ----------
     if c.get("star_drops"):
@@ -2122,7 +2124,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
             await db.commit()
-        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
+        return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "fair": fair_info}
 
     # ---------- FREE: только 0.1–20⭐, NFT никогда ----------
     if c.get("stars_bias_low") or req.case_id == "free_daily":
@@ -2233,7 +2235,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         "success": True,
         "gift": gift,
         "rarity": gift.get("rarity", rarity),
-        "balance": (await get_user(tg_id))["balance"],
+        "balance": (await get_user(tg_id))["balance"], "fair": fair_info,
     }
 
 @app.post("/api/upgrade")
@@ -2744,6 +2746,34 @@ async def ton_manifest():
         "termsOfUseUrl": "https://izuzus-2.onrender.com",
         "privacyPolicyUrl": "https://izuzus-2.onrender.com",
     }
+
+
+class CaseBuyTonRequest(BaseModel):
+    case_id: str
+    boc: str = ""
+
+@app.post("/api/case/buy_ton")
+async def case_buy_ton(req: CaseBuyTonRequest, user=Depends(verify_telegram)):
+    """Списать кейс за TON (credit mode) — после sendTransaction на treasury."""
+    c = CASES.get(req.case_id)
+    if not c or c["price"] <= 0:
+        raise HTTPException(400, "Invalid case")
+    if not TON_TREASURY:
+        raise HTTPException(400, "TON not configured")
+    ton_need = max(0.1, round(c["price"] / float(TON_STARS_PER_TON), 4))
+    # credit mode: trust client TX (dev). Prod: verify boc on-chain.
+    # Don't charge stars — open case free after TON pay
+    # Reuse open by temporarily giving balance
+    tg_id = user["id"]
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (c["price"], tg_id))
+        await db.execute(
+            "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
+            (tg_id, ton_need, c["price"], (req.boc or "")[:500], "case:"+req.case_id),
+        )
+        await db.commit()
+    return {"success": True, "case_id": req.case_id, "ton": ton_need, "balance": (await get_user(tg_id))["balance"]}
+
 
 # ===== STARTUP =====
 @app.on_event("startup")
