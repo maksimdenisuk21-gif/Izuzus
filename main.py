@@ -1,5 +1,5 @@
 # main.py - GiftUpgrader (UI в стиле референса + полный backend)
-import os, hmac, hashlib, json, urllib.parse, random, time, uuid, asyncio, math
+import os, hmac, hashlib, json, urllib.parse, random, time, uuid, asyncio, math, secrets
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
@@ -339,57 +339,62 @@ CASES = {
         "desc": "50–1500⭐"
     },
     # ===== NFT =====
+    # force_names: большинство < price (дом в плюсе), 1–2 окупают
     "nft_starter": {
         "name": "🌱 NFT STARTER", "price": 220, "category": "nft",
         "icon": "🌱", "color": "c-starter",
         "rarities": ["Common", "Uncommon", "Rare"], "weights": [55, 35, 10],
-        "min_stars": 15, "max_stars": 80, "stars_chance": 0.25,
-        "desc": "Common–Rare + иногда ⭐"
+        "min_stars": 15, "max_stars": 60, "stars_chance": 0.2,
+        "force_names": ["Мишка", "Сердце", "Конфета", "Подарок", "Ракета", "Букет", "Кольцо", "Triple Meow"],
+        "desc": "Чаще 15–100⭐, редко Meow"
     },
     "nft_candy": {
         "name": "🍭 CANDY NFT", "price": 400, "category": "nft",
         "icon": "🍭", "color": "c-pepe",
         "rarities": ["Uncommon", "Rare", "Epic"], "weights": [55, 35, 10],
-        "min_stars": 30, "max_stars": 120, "stars_chance": 0.2,
-        "desc": "Uncommon–Epic"
+        "min_stars": 30, "max_stars": 100, "stars_chance": 0.18,
+        "force_names": ["Конфета", "Торт", "Candy Cane", "Lol Pop", "Berry Box", "Cookie Heart", "Whip Cupcake", "Love Potion"],
+        "desc": "Сладкое · EV < цена"
     },
     "nft_pepe": {
         "name": "🐸 PEPE BOX", "price": 650, "category": "nft",
         "icon": "🐸", "color": "c-pepe",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
-        "min_stars": 50, "max_stars": 200, "stars_chance": 0.18,
-        "desc": "Шанс на Legendary"
+        "min_stars": 40, "max_stars": 150, "stars_chance": 0.15,
+        "force_names": ["Ракета", "Алмаз", "Kissed Frog", "Jelly Bunny", "Scared Cat", "Toy Bear", "Spy Agaric"],
+        "desc": "Чаще среднее, редко топ"
     },
     "nft_magic": {
         "name": "🔮 MAGIC VAULT", "price": 1000, "category": "nft",
         "icon": "🔮", "color": "c-frag",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
-        "min_stars": 80, "max_stars": 300, "stars_chance": 0.15,
-        "desc": "Magic & potions"
+        "min_stars": 60, "max_stars": 250, "stars_chance": 0.12,
+        "force_names": ["Crystal Ball", "Hex Pot", "Magic Potion", "Love Potion", "Flying Broom", "Genie Lamp", "Eternal Rose"],
+        "desc": "Magic & potions · дом в плюсе"
     },
     # ===== BRANDS =====
     "brand_gucci": {
         "name": "👜 GUCCI DROP", "price": 900, "category": "brands",
         "icon": "👜", "color": "c-tg",
         "rarities": ["Epic", "Legendary"], "weights": [65, 35],
-        "min_stars": 100, "max_stars": 400, "stars_chance": 0.22,
-        "force_names": ["Swag Bag", "Perfume Bottle", "Top Hat", "Swiss Watch", "Diamond Ring", "Nail Bracelet"],
-        "desc": "Бренд-стиль · сумки, часы, духи"
+        "min_stars": 80, "max_stars": 300, "stars_chance": 0.18,
+        "force_names": ["Top Hat", "Swag Bag", "Perfume Bottle", "Diamond Ring", "Swiss Watch", "Nail Bracelet"],
+        "desc": "Бренд · сумки, часы, духи"
     },
     "brand_rolex": {
         "name": "⌚ ROLEX CASE", "price": 1350, "category": "brands",
         "icon": "⌚", "color": "c-frag",
         "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
-        "min_stars": 150, "max_stars": 500, "stars_chance": 0.2,
-        "force_names": ["Swiss Watch", "Signet Ring", "Diamond Ring", "Gem Signet", "Top Hat", "Vintage Cigar"],
-        "desc": "Часы и люкс"
+        "min_stars": 100, "max_stars": 400, "stars_chance": 0.15,
+        "force_names": ["Top Hat", "Signet Ring", "Swiss Watch", "Diamond Ring", "Gem Signet", "Vintage Cigar"],
+        "desc": "Часы и люкс · EV < цена"
     },
     "brand_snoop": {
         "name": "🐕 SNOOP DROP", "price": 800, "category": "brands",
         "icon": "🐕", "color": "c-pepe",
         "rarities": ["Rare", "Epic", "Legendary"], "weights": [55, 35, 10],
-        "min_stars": 80, "max_stars": 350, "stars_chance": 0.2,
-        "force_names": ["Snoop Dogg", "Snoop Cigar", "Low Rider", "Vintage Cigar", "Swag Bag", "Westside Sign"],
+        "min_stars": 60, "max_stars": 250, "stars_chance": 0.18,
+        "force_names": ["Snoop Dogg", "Snoop Cigar", "Swag Bag", "Low Rider", "Vintage Cigar", "Westside Sign"],
         "desc": "Snoop collab vibes"
     },
     # ===== ONLY NFT =====
@@ -524,8 +529,8 @@ CASES = {
     "starter_plus": {
         "name": "🌱 STARTER+", "price": 150, "category": "nft",
         "icon": "🌱", "color": "c-starter",
-        "force_names": ["Мишка", "Сердце", "Подарок", "Конфета", "Ракета", "Букет", "Кольцо", "Triple Meow"],
-        "desc": "Чаще 15–50⭐, редко Meow"
+        "force_names": ["Мишка", "Сердце", "Конфета", "Подарок", "Ракета", "Букет", "Кольцо", "Алмаз", "Кубок", "Triple Meow"],
+        "desc": "Чаще 15–50⭐, иногда 100, редко Meow"
     },
     "flame_case": {
         "name": "🔥 FLAME CASE", "price": 900, "category": "nft",
@@ -688,7 +693,7 @@ def calc_mines_multiplier(mines, opened):
     return round(min((1-edge)/p, caps[min(caps.keys(), key=lambda k: abs(k-mines))]), 2)
 
 # ===== CRASH =====
-CRASH_MIN_BET, CRASH_MAX_BET = 50000, 5000
+CRASH_MIN_BET, CRASH_MAX_BET = 25, 5000
 CRASH_BETTING_TIME, CRASH_COOLDOWN, CRASH_SPEED = 6, 3, 0.08
 SERVER_SEED = os.getenv("CRASH_SERVER_SEED", str(uuid.uuid4()))
 crash_nonce = 0
@@ -2191,26 +2196,31 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             # fallback any from rarities
             for r in (c.get("rarities") or ["Common"]):
                 candidates.extend([{**g,"rarity":r} for g in NFT_GIFTS.get(r,[])[:8]])
-        # веса обратно пропорциональны цене (дешёвые чаще)
+        # веса в пользу дешёвых → EV < price (дом в плюсе, RTP ~70–85%)
         vals = [max(1, int(g.get("value") or 1)) for g in candidates]
         mx = max(vals) or 1
-        wts = [max(1, int((mx / v) ** 1.35)) for v in vals]
+        wts = [max(1, int((mx / v) ** 1.15)) for v in vals]
         gift = random.choices(candidates, weights=wts)[0]
         rarity = gift.get("rarity") or "Epic"
     else:
         rarities = c.get("rarities") or ["Common"]
         weights = list(c.get("weights") or [100] * len(rarities))
-        # чуть хуже: усиливаем первые (низкие) редкости
+        # усиливали низкие редкости
         if len(weights) >= 2:
-            weights = [int(w * (1.55 if i < len(weights) // 2 else 0.55)) for i, w in enumerate(weights)]
+            weights = [int(w * (1.7 if i < len(weights) // 2 else 0.45)) for i, w in enumerate(weights)]
             weights = [max(1, w) for w in weights]
         rarity = random.choices(rarities, weights=weights)[0]
         pool = list(NFT_GIFTS.get(rarity) or NFT_GIFTS["Common"])
-        # внутри редкости тоже чаще дешёвые
+        # не даём дропать NFT дороже ~3x цены кейса (кроме Mythic-тиров)
+        price = max(1, int(c.get("price") or 1))
+        if price > 0 and rarity not in ("Mythic",):
+            capped = [g for g in pool if int(g.get("value") or 0) <= price * 4]
+            if capped:
+                pool = capped
         if pool:
             vals = [max(1, int(g.get("value") or 1)) for g in pool]
             mx = max(vals) or 1
-            wts = [max(1, int((mx / v) ** 1.2)) for v in vals]
+            wts = [max(1, int((mx / v) ** 1.8)) for v in vals]
             gift = random.choices(pool, weights=wts)[0]
         else:
             gift = {"id": "star", "name": "⭐", "value": 10, "emoji": "⭐", "img": "", "rarity": "Common"}
@@ -2245,11 +2255,24 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     item=u["inventory"][req.item_index]
     if item["value"]>=req.target_value: raise HTTPException(400,"Target must be higher")
     target=None
+    # 1) exact value
     for r,g in NFT_GIFTS.items():
         for x in g:
-            if x["value"]==req.target_value: target={**x,"rarity":r}; break
+            if x["value"]==req.target_value:
+                target={**x,"rarity":r}; break
         if target: break
-    if not target: raise HTTPException(400,"Target not found")
+    # 2) closest value > item value
+    if not target:
+        best=None; best_d=10**18
+        for r,g in NFT_GIFTS.items():
+            for x in g:
+                v=int(x.get("value") or 0)
+                if v <= int(item["value"]): continue
+                d=abs(v - int(req.target_value))
+                if d < best_d:
+                    best_d=d; best={**x,"rarity":r}
+        target=best
+    if not target: raise HTTPException(400,"Нет целей дороже этого предмета")
     chance=calc_upgrade_chance(item["value"], target["value"])/100
     win=random.random()<chance
     win_deg=chance*360
