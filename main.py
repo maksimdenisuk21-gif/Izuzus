@@ -17,6 +17,11 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 # ===== CONFIG =====
 BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_TG_ID = 7092015279
+# TON Connect — адрес казны (куда шлют TON). Задай env TON_TREASURY
+import os as _os
+TON_TREASURY = _os.environ.get("TON_TREASURY", "").strip()
+TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "300"))
+TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = сразу начислить (dev); verify = ждать сеть
 DB_NAME = "database.db"
 HOUSE_EDGE = 0.08
 TON_TO_STARS = 110
@@ -470,6 +475,64 @@ CASES = {
         "force_names": ["Plush Pepe", "Durov's Cap", "Heroic Helmet", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
         "desc": "Только Mythic коллекция"
     },
+    # ===== EXTRA NFT CASES (реальные дешёвые из каталога) =====
+    "snoop_pack": {
+        "name": "🐕 SNOOP PACK", "price": 400, "category": "nft",
+        "icon": "🐕", "color": "c-pepe",
+        "force_names": ["Snoop Dogg", "Snoop Cigar", "Swag Bag", "Westside Sign"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/snoop_dogg.webp",
+        "desc": "Snoop · реальные цены каталога"
+    },
+    "snake_2025": {
+        "name": "🐍 SNAKE 2025", "price": 350, "category": "nft",
+        "icon": "🐍", "color": "c-starter",
+        "force_names": ["Lunar Snake", "Pet Snake", "Snake Box", "Candy Cane"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/lunar_snake.webp",
+        "desc": "Snake · 400–1000⭐"
+    },
+    "meow_case": {
+        "name": "🐱 MEOW CASE", "price": 200, "category": "nft",
+        "icon": "🐱", "color": "c-starter",
+        "force_names": ["Triple Meow", "Scared Cat", "Jelly Bunny", "Bunny Muffin"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/triple_meow.webp",
+        "desc": "Котики и зайцы"
+    },
+    "ramen_drop": {
+        "name": "🍜 RAMEN DROP", "price": 250, "category": "nft",
+        "icon": "🍜", "color": "c-pepe",
+        "force_names": ["Instant Ramen", "Vice Cream", "Berry Box", "Spiced Wine"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/instant_ramen.webp",
+        "desc": "Еда · недорого"
+    },
+    "xmas_case": {
+        "name": "🎄 XMAS CASE", "price": 300, "category": "nft",
+        "icon": "🎄", "color": "c-tg",
+        "force_names": ["Xmas Stocking", "Candy Cane", "Santa Hat", "Ginger Cookie"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/xmas_stocking.webp",
+        "desc": "Новогодние"
+    },
+    "float_party": {
+        "name": "🏊 FLOAT PARTY", "price": 280, "category": "nft",
+        "icon": "🏊", "color": "c-starter",
+        "force_names": ["Pool Float", "Homemade Cake", "Lol Pop", "B-Day Candle"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/pool_float.webp",
+        "desc": "Лето и праздник"
+    },
+    "starter_plus": {
+        "name": "🌱 STARTER+", "price": 150, "category": "nft",
+        "icon": "🌱", "color": "c-starter",
+        "force_names": ["Triple Meow", "Lunar Snake", "Candy Cane", "Pool Float", "Xmas Stocking"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/lol_pop.webp",
+        "desc": "Дешёвые NFT 300–1000⭐"
+    },
+    "flame_case": {
+        "name": "🔥 FLAME CASE", "price": 450, "category": "nft",
+        "icon": "🔥", "color": "c-durov",
+        "force_names": ["Chill Flame", "Electric Skull", "Crystal Ball", "Flying Broom"],
+        "cover_img": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/chill_flame.webp",
+        "desc": "Огонь и магия"
+    },
+
 }
 
 # ===== MODELS =====
@@ -518,6 +581,11 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS promocodes (code TEXT PRIMARY KEY, reward_type TEXT, case_id TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS promo_uses (user_id INTEGER, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, promo_code))")
         await db.execute("CREATE TABLE IF NOT EXISTS free_case_cooldowns (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN ton_wallet TEXT")
+        except Exception:
+            pass
+        await db.execute("CREATE TABLE IF NOT EXISTS ton_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount_ton REAL, stars INTEGER, boc TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.execute("CREATE TABLE IF NOT EXISTS admin_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         await db.commit()
 
@@ -2100,27 +2168,27 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     # ---------- NFT drop ----------
     force = c.get("force_names") or []
     if force:
-        # хуже дроп: чаще дешёвые из списка
+        # только предметы из каталога, цена = catalog value (единая)
         candidates = []
+        flat = []
+        for r, arr in NFT_GIFTS.items():
+            for g in arr:
+                flat.append({**g, "rarity": r})
         for name in force:
             found = None
-            for r, arr in NFT_GIFTS.items():
-                for g in arr:
-                    if g["name"] == name:
-                        found = {**g, "rarity": r}
-                        break
-                if found:
+            nl = name.lower().strip()
+            for g in flat:
+                if g["name"].lower()==nl or g.get("id","").lower()==nl or gift_short_name(g["name"])==gift_short_name(name):
+                    found = {**g}
                     break
             if not found:
-                found = {
-                    "id": name.lower().replace(" ", "_").replace("'", ""),
-                    "name": name,
-                    "value": 500,
-                    "emoji": get_emoji(name),
-                    "img": gift_img_url(name),
-                    "rarity": "Epic",
-                }
+                # skip unknown — не синтезируем фейковые 500
+                continue
             candidates.append(found)
+        if not candidates:
+            # fallback any from rarities
+            for r in (c.get("rarities") or ["Common"]):
+                candidates.extend([{**g,"rarity":r} for g in NFT_GIFTS.get(r,[])[:8]])
         # веса обратно пропорциональны цене (дешёвые чаще)
         vals = [max(1, int(g.get("value") or 1)) for g in candidates]
         mx = max(vals) or 1
@@ -2607,6 +2675,75 @@ async def pvp_cancel(user=Depends(verify_telegram)):
         return {"success": True, "balance": (await get_user(tg_id))["balance"]}
     return {"success": False, "message": "Нет лобби"}
 
+
+
+# ===== TON Connect =====
+class TonWalletRequest(BaseModel):
+    address: str
+
+class TonDepositRequest(BaseModel):
+    amount_ton: float
+    boc: str = ""
+    address: str = ""
+
+@app.get("/api/ton/config")
+async def ton_config(user=Depends(verify_telegram)):
+    return {
+        "treasury": TON_TREASURY,
+        "stars_per_ton": TON_STARS_PER_TON,
+        "enabled": bool(TON_TREASURY),
+    }
+
+@app.post("/api/ton/wallet")
+async def ton_save_wallet(req:TonWalletRequest, user=Depends(verify_telegram)):
+    tg_id = user["id"]
+    addr = (req.address or "").strip()
+    if len(addr) < 10:
+        raise HTTPException(400, "Invalid address")
+    async with aiosqlite.connect(DB_NAME) as db:
+        try:
+            await db.execute("UPDATE users SET ton_wallet=? WHERE tg_id=?", (addr, tg_id))
+        except Exception:
+            pass
+        await db.commit()
+    return {"success": True, "address": addr}
+
+@app.post("/api/ton/deposit")
+async def ton_deposit(req:TonDepositRequest, user=Depends(verify_telegram)):
+    """После sendTransaction из Mini App. В режиме credit начисляет сразу (для теста).
+    В проде поставь TON_DEPOSIT_MODE=verify и проверяй boc через tonapi."""
+    if not TON_TREASURY:
+        raise HTTPException(400, "TON treasury not configured")
+    if req.amount_ton < 0.1:
+        raise HTTPException(400, "Min 0.1 TON")
+    tg_id = user["id"]
+    stars = int(req.amount_ton * TON_STARS_PER_TON)
+    if stars < 1:
+        raise HTTPException(400, "Too small")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
+            (tg_id, req.amount_ton, stars, (req.boc or "")[:500], "credited" if TON_DEPOSIT_MODE=="credit" else "pending"),
+        )
+        if TON_DEPOSIT_MODE == "credit":
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
+        await db.commit()
+    bal = (await get_user(tg_id))["balance"]
+    if TON_DEPOSIT_MODE == "credit":
+        return {"success": True, "stars": stars, "balance": bal, "message": "Credited"}
+    return {"success": False, "message": "Pending on-chain verify", "stars": stars, "balance": bal}
+
+
+
+@app.get("/tonconnect-manifest.json")
+async def ton_manifest():
+    return {
+        "url": PUBLIC_URL if "PUBLIC_URL" in dir() else "https://izuzus-2.onrender.com",
+        "name": "GiftUpgrader",
+        "iconUrl": "https://cdn.jsdelivr.net/gh/ssamy2/TG_Photos@main/webp/by_name/plush_pepe.webp",
+        "termsOfUseUrl": "https://izuzus-2.onrender.com",
+        "privacyPolicyUrl": "https://izuzus-2.onrender.com",
+    }
 
 # ===== STARTUP =====
 @app.on_event("startup")
