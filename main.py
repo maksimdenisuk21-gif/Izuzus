@@ -146,56 +146,56 @@ CASES = {
         "name": "⭐ STAR CASE I", "price": 50, "category": "stars",
         "icon": "⭐", "color": "c-starter",
         "star_drops": [5, 15, 25, 35, 40, 55, 70, 100],
-        "star_weights": [28, 22, 16, 12, 9, 7, 4, 2],
+        "star_weights": [42, 33, 24, 18, 8, 6, 1, 1],
         "desc": "8 дропов 5–100⭐"
     },
     "star_case_2": {
         "name": "⭐ STAR CASE II", "price": 100, "category": "stars",
         "icon": "✨", "color": "c-starter",
         "star_drops": [10, 25, 40, 60, 80, 120, 180, 250],
-        "star_weights": [26, 22, 16, 12, 10, 7, 5, 2],
+        "star_weights": [39, 33, 24, 18, 9, 6, 2, 1],
         "desc": "10–250⭐"
     },
     "star_case_3": {
         "name": "⭐ STAR CASE III", "price": 250, "category": "stars",
         "icon": "🌟", "color": "c-pepe",
         "star_drops": [25, 50, 100, 150, 200, 350, 500, 800],
-        "star_weights": [24, 20, 16, 14, 10, 8, 5, 3],
+        "star_weights": [36, 30, 24, 21, 9, 7, 2, 1],
         "desc": "25–800⭐"
     },
     "star_case_4": {
         "name": "⭐ STAR CASE IV", "price": 500, "category": "stars",
         "icon": "💫", "color": "c-tg",
         "star_drops": [50, 100, 200, 300, 450, 700, 1000, 1500],
-        "star_weights": [22, 20, 16, 14, 12, 8, 5, 3],
+        "star_weights": [33, 30, 24, 21, 10, 7, 2, 1],
         "desc": "50–1500⭐"
     },
     # ===== NFT =====
     "nft_starter": {
         "name": "🌱 NFT STARTER", "price": 200, "category": "nft",
         "icon": "🌱", "color": "c-starter",
-        "rarities": ["Common", "Uncommon", "Rare"], "weights": [50, 35, 15],
+        "rarities": ["Common", "Uncommon", "Rare"], "weights": [80, 56, 7],
         "min_stars": 15, "max_stars": 80, "stars_chance": 0.25,
         "desc": "Common–Rare + иногда ⭐"
     },
     "nft_candy": {
         "name": "🍭 CANDY NFT", "price": 350, "category": "nft",
         "icon": "🍭", "color": "c-pepe",
-        "rarities": ["Uncommon", "Rare", "Epic"], "weights": [45, 40, 15],
+        "rarities": ["Uncommon", "Rare", "Epic"], "weights": [72, 64, 7],
         "min_stars": 30, "max_stars": 120, "stars_chance": 0.2,
         "desc": "Uncommon–Epic"
     },
     "nft_pepe": {
         "name": "🐸 PEPE BOX", "price": 600, "category": "nft",
         "icon": "🐸", "color": "c-pepe",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [50, 35, 15],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [80, 56, 7],
         "min_stars": 50, "max_stars": 200, "stars_chance": 0.18,
         "desc": "Шанс на Legendary"
     },
     "nft_magic": {
         "name": "🔮 MAGIC VAULT", "price": 900, "category": "nft",
         "icon": "🔮", "color": "c-frag",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [40, 40, 20],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [64, 64, 10],
         "min_stars": 80, "max_stars": 300, "stars_chance": 0.15,
         "desc": "Magic & potions"
     },
@@ -203,7 +203,7 @@ CASES = {
     "brand_gucci": {
         "name": "👜 GUCCI DROP", "price": 800, "category": "brands",
         "icon": "👜", "color": "c-tg",
-        "rarities": ["Epic", "Legendary"], "weights": [70, 30],
+        "rarities": ["Epic", "Legendary"], "weights": [112, 15],
         "min_stars": 100, "max_stars": 400, "stars_chance": 0.22,
         "force_names": ["Swag Bag", "Perfume Bottle", "Top Hat", "Swiss Watch", "Diamond Ring", "Nail Bracelet"],
         "desc": "Бренд-стиль · сумки, часы, духи"
@@ -211,7 +211,7 @@ CASES = {
     "brand_rolex": {
         "name": "⌚ ROLEX CASE", "price": 1200, "category": "brands",
         "icon": "⌚", "color": "c-frag",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [55, 35, 10],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [88, 56, 5],
         "min_stars": 150, "max_stars": 500, "stars_chance": 0.2,
         "force_names": ["Swiss Watch", "Signet Ring", "Diamond Ring", "Gem Signet", "Top Hat", "Vintage Cigar"],
         "desc": "Часы и люкс"
@@ -219,7 +219,7 @@ CASES = {
     "brand_snoop": {
         "name": "🐕 SNOOP DROP", "price": 700, "category": "brands",
         "icon": "🐕", "color": "c-pepe",
-        "rarities": ["Rare", "Epic", "Legendary"], "weights": [45, 40, 15],
+        "rarities": ["Rare", "Epic", "Legendary"], "weights": [72, 64, 7],
         "min_stars": 80, "max_stars": 350, "stars_chance": 0.2,
         "force_names": ["Snoop Dogg", "Snoop Cigar", "Low Rider", "Vintage Cigar", "Swag Bag", "Westside Sign"],
         "desc": "Snoop collab vibes"
@@ -228,7 +228,7 @@ CASES = {
     "only_onyx": {
         "name": "🖤 ONYX BLACK", "price": 1500, "category": "only_nft",
         "icon": "🖤", "color": "c-durov",
-        "rarities": ["Epic", "Legendary"], "weights": [55, 45],
+        "rarities": ["Epic", "Legendary"], "weights": [88, 22],
         "stars_chance": 0.0,
         "force_names": ["Onyx Black", "Electric Skull", "Skull Flower", "Voodoo Doll", "Evil Eye", "Neko Helmet", "Heroic Helmet"],
         "desc": "Только NFT · тёмный стиль"
@@ -236,7 +236,7 @@ CASES = {
     "only_crystal": {
         "name": "💎 CRYSTAL VAULT", "price": 2000, "category": "only_nft",
         "icon": "💎", "color": "c-frag",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [50, 35, 15],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [80, 56, 7],
         "stars_chance": 0.0,
         "force_names": ["Astral Shard", "Ion Gem", "Crystal Ball", "Gem Signet", "Diamond Ring", "Perfume Bottle", "Mini Oscar"],
         "desc": "Только NFT · кристаллы и гемы"
@@ -244,7 +244,7 @@ CASES = {
     "only_durov": {
         "name": "🧢 DUROV ONLY", "price": 3500, "category": "only_nft",
         "icon": "🧢", "color": "c-durov",
-        "rarities": ["Legendary", "Mythic"], "weights": [65, 35],
+        "rarities": ["Legendary", "Mythic"], "weights": [104, 17],
         "stars_chance": 0.0,
         "force_names": ["Durov's Cap", "Heroic Helmet", "Plush Pepe", "Khabib's Papakha", "Mini Oscar", "Precious Peach"],
         "desc": "Топ-коллекции"
@@ -290,21 +290,21 @@ CASES = {
     "rich_gold": {
         "name": "👑 GOLD RICH", "price": 1200, "category": "rich",
         "icon": "👑", "color": "c-durov",
-        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [45, 40, 15],
+        "rarities": ["Epic", "Legendary", "Mythic"], "weights": [72, 64, 7],
         "min_stars": 200, "max_stars": 800, "stars_chance": 0.12,
         "desc": "От 1200⭐ · жирные дропы"
     },
     "rich_diamond": {
         "name": "💎 DIAMOND RICH", "price": 2500, "category": "rich",
         "icon": "💎", "color": "c-frag",
-        "rarities": ["Legendary", "Mythic"], "weights": [60, 40],
+        "rarities": ["Legendary", "Mythic"], "weights": [96, 20],
         "min_stars": 400, "max_stars": 1500, "stars_chance": 0.1,
         "desc": "Legendary + Mythic"
     },
     "rich_mythic": {
         "name": "☄️ MYTHIC RICH", "price": 5000, "category": "rich",
         "icon": "☄️", "color": "c-durov",
-        "rarities": ["Legendary", "Mythic"], "weights": [40, 60],
+        "rarities": ["Legendary", "Mythic"], "weights": [64, 30],
         "min_stars": 800, "max_stars": 3000, "stars_chance": 0.08,
         "desc": "Топ-тир"
     },
@@ -1944,35 +1944,50 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     # ---------- NFT drop ----------
     force = c.get("force_names") or []
     if force:
-        # pick from forced list, map to existing gift by name
-        name = random.choice(force)
-        gift = None
-        rarity = "Epic"
-        for r, arr in NFT_GIFTS.items():
-            for g in arr:
-                if g["name"] == name:
-                    gift = {**g, "rarity": r}
-                    rarity = r
+        # хуже дроп: чаще дешёвые из списка
+        candidates = []
+        for name in force:
+            found = None
+            for r, arr in NFT_GIFTS.items():
+                for g in arr:
+                    if g["name"] == name:
+                        found = {**g, "rarity": r}
+                        break
+                if found:
                     break
-            if gift:
-                break
-        if not gift:
-            # synthesize
-            gift = {
-                "id": name.lower().replace(" ", "_").replace("'", ""),
-                "name": name,
-                "value": 500,
-                "emoji": get_emoji(name),
-                "img": gift_img_url(name),
-                "rarity": "Epic",
-            }
-            rarity = "Epic"
+            if not found:
+                found = {
+                    "id": name.lower().replace(" ", "_").replace("'", ""),
+                    "name": name,
+                    "value": 500,
+                    "emoji": get_emoji(name),
+                    "img": gift_img_url(name),
+                    "rarity": "Epic",
+                }
+            candidates.append(found)
+        # веса обратно пропорциональны цене (дешёвые чаще)
+        vals = [max(1, int(g.get("value") or 1)) for g in candidates]
+        mx = max(vals) or 1
+        wts = [max(1, int((mx / v) ** 1.35)) for v in vals]
+        gift = random.choices(candidates, weights=wts)[0]
+        rarity = gift.get("rarity") or "Epic"
     else:
         rarities = c.get("rarities") or ["Common"]
-        weights = c.get("weights") or [100]
+        weights = list(c.get("weights") or [100] * len(rarities))
+        # чуть хуже: усиливаем первые (низкие) редкости
+        if len(weights) >= 2:
+            weights = [int(w * (1.55 if i < len(weights) // 2 else 0.55)) for i, w in enumerate(weights)]
+            weights = [max(1, w) for w in weights]
         rarity = random.choices(rarities, weights=weights)[0]
-        pool = NFT_GIFTS.get(rarity) or NFT_GIFTS["Common"]
-        gift = random.choice(pool)
+        pool = list(NFT_GIFTS.get(rarity) or NFT_GIFTS["Common"])
+        # внутри редкости тоже чаще дешёвые
+        if pool:
+            vals = [max(1, int(g.get("value") or 1)) for g in pool]
+            mx = max(vals) or 1
+            wts = [max(1, int((mx / v) ** 1.2)) for v in vals]
+            gift = random.choices(pool, weights=wts)[0]
+        else:
+            gift = {"id": "star", "name": "⭐", "value": 10, "emoji": "⭐", "img": "", "rarity": "Common"}
         gift = {**gift, "rarity": rarity}
 
     await charge_and_inc()
@@ -2296,6 +2311,6 @@ async def startup():
     except Exception as e:
         print("setWebhook skip:", e)
 
-if __name__=="__main__":
+if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=8000
+    uvicorn.run(socket_app, host="0.0.0.0", port=8000)
