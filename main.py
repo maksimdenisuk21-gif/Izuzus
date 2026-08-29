@@ -1010,9 +1010,53 @@ async def auto_backup_loop():
             print("auto_backup", e)
         await asyncio.sleep(480)
 
+
+# ===== QUESTS (ежедневные/постоянные мелкие награды) =====
+QUEST_DEFS = [
+    {"id": "upg_5", "title": "Прокрути апгрейд 5 раз", "type": "upgrade", "need": 5, "reward": 30},
+    {"id": "case_3", "title": "Открой 3 кейса", "type": "case", "need": 3, "reward": 25},
+    {"id": "mines_2", "title": "Сыграй в мины 2 раза", "type": "mines", "need": 2, "reward": 20},
+    {"id": "pvp_1", "title": "Сыграй 1 PvP", "type": "pvp", "need": 1, "reward": 20},
+    {"id": "sell_3", "title": "Продай 3 предмета", "type": "sell", "need": 3, "reward": 15},
+    {"id": "upg_15", "title": "Апгрейд 15 раз", "type": "upgrade", "need": 15, "reward": 80},
+]
+
+async def quest_progress(tg_id: int, qtype: str, add: int = 1):
+    """+прогресс по типу задания."""
+    try:
+        async with get_db() as db:
+            for q in QUEST_DEFS:
+                if q["type"] != qtype:
+                    continue
+                qid = q["id"]
+                async with db.execute(
+                    "SELECT progress, claimed FROM user_quests WHERE user_id=? AND quest_id=?",
+                    (tg_id, qid),
+                ) as c:
+                    row = await c.fetchone()
+                if row:
+                    prog, claimed = int(row[0] or 0), int(row[1] or 0)
+                    if claimed:
+                        continue
+                    prog = min(int(q["need"]), prog + add)
+                    await db.execute(
+                        "UPDATE user_quests SET progress=? WHERE user_id=? AND quest_id=?",
+                        (prog, tg_id, qid),
+                    )
+                else:
+                    prog = min(int(q["need"]), add)
+                    await db.execute(
+                        "INSERT INTO user_quests (user_id, quest_id, progress, claimed) VALUES (?,?,?,0)",
+                        (tg_id, qid, prog),
+                    )
+            await db.commit()
+    except Exception as e:
+        print("quest_progress", e)
+
+
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    """Жёсткий house edge ~28%, кап 48% — апгрейд реже залетает."""
+    """Очень жёсткий edge 36%, кап 38% — апгрейд редко в плюс."""
     try:
         iv = float(in_val or 0)
         tv = float(target or 1)
@@ -1021,8 +1065,8 @@ def calc_upgrade_chance(in_val, target):
     if tv <= 0 or iv <= 0:
         return 1.0
     raw = (iv / tv) * 100.0
-    edge = 0.28
-    return max(0.5, min(48.0, raw * (1.0 - edge)))
+    edge = 0.36
+    return max(0.5, min(38.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -2439,6 +2483,7 @@ async def telegram_webhook(request: Request):
 async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     tg_id = user["id"]
     check_rate(tg_id, "case_open")
+    # quest counted after success below
     c = CASES.get(req.case_id)
     if not c:
         raise HTTPException(400, "Invalid case")
@@ -2475,6 +2520,10 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             except Exception:
                 pass
             await db.commit()
+        try:
+            await quest_progress(tg_id, "case")
+        except Exception:
+            pass
 
     uname = user.get("first_name") or user.get("username") or "Player"
     fair_info = fair_roll(str(tg_id))
@@ -2795,6 +2844,7 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     bal = (await get_user(tg_id))["balance"]
     try:
         await log_game(tg_id, "upgrade", f"{item.get('name','?')}→{target.get('name','?')}", iv, "win" if win else "lose")
+        await quest_progress(tg_id, "upgrade")
     except Exception:
         pass
     return {
@@ -2823,6 +2873,67 @@ async def health():
         "db": "neon/postgres" if USE_POSTGRES else "sqlite",
         "error": err,
     }
+
+
+@app.get("/api/quests")
+async def get_quests(user=Depends(verify_telegram)):
+    tg_id=user["id"]
+    progress={}
+    async with get_db() as db:
+        async with db.execute("SELECT quest_id,progress,claimed FROM user_quests WHERE user_id=?", (tg_id,)) as c:
+            for r in await c.fetchall():
+                progress[r[0]]={"progress":int(r[1] or 0),"claimed":bool(r[2])}
+    out=[]
+    for q in QUEST_DEFS:
+        st=progress.get(q["id"],{"progress":0,"claimed":False})
+        out.append({
+            **q,
+            "progress": st["progress"],
+            "claimed": st["claimed"],
+            "done": st["progress"]>=q["need"],
+        })
+    return {"quests": out}
+
+@app.post("/api/quests/claim")
+async def claim_quest(req: dict, user=Depends(verify_telegram)):
+    tg_id=user["id"]
+    qid=(req.get("quest_id") or "").strip()
+    q=next((x for x in QUEST_DEFS if x["id"]==qid), None)
+    if not q: raise HTTPException(400,"Нет такого задания")
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT progress,claimed FROM user_quests WHERE user_id=? AND quest_id=?",
+            (tg_id, qid),
+        ) as c:
+            row=await c.fetchone()
+        if not row or int(row[0] or 0)<q["need"]:
+            raise HTTPException(400,"Задание ещё не выполнено")
+        if int(row[1] or 0):
+            raise HTTPException(400,"Уже получено")
+        await db.execute(
+            "UPDATE user_quests SET claimed=1 WHERE user_id=? AND quest_id=?",
+            (tg_id, qid),
+        )
+        await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(q["reward"]), tg_id))
+        await db.commit()
+    return {"success":True,"reward":q["reward"],"balance":(await get_user(tg_id))["balance"]}
+
+@app.get("/api/leaderboard")
+async def leaderboard(user=Depends(verify_telegram)):
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT username,balance,wins,COALESCE(cases_opened,0) FROM users ORDER BY balance DESC LIMIT 20"
+        ) as c:
+            by_bal=[{"name":r[0] or "Player","balance":r[1],"wins":r[2],"cases":r[3]} for r in await c.fetchall()]
+        async with db.execute(
+            "SELECT username,wins,balance FROM users ORDER BY wins DESC LIMIT 20"
+        ) as c:
+            by_wins=[{"name":r[0] or "Player","wins":r[1],"balance":r[2]} for r in await c.fetchall()]
+        async with db.execute(
+            "SELECT username,COALESCE(cases_opened,0),balance FROM users ORDER BY cases_opened DESC LIMIT 20"
+        ) as c:
+            by_cases=[{"name":r[0] or "Player","cases":r[1],"balance":r[2]} for r in await c.fetchall()]
+    return {"by_balance": by_bal, "by_wins": by_wins, "by_cases": by_cases}
 
 @app.get("/api/history")
 async def get_history(user=Depends(verify_telegram), limit: int = 40):
@@ -2919,6 +3030,7 @@ async def sell(req:SellItemRequest, user=Depends(verify_telegram)):
     item=u["inventory"].pop(req.item_index); price=int(item.get("value") or 0)  # без комиссии
     async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance+?, inventory=? WHERE tg_id=?", (price,json.dumps(u["inventory"]),tg_id)); await db.commit()
+    await quest_progress(tg_id, "sell")
     return {"success":True,"sold":item["name"],"price":price,"balance":(await get_user(tg_id))["balance"]}
 
 # ===== MINES =====
@@ -2927,6 +3039,7 @@ active_mines={}
 async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
     tg_id=user['id']
     check_rate(tg_id, "mines_start")
+    await quest_progress(tg_id, "mines")
     if req.bet< 50 or req.bet>50000 or req.mines<1 or req.mines>24: raise HTTPException(400,"Мин. ставка 50⭐")
     u=await get_user(tg_id)
     if u["balance"]<req.bet: raise HTTPException(400,"Insufficient")
@@ -3361,6 +3474,7 @@ async def pvp_start(req:PvpStartRequest, user=Depends(verify_telegram)):
         try:
             await log_game(p["id"], "pvp", f"pot {total}", p["bet"],
                            "win" if p["id"]==winner["id"] else "lose")
+            await quest_progress(p["id"], "pvp")
         except Exception:
             pass
     PVP_LOBBY.pop(req.lobby_id, None)
