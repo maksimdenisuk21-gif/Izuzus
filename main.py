@@ -26,6 +26,15 @@ TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = с�
 import pathlib as _pathlib
 from contextlib import asynccontextmanager
 DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") or "").strip()
+# channel_binding=require часто ломает asyncpg — убираем
+if DATABASE_URL and "channel_binding=" in DATABASE_URL:
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    u = urlparse(DATABASE_URL)
+    q = parse_qs(u.query)
+    q.pop("channel_binding", None)
+    if "sslmode" not in q:
+        q["sslmode"] = ["require"]
+    DATABASE_URL = urlunparse((u.scheme, u.netloc, u.path, u.params, urlencode({k:v[0] for k,v in q.items()}), u.fragment))
 USE_POSTGRES = DATABASE_URL.startswith("postgres")
 _db_env = os.getenv("SQLITE_PATH") or os.getenv("DB_PATH") or "database.db"
 DB_NAME = _db_env
@@ -60,6 +69,7 @@ def _sql_adapt(sql: str) -> str:
         i+=1
     return ''.join(out)
 
+
 class _ResultCursor:
     def __init__(self, rows):
         self._rows = rows or []
@@ -67,67 +77,130 @@ class _ResultCursor:
     async def fetchone(self):
         if self._i >= len(self._rows):
             return None
-        r = self._rows[self._i]; self._i += 1
+        r = self._rows[self._i]
+        self._i += 1
         return r
     async def fetchall(self):
         return list(self._rows)
 
-class _PGConn:
-    def __init__(self, conn):
+
+class _PGExecuteContext:
+    """Совместим и с `await db.execute(...)`, и с `async with db.execute(...) as c`."""
+    def __init__(self, conn, sql, params=None):
         self._conn = conn
-    async def execute(self, sql, params=None):
-        params = tuple(params or ())
-        sql2 = _sql_adapt(sql)
-        # SELECT → fetch for cursor use; DML → execute
+        self._sql = sql
+        self._params = tuple(params or ())
+        self._cur = None
+        self._entered = False
+
+    async def _run(self):
+        sql2 = _sql_adapt(self._sql)
+        params = self._params
         su = sql2.lstrip().upper()
         if su.startswith("SELECT") or su.startswith("WITH"):
             rows = await self._conn.fetch(sql2, *params)
-            # convert Records to tuples for compatibility
-            trows = [tuple(r) for r in rows]
-            return _PGExecCM(trows)
-        await self._conn.execute(sql2, *params)
-        return _PGExecCM([])
+            self._cur = _ResultCursor([tuple(r) for r in rows])
+        else:
+            await self._conn.execute(sql2, *params)
+            self._cur = _ResultCursor([])
+        self._entered = True
+        return self._cur
+
+    def __await__(self):
+        async def _awaitable():
+            await self._run()
+            return self
+        return _awaitable().__await__()
+
+    async def __aenter__(self):
+        if not self._entered:
+            await self._run()
+        return self._cur
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def fetchone(self):
+        if not self._entered:
+            await self._run()
+        return await self._cur.fetchone()
+
+    async def fetchall(self):
+        if not self._entered:
+            await self._run()
+        return await self._cur.fetchall()
+
+
+class _PGConn:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=None):
+        # sync return of context — как у aiosqlite
+        return _PGExecuteContext(self._conn, sql, params)
+
     async def commit(self):
         return None
+
     async def executescript(self, script):
         for part in script.split(";"):
-            part=part.strip()
+            part = part.strip()
             if part:
                 await self.execute(part)
 
-class _PGExecCM:
-    def __init__(self, rows):
-        self._cur = _ResultCursor(rows)
-    async def __aenter__(self):
-        return self._cur
-    async def __aexit__(self, *a):
-        return False
-    async def fetchone(self):
-        return await self._cur.fetchone()
-    async def fetchall(self):
-        return await self._cur.fetchall()
 
 class _SQLiteConn:
     def __init__(self, db):
         self._db = db
-    async def execute(self, sql, params=None):
-        return await self._db.execute(sql, params or ())
+
+    def execute(self, sql, params=None):
+        # aiosqlite: execute is coroutine — wrap
+        return _SQLiteExecuteProxy(self._db, sql, params)
+
     async def commit(self):
         return await self._db.commit()
+
+
+class _SQLiteExecuteProxy:
+    def __init__(self, db, sql, params):
+        self._db = db
+        self._sql = sql
+        self._params = params
+
+    def __await__(self):
+        return self._db.execute(self._sql, self._params or ()).__await__()
+
+    async def __aenter__(self):
+        self._cm = self._db.execute(self._sql, self._params or ())
+        self._cur = await self._cm.__aenter__()
+        return self._cur
+
+    async def __aexit__(self, *a):
+        return await self._cm.__aexit__(*a)
+
 
 async def _ensure_pg_pool():
     global _pg_pool
     if _pg_pool is None:
         import asyncpg
-        # Neon requires SSL; URL usually has sslmode=require
-        _pg_pool = await asyncpg.create_pool(
-            DATABASE_URL,
-            min_size=1,
-            max_size=5,
-            command_timeout=60,
-            statement_cache_size=0,  # better with Neon pooler
-        )
-        print("[DB] Connected to Neon/Postgres")
+        last_err=None
+        for attempt in range(1, 6):
+            try:
+                _pg_pool = await asyncpg.create_pool(
+                    DATABASE_URL,
+                    min_size=1,
+                    max_size=5,
+                    command_timeout=60,
+                    statement_cache_size=0,
+                    timeout=30,
+                )
+                print("[DB] Connected to Neon/Postgres")
+                return _pg_pool
+            except Exception as e:
+                last_err=e
+                print(f"[DB] Neon connect try {attempt}/5:", e)
+                await asyncio.sleep(2 * attempt)
+        raise RuntimeError(f"Neon connect failed: {last_err}")
     return _pg_pool
 
 @asynccontextmanager
@@ -140,8 +213,8 @@ async def get_db():
         finally:
             await pool.release(conn)
     else:
-        async with get_db() as db:
-            yield _SQLiteConn(db)
+        async with aiosqlite.connect(DB_NAME) as db:
+            yield db  # нативный aiosqlite
 
 print("[DB] mode:", "POSTGRES/Neon" if USE_POSTGRES else f"SQLite ({DB_NAME})")
 
@@ -3432,7 +3505,20 @@ async def case_buy_ton(req: CaseBuyTonRequest, user=Depends(verify_telegram)):
 # ===== STARTUP =====
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        print("[DB] init_db failed (retry in bg):", e)
+        async def _retry_init():
+            for i in range(10):
+                await asyncio.sleep(3*(i+1))
+                try:
+                    await init_db()
+                    print("[DB] init_db OK after retry")
+                    return
+                except Exception as e2:
+                    print("[DB] retry", i+1, e2)
+        asyncio.create_task(_retry_init())
     asyncio.create_task(crash_loop())
     try:
         asyncio.create_task(auto_backup_loop())
