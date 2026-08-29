@@ -359,7 +359,7 @@ GIFTS_CATALOG = [
   {"name": "Cupid Charm", "sn": "cupid_charm", "value": 3297, "rarity": "Epic", "emoji": "🎁", "regular": False},
   {"name": "Desk Calendar", "sn": "desk_calendar", "value": 834, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Diamond Ring", "sn": "diamond_ring", "value": 4524, "rarity": "Epic", "emoji": "🎁", "regular": False},
-  {"name": "Durov’s Cap", "sn": "durovs_cap", "value": 44100, "rarity": "Mythic", "emoji": "🎁", "regular": False},
+  {"name": "Durov's Cap", "sn": "durovs_cap", "value": 44100, "rarity": "Mythic", "emoji": "🎁", "regular": False},
   {"name": "Easter Egg", "sn": "easter_egg", "value": 625, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Electric Skull", "sn": "electric_skull", "value": 3763, "rarity": "Epic", "emoji": "🎁", "regular": False},
   {"name": "Eternal Candle", "sn": "eternal_candle", "value": 963, "rarity": "Rare", "emoji": "🎁", "regular": False},
@@ -390,7 +390,7 @@ GIFTS_CATALOG = [
   {"name": "Jingle Bells", "sn": "jingle_bells", "value": 1287, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Jolly Chimp", "sn": "jolly_chimp", "value": 1265, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Joyful Bundle", "sn": "joyful_bundle", "value": 1261, "rarity": "Rare", "emoji": "🎁", "regular": False},
-  {"name": "Khabib’s Papakha", "sn": "khabibs_papakha", "value": 3630, "rarity": "Epic", "emoji": "🎁", "regular": False},
+  {"name": "Khabib's Papakha", "sn": "khabibs_papakha", "value": 3630, "rarity": "Epic", "emoji": "🎁", "regular": False},
   {"name": "Kissed Frog", "sn": "kissed_frog", "value": 6529, "rarity": "Legendary", "emoji": "🎁", "regular": False},
   {"name": "Light Sword", "sn": "light_sword", "value": 1072, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Lol Pop", "sn": "lol_pop", "value": 618, "rarity": "Rare", "emoji": "🎁", "regular": False},
@@ -458,7 +458,7 @@ GIFTS_CATALOG = [
   {"name": "Chill Flame", "sn": "chill_flame", "value": 575, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Mood Pack", "sn": "mood_pack", "value": 741, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Rare Bird", "sn": "rare_bird", "value": 3676, "rarity": "Epic", "emoji": "🎁", "regular": False},
-  {"name": "Durov’s Glasses", "sn": "durovs_glasses", "value": 18000, "rarity": "Legendary", "emoji": "🎁", "regular": False},
+  {"name": "Durov's Glasses", "sn": "durovs_glasses", "value": 18000, "rarity": "Legendary", "emoji": "🎁", "regular": False},
   {"name": "Liberty Figure", "sn": "liberty_figure", "value": 686, "rarity": "Rare", "emoji": "🎁", "regular": False},
   {"name": "Triple Meow", "sn": "triple_meow", "value": 300, "rarity": "Uncommon", "emoji": "🎁", "regular": False},
   {"name": "1 May", "sn": "may", "value": 4125, "rarity": "Rare", "emoji": "🎁", "regular": False},
@@ -785,6 +785,8 @@ RATE_COOLDOWN = {
     "shop_buy": 0.8,
     "sell": 0.4,
     "withdraw": 5.0,
+    "admin_give": 0.8,
+    "admin_give_prize": 0.8,
 }
 
 def check_rate(tg_id: int, action: str):
@@ -3212,12 +3214,14 @@ async def admin_logs(user=Depends(verify_admin)):
 
 @app.post("/api/admin/give")
 async def admin_give(req:AdminGiveRequest, user=Depends(verify_admin)):
+    check_rate(user["id"], "admin_give")
     if req.user_id<=0 or req.amount<1 or req.amount>1000000: raise HTTPException(400,"Invalid")
     async with get_db() as db:
         await db.execute("INSERT OR IGNORE INTO users (tg_id,balance) VALUES (?,50)", (req.user_id,))
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount,req.user_id)); await db.commit()
         await log_admin_action(user['id'], "give_stars", f"Gave {req.amount} to {req.user_id}")
-    return {"success":True,"message":f"Added {req.amount} to {req.user_id}"}
+    bal=(await get_user(req.user_id))["balance"]
+    return {"success":True,"message":f"Added {req.amount} to {req.user_id}","balance":bal,"user_id":req.user_id}
 
 
 @app.get("/api/admin/tops")
@@ -3257,6 +3261,7 @@ async def admin_tops(user=Depends(verify_admin)):
 @app.post("/api/admin/give_prize")
 async def admin_give_prize(req: dict, user=Depends(verify_admin)):
     """Выдать приз по tg_id: stars или конкретный gift по name/value/rarity."""
+    check_rate(user["id"], "admin_give_prize")
     tg_id = int(req.get("user_id") or 0)
     if tg_id <= 0:
         raise HTTPException(400, "Invalid user_id")
@@ -3367,12 +3372,21 @@ async def pvp_list(user=Depends(verify_telegram)):
     for k,v in PVP_LOBBY.items():
         if v.get("status") != "open": continue
         pot = sum(p["bet"] for p in v["players"])
+        colors = ["#ef4444","#22c55e","#3b82f6","#eab308","#a855f7","#06b6d4","#ec4899","#84cc16","#f97316","#6366f1"]
+        plist=[]
+        for i,p in enumerate(v["players"]):
+            chance=round(100.0*p["bet"]/pot, 2) if pot else 0
+            plist.append({
+                "id":p["id"],"name":p["name"],"bet":p["bet"],"chance":chance,
+                "color":colors[i%len(colors)],"avatar":(p["name"] or "?")[:1].upper()
+            })
         out.append({
             "id": k,
             "players": len(v["players"]),
             "pot": pot,
             "min_bet": v.get("min_bet", PVP_MIN_BET),
-            "names": [p["name"] for p in v["players"][:6]],
+            "names": [p["name"] for p in v["players"][:8]],
+            "player_list": plist,
             "creator_id": v["players"][0]["id"] if v["players"] else 0,
         })
     return out
