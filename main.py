@@ -566,8 +566,8 @@ CASES = {
         "icon": "🍭", "color": "c-pepe",
         "rarities": ["Uncommon", "Rare", "Epic"], "weights": [55, 35, 10],
         "min_stars": 30, "max_stars": 100, "stars_chance": 0.18,
-        "force_names": ["Конфета", "Торт", "Candy Cane", "Lol Pop", "Berry Box", "Cookie Heart", "Whip Cupcake", "Love Potion"],
-        "desc": "Сладкое · EV < цена"
+        "force_names": ["Конфета", "Candy Cane", "Lol Pop", "Berry Box", "Cookie Heart", "Whip Cupcake", "Love Potion", "Jelly Bunny", "Spy Agaric"],
+        "desc": "Сладкое · EV < цена, иногда 500+"
     },
     "nft_pepe": {
         "name": "🐸 PEPE BOX", "price": 650, "category": "nft",
@@ -721,26 +721,26 @@ CASES = {
     "meow_case": {
         "name": "🐱 MEOW CASE", "price": 400, "category": "nft",
         "icon": "🐱", "color": "c-starter",
-        "force_names": ["Мишка", "Сердце", "Triple Meow", "Jelly Bunny", "Bunny Muffin"],
-        "desc": "Много мишек, редко Meow"
+        "force_names": ["Мишка", "Сердце", "Triple Meow", "Jelly Bunny", "Bunny Muffin", "Toy Bear", "Kissed Frog"],
+        "desc": "Много мишек, иногда Meow/Frog"
     },
     "ramen_drop": {
         "name": "🍜 RAMEN DROP", "price": 450, "category": "nft",
         "icon": "🍜", "color": "c-pepe",
-        "force_names": ["Торт", "Подарок", "Instant Ramen", "Vice Cream", "Berry Box"],
-        "desc": "Еда · дом в плюсе"
+        "force_names": ["Торт", "Подарок", "Instant Ramen", "Vice Cream", "Berry Box", "Whip Cupcake", "Cookie Heart"],
+        "desc": "Еда · дом в плюсе, редко 500+"
     },
     "xmas_case": {
         "name": "🎄 XMAS CASE", "price": 400, "category": "nft",
         "icon": "🎄", "color": "c-tg",
-        "force_names": ["Ёлка", "Конфета", "Xmas Stocking", "Candy Cane", "Santa Hat"],
-        "desc": "НГ · чаще ёлка/конфета"
+        "force_names": ["Ёлка", "Конфета", "Xmas Stocking", "Candy Cane", "Santa Hat", "Jolly Chimp", "Holiday Drink"],
+        "desc": "НГ · чаще дешёвое, иногда выше цены"
     },
     "float_party": {
         "name": "🏊 FLOAT PARTY", "price": 400, "category": "nft",
         "icon": "🏊", "color": "c-starter",
-        "force_names": ["Шампанское", "Торт", "Lol Pop", "B-Day Candle", "Pool Float"],
-        "desc": "Праздник · EV < цена"
+        "force_names": ["Шампанское", "Торт", "Lol Pop", "B-Day Candle", "Pool Float", "Party Sparkler", "Ice Cream"],
+        "desc": "Праздник · иногда выше 400"
     },
     "starter_plus": {
         "name": "🌱 STARTER+", "price": 150, "category": "nft",
@@ -879,6 +879,13 @@ async def init_db():
         await db.execute(f"""CREATE TABLE IF NOT EXISTS ton_deposits (
             id {pk}, tg_id BIGINT, amount_ton DOUBLE PRECISION, stars INTEGER,
             boc TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS user_quests (
+            user_id BIGINT NOT NULL,
+            quest_id TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            claimed INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, quest_id)
+        )""")
         await db.execute(f"""CREATE TABLE IF NOT EXISTS admin_logs (
             id {pk}, admin_id BIGINT, action TEXT, details TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -1058,17 +1065,17 @@ async def quest_progress(tg_id: int, qtype: str, add: int = 1):
 
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    """Очень жёсткий edge 36%, кап 38% — апгрейд редко в плюс."""
+    """House edge ~18%: чаще слив, но шанс виден 0.01–75%."""
     try:
         iv = float(in_val or 0)
         tv = float(target or 1)
     except Exception:
-        return 1.0
+        return 0.01
     if tv <= 0 or iv <= 0:
-        return 1.0
+        return 0.01
     raw = (iv / tv) * 100.0
-    edge = 0.36
-    return max(0.5, min(38.0, raw * (1.0 - edge)))
+    edge = 0.18
+    return max(0.01, min(75.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -2681,9 +2688,9 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             wts = [max(1, int((mx / v) ** power)) for v in vals]
             return random.choices(pool, weights=wts)[0]
         roll = random.random()
-        if roll < 0.82 and under:
+        if roll < 0.72 and under:
             gift = _pick(under, 1.4)
-        elif roll < 0.96 and (mild or under):
+        elif roll < 0.94 and (mild or under):
             gift = _pick(mild or under, 1.5)
         else:
             gift = _pick(high or mild or under, 1.2)
@@ -2882,9 +2889,20 @@ async def get_quests(user=Depends(verify_telegram)):
     tg_id=user["id"]
     progress={}
     async with get_db() as db:
-        async with db.execute("SELECT quest_id,progress,claimed FROM user_quests WHERE user_id=?", (tg_id,)) as c:
-            for r in await c.fetchall():
-                progress[r[0]]={"progress":int(r[1] or 0),"claimed":bool(r[2])}
+        try:
+            await db.execute("""CREATE TABLE IF NOT EXISTS user_quests (
+                user_id BIGINT NOT NULL, quest_id TEXT NOT NULL,
+                progress INTEGER DEFAULT 0, claimed INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, quest_id))""")
+            await db.commit()
+        except Exception:
+            pass
+        try:
+            async with db.execute("SELECT quest_id,progress,claimed FROM user_quests WHERE user_id=?", (tg_id,)) as c:
+                for r in await c.fetchall():
+                    progress[r[0]]={"progress":int(r[1] or 0),"claimed":bool(r[2])}
+        except Exception as e:
+            print("quests select", e)
     out=[]
     for q in QUEST_DEFS:
         st=progress.get(q["id"],{"progress":0,"claimed":False})
