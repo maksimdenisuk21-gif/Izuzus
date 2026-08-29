@@ -1,6 +1,7 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-aiosqlite==0.20.0
-python-socketio==5.11.3
-pydantic==2.8.2
-python-multipart==0.0.9
+asyncpg>=0.29.0
+fastapi
+uvicorn
+aiosqlite
+python-socketio
+httpx
+pydantic
