@@ -22,14 +22,128 @@ import os as _os
 TON_TREASURY = _os.environ.get("TON_TREASURY", "").strip()
 TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "300"))
 TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = сразу начислить (dev); verify = ждать сеть
-# На free Render диск эфемерный. Если подключён Disk — укажи SQLITE_PATH=/var/data/database.db
+# ===== DATABASE: Neon Postgres (DATABASE_URL) или SQLite fallback =====
 import pathlib as _pathlib
+from contextlib import asynccontextmanager
+DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") or "").strip()
+USE_POSTGRES = DATABASE_URL.startswith("postgres")
 _db_env = os.getenv("SQLITE_PATH") or os.getenv("DB_PATH") or "database.db"
 DB_NAME = _db_env
 try:
     _pathlib.Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
 except Exception:
     pass
+_pg_pool = None
+
+def _sql_adapt(sql: str) -> str:
+    """SQLite SQL → Postgres: ? → $1..N, AUTOINCREMENT, INSERT OR IGNORE."""
+    if not USE_POSTGRES:
+        return sql
+    s = sql
+    # INSERT OR IGNORE INTO table → INSERT INTO table ... ON CONFLICT DO NOTHING
+    # handled per-statement if ends without ON CONFLICT
+    upper = s.upper()
+    if "INSERT OR IGNORE INTO" in upper:
+        s = s.replace("INSERT OR IGNORE INTO", "INSERT INTO").replace("insert or ignore into", "INSERT INTO")
+        if "ON CONFLICT" not in s.upper():
+            s = s.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+    s = s.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    s = s.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
+    # ? placeholders → $1, $2, ...
+    out=[]; n=0; i=0
+    while i < len(s):
+        ch=s[i]
+        if ch=='?':
+            n+=1; out.append(f'${n}')
+        else:
+            out.append(ch)
+        i+=1
+    return ''.join(out)
+
+class _ResultCursor:
+    def __init__(self, rows):
+        self._rows = rows or []
+        self._i = 0
+    async def fetchone(self):
+        if self._i >= len(self._rows):
+            return None
+        r = self._rows[self._i]; self._i += 1
+        return r
+    async def fetchall(self):
+        return list(self._rows)
+
+class _PGConn:
+    def __init__(self, conn):
+        self._conn = conn
+    async def execute(self, sql, params=None):
+        params = tuple(params or ())
+        sql2 = _sql_adapt(sql)
+        # SELECT → fetch for cursor use; DML → execute
+        su = sql2.lstrip().upper()
+        if su.startswith("SELECT") or su.startswith("WITH"):
+            rows = await self._conn.fetch(sql2, *params)
+            # convert Records to tuples for compatibility
+            trows = [tuple(r) for r in rows]
+            return _PGExecCM(trows)
+        await self._conn.execute(sql2, *params)
+        return _PGExecCM([])
+    async def commit(self):
+        return None
+    async def executescript(self, script):
+        for part in script.split(";"):
+            part=part.strip()
+            if part:
+                await self.execute(part)
+
+class _PGExecCM:
+    def __init__(self, rows):
+        self._cur = _ResultCursor(rows)
+    async def __aenter__(self):
+        return self._cur
+    async def __aexit__(self, *a):
+        return False
+    async def fetchone(self):
+        return await self._cur.fetchone()
+    async def fetchall(self):
+        return await self._cur.fetchall()
+
+class _SQLiteConn:
+    def __init__(self, db):
+        self._db = db
+    async def execute(self, sql, params=None):
+        return await self._db.execute(sql, params or ())
+    async def commit(self):
+        return await self._db.commit()
+
+async def _ensure_pg_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        import asyncpg
+        # Neon requires SSL; URL usually has sslmode=require
+        _pg_pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=1,
+            max_size=5,
+            command_timeout=60,
+            statement_cache_size=0,  # better with Neon pooler
+        )
+        print("[DB] Connected to Neon/Postgres")
+    return _pg_pool
+
+@asynccontextmanager
+async def get_db():
+    if USE_POSTGRES:
+        pool = await _ensure_pg_pool()
+        conn = await pool.acquire()
+        try:
+            yield _PGConn(conn)
+        finally:
+            await pool.release(conn)
+    else:
+        async with get_db() as db:
+            yield _SQLiteConn(db)
+
+print("[DB] mode:", "POSTGRES/Neon" if USE_POSTGRES else f"SQLite ({DB_NAME})")
 
 HOUSE_EDGE = 0.07
 TON_TO_STARS = 110
@@ -628,30 +742,77 @@ def push_live(item: dict, username: str = "Player"):
 
 # ===== DB =====
 async def init_db():
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, username TEXT DEFAULT 'Player', balance INTEGER DEFAULT 50, total_spent INTEGER DEFAULT 0, total_deposited INTEGER DEFAULT 0, inventory TEXT DEFAULT '[]', games_played INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, cases_opened INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        # migrations for older DBs
-        for col, typ in [("total_deposited","INTEGER DEFAULT 0"),("cases_opened","INTEGER DEFAULT 0")]:
+    if USE_POSTGRES:
+        users_sql = """CREATE TABLE IF NOT EXISTS users (
+            tg_id BIGINT PRIMARY KEY,
+            username TEXT DEFAULT 'Player',
+            balance BIGINT DEFAULT 50,
+            total_spent BIGINT DEFAULT 0,
+            total_deposited BIGINT DEFAULT 0,
+            inventory TEXT DEFAULT '[]',
+            games_played INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            cases_opened INTEGER DEFAULT 0,
+            ton_wallet TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+        pk = "SERIAL PRIMARY KEY"
+    else:
+        users_sql = """CREATE TABLE IF NOT EXISTS users (
+            tg_id INTEGER PRIMARY KEY,
+            username TEXT DEFAULT 'Player',
+            balance INTEGER DEFAULT 50,
+            total_spent INTEGER DEFAULT 0,
+            total_deposited INTEGER DEFAULT 0,
+            inventory TEXT DEFAULT '[]',
+            games_played INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            cases_opened INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+        pk = "INTEGER PRIMARY KEY AUTOINCREMENT"
+    async with get_db() as db:
+        await db.execute(users_sql)
+        for col, typ in [("total_deposited","INTEGER DEFAULT 0"),("cases_opened","INTEGER DEFAULT 0"),("ton_wallet","TEXT")]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
             except Exception:
                 pass
-        await db.execute("CREATE TABLE IF NOT EXISTS withdrawals (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount INTEGER, wallet TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS referrals (user_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, total_earned INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS referral_earnings (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER NOT NULL, referral_id INTEGER NOT NULL, deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS promocodes (code TEXT PRIMARY KEY, reward_type TEXT, case_id TEXT, stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0, created_by INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS promo_uses (user_id INTEGER, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, promo_code))")
-        await db.execute("CREATE TABLE IF NOT EXISTS free_case_cooldowns (user_id INTEGER PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        try:
-            await db.execute("ALTER TABLE users ADD COLUMN ton_wallet TEXT")
-        except Exception:
-            pass
-        await db.execute("CREATE TABLE IF NOT EXISTS ton_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, tg_id INTEGER, amount_ton REAL, stars INTEGER, boc TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute("CREATE TABLE IF NOT EXISTS admin_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        await db.execute(f"""CREATE TABLE IF NOT EXISTS game_history (
+            id {pk}, tg_id BIGINT, game TEXT, detail TEXT,
+            amount INTEGER DEFAULT 0, result TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute(f"""CREATE TABLE IF NOT EXISTS withdrawals (
+            id {pk}, tg_id BIGINT, amount INTEGER, wallet TEXT,
+            status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS referrals (
+            user_id BIGINT PRIMARY KEY, referrer_id BIGINT NOT NULL,
+            total_earned INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute(f"""CREATE TABLE IF NOT EXISTS referral_earnings (
+            id {pk}, referrer_id BIGINT NOT NULL, referral_id BIGINT NOT NULL,
+            deposit_amount INTEGER NOT NULL, earned INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS promocodes (
+            code TEXT PRIMARY KEY, reward_type TEXT, case_id TEXT,
+            stars INTEGER DEFAULT 0, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0,
+            created_by BIGINT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS promo_uses (
+            user_id BIGINT, promo_code TEXT, used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, promo_code))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS free_case_cooldowns (
+            user_id BIGINT PRIMARY KEY, last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute(f"""CREATE TABLE IF NOT EXISTS ton_deposits (
+            id {pk}, tg_id BIGINT, amount_ton DOUBLE PRECISION, stars INTEGER,
+            boc TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute(f"""CREATE TABLE IF NOT EXISTS admin_logs (
+            id {pk}, admin_id BIGINT, action TEXT, details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
         await db.commit()
+    print("[DB] init_db OK ·", "Neon/Postgres" if USE_POSTGRES else "SQLite")
+
 
 async def get_user(tg_id):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT balance,total_spent,inventory,games_played,wins FROM users WHERE tg_id=?", (tg_id,)) as c:
             r = await c.fetchone()
             if r: return {"balance": r[0], "total_spent": r[1], "inventory": json.loads(r[2]), "games_played": r[3], "wins": r[4]}
@@ -659,7 +820,7 @@ async def get_user(tg_id):
             return {"balance": 50, "total_spent": 0, "inventory": [], "games_played": 0, "wins": 0}
 
 async def log_admin_action(admin_id, action, details=""):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("INSERT INTO admin_logs (admin_id, action, details) VALUES (?, ?, ?)", (admin_id, action, details))
         await db.commit()
 
@@ -733,9 +894,52 @@ def verify_admin(user=Depends(verify_telegram)):
     if user['id'] != ADMIN_TG_ID: raise HTTPException(403)
     return user
 
+
+async def log_game(tg_id: int, game: str, detail: str = "", amount: int = 0, result: str = ""):
+    try:
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO game_history (tg_id,game,detail,amount,result) VALUES (?,?,?,?,?)",
+                (int(tg_id), str(game)[:32], str(detail)[:200], int(amount or 0), str(result)[:64]),
+            )
+            await db.commit()
+    except Exception as e:
+        print("log_game", e)
+
+
+async def auto_backup_loop():
+    """Раз в 8 мин шлём JSON-бэкап админу в Telegram — защита от wipe на free Render."""
+    import asyncio
+    await asyncio.sleep(25)
+    while True:
+        try:
+            if BOT_TOKEN and ADMIN_TG_ID:
+                async with get_db() as db:
+                    pass  # row_factory
+                    async with db.execute("SELECT tg_id,username,balance,total_spent,total_deposited,inventory,games_played,wins,cases_opened FROM users") as c:
+                        rows=await c.fetchall()
+                        users=[{"tg_id":r[0],"username":r[1],"balance":r[2],"total_spent":r[3],"total_deposited":r[4],"inventory":r[5],"games_played":r[6],"wins":r[7],"cases_opened":r[8]} for r in rows]
+                if users:
+                    payload=json.dumps({"users":users,"ts":datetime.now().isoformat()}, ensure_ascii=False)
+                    # сохраняем локальную копию
+                    try:
+                        with open(str(DB_NAME)+".bak.json","w",encoding="utf-8") as f:
+                            f.write(payload)
+                    except Exception:
+                        pass
+                    url=f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+                    import httpx
+                    files={"document": ("backup_users.json", payload.encode("utf-8"), "application/json")}
+                    data={"chat_id": str(ADMIN_TG_ID), "caption": f"DB backup · {len(users)} users"}
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        await client.post(url, data=data, files=files)
+        except Exception as e:
+            print("auto_backup", e)
+        await asyncio.sleep(480)
+
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    """Шанс апгрейда: edge = HOUSE_EDGE + 9% (~16% при HE=0.07), кап 75%."""
+    """Жёсткий house edge ~28%, кап 48% — апгрейд реже залетает."""
     try:
         iv = float(in_val or 0)
         tv = float(target or 1)
@@ -744,8 +948,8 @@ def calc_upgrade_chance(in_val, target):
     if tv <= 0 or iv <= 0:
         return 1.0
     raw = (iv / tv) * 100.0
-    edge = float(HOUSE_EDGE) + 0.09  # ~16%
-    return max(0.5, min(75.0, raw * (1.0 - edge)))
+    edge = 0.28
+    return max(0.5, min(48.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
@@ -823,7 +1027,7 @@ async def place_bet(sid, data):
     key = f"{tg_id}:{crash_state['round_id']}"
     if key in crash_state["bets"]:
         return await sio.emit("error", {"message":"Already placed"}, to=sid)
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance-?, games_played=games_played+1 WHERE tg_id=?", (amount, tg_id))
         await db.commit()
     crash_state["bets"][key] = {"tg_id":tg_id, "amount":amount, "username":data.get("username","Player"), "cashed":False, "cashed_at":0}
@@ -841,7 +1045,7 @@ async def cashout(sid, data):
     win = int(bet["amount"] * crash_state["multiplier"])
     bet["cashed"] = True
     bet["cashed_at"] = crash_state["multiplier"]
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance+?, wins=wins+1 WHERE tg_id=?", (win, tg_id))
         await db.commit()
     await sio.emit("cashout_success", {"username":bet["username"], "win":win, "balance":(await get_user(tg_id))["balance"]})
@@ -1935,11 +2139,11 @@ async def admin(user=Depends(verify_admin)): return ADMIN_HTML
 @app.get("/api/profile")
 async def profile(user=Depends(verify_telegram)):
     tg_id=user['id']; username=user.get('first_name','Player')
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET username=? WHERE tg_id=?", (username, tg_id)); await db.commit()
     u=await get_user(tg_id)
     u.update({"tg_id":tg_id,"username":username,"is_admin":tg_id==ADMIN_TG_ID})
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as c:
             r=await c.fetchone()
             u["free_case_available"]=True if not r else (datetime.now()-datetime.fromisoformat(r[0])).total_seconds()>=86400
@@ -2078,7 +2282,7 @@ async def deposit(req: DepositRequest, user=Depends(verify_telegram)):
 
     # Demo-юзер без Telegram — только DEV
     if tg_id == 100001 and DEV_MODE:
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
             await db.commit()
         return {"success": True, "balance": (await get_user(tg_id))["balance"], "message": f"+{amount} ⭐ (demo)"}
@@ -2106,7 +2310,7 @@ async def deposit(req: DepositRequest, user=Depends(verify_telegram)):
     except Exception as e:
         # fallback DEV если Stars недоступны
         if DEV_MODE:
-            async with aiosqlite.connect(DB_NAME) as db:
+            async with get_db() as db:
                 await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
                 await db.commit()
             return {"success": True, "balance": (await get_user(tg_id))["balance"], "message": f"+{amount} ⭐ (dev fallback)"}
@@ -2120,7 +2324,7 @@ async def deposit_confirm(req: DepositConfirmRequest, user=Depends(verify_telegr
     if not info or info["tg_id"] != tg_id:
         raise HTTPException(400, "Неизвестный платёж")
     amount = int(info["amount"])
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         try:
             await db.execute("UPDATE users SET balance=balance+?, total_deposited=COALESCE(total_deposited,0)+? WHERE tg_id=?", (amount, amount, tg_id))
         except Exception:
@@ -2151,7 +2355,7 @@ async def telegram_webhook(request: Request):
         amount = int(sp.get("total_amount") or (info or {}).get("amount") or 0)
         tg_id = (info or {}).get("tg_id") or (msg.get("from") or {}).get("id")
         if tg_id and amount > 0:
-            async with aiosqlite.connect(DB_NAME) as db:
+            async with get_db() as db:
                 await db.execute("INSERT OR IGNORE INTO users (tg_id, balance) VALUES (?, 50)", (tg_id,))
                 await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (amount, tg_id))
                 await db.commit()
@@ -2171,7 +2375,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
 
     # free daily cooldown
     if req.case_id == "free_daily":
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cur:
                 r = await cur.fetchone()
                 if r and (datetime.now() - datetime.fromisoformat(r[0])).total_seconds() < 86400:
@@ -2184,7 +2388,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
 
     # charge + track
     async def charge_and_inc():
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             if c["price"] > 0:
                 await db.execute(
                     "UPDATE users SET balance=balance-?, total_spent=total_spent+?, games_played=games_played+1 WHERE tg_id=?",
@@ -2219,7 +2423,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
                 "img": gift_img_url(name),
                 "rarity": "Mythic",
             }
-            async with aiosqlite.connect(DB_NAME) as db:
+            async with get_db() as db:
                 u2 = await get_user(tg_id)
                 inv = u2["inventory"]
                 inv.append({k: gift[k] for k in ("id", "name", "rarity", "value", "emoji", "img")})
@@ -2236,7 +2440,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         weights = c.get("lose_weights") or [100]
         stars = int(random.choices(drops, weights=weights)[0])
         if stars > 0:
-            async with aiosqlite.connect(DB_NAME) as db:
+            async with get_db() as db:
                 await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
                 await db.commit()
         return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "allin_lose": True, "fair": fair_info}
@@ -2247,7 +2451,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         drops = c["star_drops"]
         weights = c.get("star_weights") or [1] * len(drops)
         stars = int(random.choices(drops, weights=weights)[0])
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
             await db.commit()
         return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "fair": fair_info}
@@ -2264,7 +2468,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         else:
             stars = round(random.uniform(15, 20), 1)
         await charge_and_inc()
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (max(1, int(stars)), tg_id))
             await db.commit()
         # bait_items для рулетки на фронте (дорогие NFT — только визуал)
@@ -2288,7 +2492,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         hi = c.get("max_stars", 20)
         stars = int(round(random.uniform(lo, hi)))
         await charge_and_inc()
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
             await db.commit()
         return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"]}
@@ -2396,7 +2600,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         gift = {**gift, "rarity": rarity}
 
     await charge_and_inc()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         u2 = await get_user(tg_id)
         inv = u2["inventory"]
         inv.append({
@@ -2500,7 +2704,7 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
             "emoji": target.get("emoji") or "🎁",
             "img": target.get("img") or "",
         }
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute(
                 "UPDATE users SET inventory=?, wins=wins+1 WHERE tg_id=?",
                 (json.dumps(inv), tg_id),
@@ -2509,13 +2713,17 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
         push_live(inv[req.item_index], user.get("first_name") or user.get("username") or "Player")
     else:
         del inv[req.item_index]
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute(
                 "UPDATE users SET inventory=? WHERE tg_id=?",
                 (json.dumps(inv), tg_id),
             )
             await db.commit()
     bal = (await get_user(tg_id))["balance"]
+    try:
+        await log_game(tg_id, "upgrade", f"{item.get('name','?')}→{target.get('name','?')}", iv, "win" if win else "lose")
+    except Exception:
+        pass
     return {
         "success": win,
         "chance": round(chance * 100, 2),
@@ -2524,6 +2732,40 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
         "angle": round(final, 2),
         "message": f"{'🎉' if win else '💔'} {item.get('name','?')} → {target.get('name','?')}",
         "balance": bal,
+    }
+
+
+
+@app.get("/api/health")
+async def health():
+    ok=True; err=None
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT 1") as c:
+                await c.fetchone()
+    except Exception as e:
+        ok=False; err=str(e)
+    return {
+        "ok": ok,
+        "db": "neon/postgres" if USE_POSTGRES else "sqlite",
+        "error": err,
+    }
+
+@app.get("/api/history")
+async def get_history(user=Depends(verify_telegram), limit: int = 40):
+    tg_id = user["id"]
+    lim = max(1, min(100, int(limit or 40)))
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT game,detail,amount,result,created_at FROM game_history WHERE tg_id=? ORDER BY id DESC LIMIT ?",
+            (tg_id, lim),
+        ) as c:
+            rows = await c.fetchall()
+    return {
+        "history": [
+            {"game": r[0], "detail": r[1], "amount": r[2], "result": r[3], "at": r[4]}
+            for r in rows
+        ]
     }
 
 @app.get("/api/inventory")
@@ -2588,7 +2830,7 @@ async def shop_buy(req: ShopBuyRequest, user=Depends(verify_telegram)):
     }
     inv=list(u.get("inventory") or [])
     inv.append(gift)
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute(
             "UPDATE users SET balance=balance-?, inventory=?, total_spent=total_spent+? WHERE tg_id=?",
             (price, json.dumps(inv), price, tg_id),
@@ -2602,7 +2844,7 @@ async def sell(req:SellItemRequest, user=Depends(verify_telegram)):
     tg_id=user['id']; u=await get_user(tg_id)
     if req.item_index<0 or req.item_index>=len(u["inventory"]): raise HTTPException(400,"Item not found")
     item=u["inventory"].pop(req.item_index); price=int(item.get("value") or 0)  # без комиссии
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance+?, inventory=? WHERE tg_id=?", (price,json.dumps(u["inventory"]),tg_id)); await db.commit()
     return {"success":True,"sold":item["name"],"price":price,"balance":(await get_user(tg_id))["balance"]}
 
@@ -2619,7 +2861,7 @@ async def mines_start(req:MinesStartRequest, user=Depends(verify_telegram)):
     for p in mp: grid[p]=1
     gid=str(uuid.uuid4())[:8]
     active_mines[tg_id]={"game_id":gid,"bet":req.bet,"mines":req.mines,"grid":grid,"opened":[],"cashed_out":False,"multiplier":1.0}
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance-?, games_played=games_played+1 WHERE tg_id=?", (req.bet,tg_id)); await db.commit()
     return {"game_id":gid,"bet":req.bet,"mines":req.mines,"balance":(await get_user(tg_id))["balance"]}
 
@@ -2643,7 +2885,7 @@ async def mines_cashout(req:MinesCashoutRequest, user=Depends(verify_telegram)):
     g=active_mines[tg_id]
     if g["game_id"]!=req.game_id or g["cashed_out"] or len(g["opened"])==0: raise HTTPException(400,"Invalid")
     win=int(g["bet"]*g["multiplier"]); g["cashed_out"]=True
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance+?, wins=wins+1 WHERE tg_id=?", (win,tg_id)); await db.commit()
     del active_mines[tg_id]
     return {"status":"cashed_out","multiplier":g["multiplier"],"win":win,"balance":(await get_user(tg_id))["balance"]}
@@ -2661,7 +2903,7 @@ async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
     u=await get_user(tg_id)
     if u["balance"]<req.amount: raise HTTPException(400,"Недостаточно ⭐")
     # холд: списываем сразу, при reject вернём
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount,tg_id))
         wallet_info = f"@{dest}|user:{tg_id}"
         await db.execute(
@@ -2681,7 +2923,7 @@ async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
 @app.post("/api/admin/withdraw/status")
 async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_admin)):
     if req.status not in ["approved","rejected"]: raise HTTPException(400,"Invalid")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         if req.status=="rejected":
             async with db.execute("SELECT tg_id,amount FROM withdrawals WHERE id=?", (req.withdraw_id,)) as c:
                 r=await c.fetchone()
@@ -2694,12 +2936,13 @@ async def update_withdraw(req:AdminWithdrawStatusRequest, user=Depends(verify_ad
 @app.get("/api/admin/export")
 async def admin_export(user=Depends(verify_admin)):
     """Скачать JSON бэкап пользователей (на free Render БД слетает — сохраняй)."""
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
+    async with get_db() as db:
         async with db.execute("SELECT tg_id,username,balance,total_spent,total_deposited,inventory,games_played,wins,cases_opened,created_at FROM users") as c:
-            users=[dict(r) for r in await c.fetchall()]
+            rows=await c.fetchall()
+            users=[{"tg_id":r[0],"username":r[1],"balance":r[2],"total_spent":r[3],"total_deposited":r[4],"inventory":r[5],"games_played":r[6],"wins":r[7],"cases_opened":r[8],"created_at":str(r[9]) if r[9] is not None else None} for r in rows]
         async with db.execute("SELECT id,tg_id,amount,wallet,status,created_at FROM withdrawals") as c:
-            wds=[dict(r) for r in await c.fetchall()]
+            rows=await c.fetchall()
+            wds=[{"id":r[0],"tg_id":r[1],"amount":r[2],"wallet":r[3],"status":r[4],"created_at":str(r[5]) if r[5] is not None else None} for r in rows]
     return {"users": users, "withdrawals": wds, "exported_at": __import__("datetime").datetime.utcnow().isoformat()+"Z"}
 
 @app.post("/api/admin/import")
@@ -2709,7 +2952,7 @@ async def admin_import(payload: dict, user=Depends(verify_admin)):
     if not isinstance(users, list) or not users:
         raise HTTPException(400, "Нужен {users:[...]}")
     n=0
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         for u in users:
             try:
                 tg=int(u.get("tg_id") or 0)
@@ -2744,7 +2987,7 @@ async def admin_import(payload: dict, user=Depends(verify_admin)):
 
 @app.get("/api/admin/withdrawals")
 async def admin_withdrawals(user=Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT id,tg_id,amount,wallet,status,created_at FROM withdrawals ORDER BY created_at DESC LIMIT 100") as c:
             rows = await c.fetchall()
             out = []
@@ -2756,7 +2999,7 @@ async def admin_withdrawals(user=Depends(verify_admin)):
 
 @app.get("/api/admin/stats")
 async def admin_stats(user=Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         tu=(await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
         pw=(await (await db.execute("SELECT COUNT(*) FROM withdrawals WHERE status='pending'")).fetchone())[0]
         tp=(await (await db.execute("SELECT COUNT(*) FROM promocodes")).fetchone())[0]
@@ -2765,26 +3008,26 @@ async def admin_stats(user=Depends(verify_admin)):
 
 @app.get("/api/admin/promos")
 async def admin_promos(user=Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT code,reward_type,case_id,stars,max_uses,uses,created_at FROM promocodes ORDER BY created_at DESC") as c:
             return [{"code":r[0],"reward_type":r[1],"case_id":r[2],"stars":r[3],"max_uses":r[4],"uses":r[5],"created_at":r[6]} for r in await c.fetchall()]
 
 @app.get("/api/admin/users")
 async def admin_users(user=Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT username,balance,total_spent,games_played,wins FROM users ORDER BY balance DESC LIMIT 50") as c:
             return [{"username":r[0],"balance":r[1],"total_spent":r[2],"games_played":r[3],"wins":r[4]} for r in await c.fetchall()]
 
 @app.get("/api/admin/logs")
 async def admin_logs(user=Depends(verify_admin)):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT id,admin_id,action,details,created_at FROM admin_logs ORDER BY created_at DESC LIMIT 50") as c:
             return [{"id":r[0],"admin_id":r[1],"action":r[2],"details":r[3],"created_at":r[4]} for r in await c.fetchall()]
 
 @app.post("/api/admin/give")
 async def admin_give(req:AdminGiveRequest, user=Depends(verify_admin)):
     if req.user_id<=0 or req.amount<1 or req.amount>1000000: raise HTTPException(400,"Invalid")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("INSERT OR IGNORE INTO users (tg_id,balance) VALUES (?,50)", (req.user_id,))
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (req.amount,req.user_id)); await db.commit()
         await log_admin_action(user['id'], "give_stars", f"Gave {req.amount} to {req.user_id}")
@@ -2794,7 +3037,7 @@ async def admin_give(req:AdminGiveRequest, user=Depends(verify_admin)):
 @app.get("/api/admin/tops")
 async def admin_tops(user=Depends(verify_admin)):
     """Топы: депы / слив / открытые кейсы. Сбрасываются каждые 14 дней вручную/по флагу."""
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         # ensure columns
         for col in ("total_deposited", "cases_opened"):
             try:
@@ -2832,7 +3075,7 @@ async def admin_give_prize(req: dict, user=Depends(verify_admin)):
     if tg_id <= 0:
         raise HTTPException(400, "Invalid user_id")
     prize_type = (req.get("prize_type") or "stars").lower()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("INSERT OR IGNORE INTO users (tg_id, balance) VALUES (?, 50)", (tg_id,))
         if prize_type == "stars":
             amount = int(req.get("amount") or 0)
@@ -2862,7 +3105,7 @@ async def admin_give_prize(req: dict, user=Depends(verify_admin)):
 @app.post("/api/admin/promo")
 async def create_promo(req:PromoCreateRequest, user=Depends(verify_admin)):
     code=req.code.strip().upper()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         if await (await db.execute("SELECT code FROM promocodes WHERE code=?", (code,))).fetchone():
             raise HTTPException(400,"Exists")
         await db.execute("INSERT INTO promocodes (code,reward_type,case_id,stars,max_uses,created_by) VALUES (?,?,?,?,?,?)",
@@ -2873,7 +3116,7 @@ async def create_promo(req:PromoCreateRequest, user=Depends(verify_admin)):
 @app.post("/api/promo/activate")
 async def activate_promo(code:str, user=Depends(verify_telegram)):
     tg_id=user['id']; code=code.upper()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         async with db.execute("SELECT reward_type,case_id,stars,max_uses,uses FROM promocodes WHERE code=?", (code,)) as c:
             p=await c.fetchone()
             if not p or p[3]>=p[4] or await (await db.execute("SELECT 1 FROM promo_uses WHERE user_id=? AND promo_code=?", (tg_id,code))).fetchone():
@@ -2897,7 +3140,7 @@ async def activate_promo(code:str, user=Depends(verify_telegram)):
 async def activate_referral(referrer_id:int, user=Depends(verify_telegram)):
     tg_id=user['id']
     if tg_id==referrer_id: raise HTTPException(400,"Self refer")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         if not await (await db.execute("SELECT 1 FROM users WHERE tg_id=?", (referrer_id,))).fetchone():
             raise HTTPException(400,"Referrer not found")
         if await (await db.execute("SELECT 1 FROM referrals WHERE user_id=?", (tg_id,))).fetchone():
@@ -2908,7 +3151,7 @@ async def activate_referral(referrer_id:int, user=Depends(verify_telegram)):
 @app.get("/api/referral/stats")
 async def referral_stats(user=Depends(verify_telegram)):
     tg_id=user['id']
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         earned=(await (await db.execute("SELECT total_earned FROM referrals WHERE user_id=?", (tg_id,))).fetchone() or [0])[0]
         count=(await (await db.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (tg_id,))).fetchone())[0]
     return {"total_earned":earned,"referrals_count":count,"percent":7}
@@ -2959,7 +3202,7 @@ async def pvp_create(req:PvpCreateRequest, user=Depends(verify_telegram)):
         if v.get("status")!="open": continue
         if any(p["id"]==tg_id for p in v["players"]):
             raise HTTPException(400, "Уже в лобби")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.bet, tg_id))
         await db.commit()
     lid = secrets.token_hex(4)
@@ -2987,7 +3230,7 @@ async def pvp_join(req:PvpJoinRequest, user=Depends(verify_telegram)):
         raise HTTPException(400, f"Мин. ставка {PVP_MIN_BET}")
     u = await get_user(tg_id)
     if u["balance"] < bet: raise HTTPException(400, "Insufficient")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (bet, tg_id))
         await db.commit()
     uname = user.get("first_name") or user.get("username") or str(tg_id)
@@ -3015,11 +3258,23 @@ async def pvp_start(req:PvpStartRequest, user=Depends(verify_telegram)):
         raise HTTPException(400, "Ты не в лобби")
     lobby["status"] = "done"
     players = lobby["players"]
-    total = sum(p["bet"] for p in players)
+    total = sum(p["bet"] for p in players) or 1
     weights = [p["bet"] for p in players]
     winner = random.choices(players, weights=weights)[0]
     payout = int(total * 0.97)
-    async with aiosqlite.connect(DB_NAME) as db:
+    colors = ["#3b82f6","#22c55e","#f59e0b","#ef4444","#a855f7","#06b6d4","#ec4899","#84cc16","#f97316","#6366f1"]
+    wheel = []
+    for i,p in enumerate(players):
+        chance = round(100.0 * p["bet"] / total, 1)
+        wheel.append({
+            "id": p["id"],
+            "name": p["name"],
+            "bet": p["bet"],
+            "chance": chance,
+            "color": colors[i % len(colors)],
+            "avatar": (p["name"] or "?")[:1].upper(),
+        })
+    async with get_db() as db:
         for p in players:
             if p["id"] == winner["id"]:
                 await db.execute(
@@ -3029,7 +3284,23 @@ async def pvp_start(req:PvpStartRequest, user=Depends(verify_telegram)):
             else:
                 await db.execute("UPDATE users SET games_played=games_played+1 WHERE tg_id=?", (p["id"],))
         await db.commit()
+    for p in players:
+        try:
+            await log_game(p["id"], "pvp", f"pot {total}", p["bet"],
+                           "win" if p["id"]==winner["id"] else "lose")
+        except Exception:
+            pass
     PVP_LOBBY.pop(req.lobby_id, None)
+    # win_deg for client wheel (0..360), pointer at top
+    # cumulative segments, land in middle of winner segment
+    acc = 0.0
+    win_deg = 0.0
+    for w in wheel:
+        seg = 360.0 * w["bet"] / total
+        if w["id"] == winner["id"]:
+            win_deg = acc + seg / 2
+            break
+        acc += seg
     return {
         "success": True,
         "winner_id": winner["id"],
@@ -3037,7 +3308,9 @@ async def pvp_start(req:PvpStartRequest, user=Depends(verify_telegram)):
         "payout": payout,
         "pot": total,
         "your_win": winner["id"] == tg_id,
-        "players": len(players),
+        "players": wheel,
+        "players_count": len(players),
+        "win_deg": round(win_deg, 2),
         "balance": (await get_user(tg_id))["balance"],
     }
 
@@ -3049,7 +3322,7 @@ async def pvp_cancel(user=Depends(verify_telegram)):
         pl = v["players"]
         me = next((p for p in pl if p["id"]==tg_id), None)
         if not me: continue
-        async with aiosqlite.connect(DB_NAME) as db:
+        async with get_db() as db:
             await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (me["bet"], tg_id))
             await db.commit()
         v["players"] = [p for p in pl if p["id"] != tg_id]
@@ -3083,7 +3356,7 @@ async def ton_save_wallet(req:TonWalletRequest, user=Depends(verify_telegram)):
     addr = (req.address or "").strip()
     if len(addr) < 10:
         raise HTTPException(400, "Invalid address")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         try:
             await db.execute("UPDATE users SET ton_wallet=? WHERE tg_id=?", (addr, tg_id))
         except Exception:
@@ -3103,7 +3376,7 @@ async def ton_deposit(req:TonDepositRequest, user=Depends(verify_telegram)):
     stars = int(req.amount_ton * TON_STARS_PER_TON)
     if stars < 1:
         raise HTTPException(400, "Too small")
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute(
             "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
             (tg_id, req.amount_ton, stars, (req.boc or "")[:500], "credited" if TON_DEPOSIT_MODE=="credit" else "pending"),
@@ -3146,7 +3419,7 @@ async def case_buy_ton(req: CaseBuyTonRequest, user=Depends(verify_telegram)):
     # Don't charge stars — open case free after TON pay
     # Reuse open by temporarily giving balance
     tg_id = user["id"]
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with get_db() as db:
         await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (c["price"], tg_id))
         await db.execute(
             "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
@@ -3161,6 +3434,10 @@ async def case_buy_ton(req: CaseBuyTonRequest, user=Depends(verify_telegram)):
 async def startup():
     await init_db()
     asyncio.create_task(crash_loop())
+    try:
+        asyncio.create_task(auto_backup_loop())
+    except Exception as e:
+        print("backup task", e)
     # Webhook для Stars successful_payment
     try:
         wh = f"{PUBLIC_URL}/telegram/webhook"
