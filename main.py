@@ -19,9 +19,9 @@ BOT_TOKEN = "8922972247:AAGbc4tYV51F3zxAGA3SuLcBY7PCyGRbXoE"
 ADMIN_TG_ID = 7092015279
 # TON Connect — адрес казны (куда шлют TON). Задай env TON_TREASURY
 import os as _os
-TON_TREASURY = _os.environ.get("TON_TREASURY", "").strip()
-TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "300"))
-TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "credit")  # credit = сразу начислить (dev); verify = ждать сеть
+TON_TREASURY = (_os.environ.get("TON_TREASURY") or "UQBZ7Yf8GJ6Qzr2VOZGy-ZJBvhskRis0LVfzByZn1II3OwKE").strip()
+TON_STARS_PER_TON = int(_os.environ.get("TON_STARS_PER_TON", "200"))
+TON_DEPOSIT_MODE = _os.environ.get("TON_DEPOSIT_MODE", "verify")  # verify = только после on-chain; credit = доверять клиенту (dev)
 # ===== DATABASE: Neon Postgres (DATABASE_URL) или SQLite fallback =====
 import pathlib as _pathlib
 from contextlib import asynccontextmanager
@@ -219,6 +219,8 @@ async def get_db():
 print("[DB] mode:", "POSTGRES/Neon" if USE_POSTGRES else f"SQLite ({DB_NAME})")
 
 HOUSE_EDGE = 0.07
+USER_CHANCE_BONUS = {}  # tg_id -> bonus % for upgrade
+
 TON_TO_STARS = 110
 
 # ===== NFT NAMES =====
@@ -503,6 +505,52 @@ def build_nft_gifts():
 
 NFT_GIFTS = build_nft_gifts()
 
+# Расцветки / модели NFT (не для regular⭐ и не для Plush Pepe)
+_VARIANT_MODELS = [
+    ("Classic", 1.00), ("Gold", 1.12), ("Silver", 1.06), ("Black", 1.10),
+    ("Neon", 1.18), ("Ice", 1.14), ("Fire", 1.16), ("Pink", 1.08),
+    ("Emo", 1.22), ("Holo", 1.30), ("Jade", 1.15), ("Ruby", 1.20),
+    ("Sky", 1.09), ("Toxic", 1.17), ("Royal", 1.25),
+]
+
+def _expand_variants():
+    skip_names = {"plush pepe", "plush_pepe"}
+    base = {r: list(arr) for r, arr in NFT_GIFTS.items()}
+    for rarity, arr in list(base.items()):
+        extras = []
+        for g in arr:
+            if g.get("regular"):
+                continue
+            nm = (g.get("name") or "").lower()
+            if nm in skip_names or "plush pepe" in nm:
+                continue
+            base_val = max(1, int(g.get("value") or 1))
+            sn0 = g.get("id") or gift_short_name(g.get("name", ""))
+            for label, mul in _VARIANT_MODELS:
+                # не дублируем Classic как отдельный если уже есть оригинал
+                if label == "Classic":
+                    continue
+                vg = {
+                    **g,
+                    "id": f"{sn0}_{label.lower()}",
+                    "name": f"{g['name']} · {label}",
+                    "value": max(1, int(round(base_val * mul))),
+                    "variant": label,
+                    "base_name": g["name"],
+                }
+                extras.append(vg)
+        NFT_GIFTS[rarity].extend(extras)
+
+_expand_variants()
+
+def all_flat_gifts():
+    out = []
+    for r, arr in NFT_GIFTS.items():
+        for g in arr:
+            out.append({**g, "rarity": g.get("rarity") or r})
+    return out
+
+
 def fair_roll(client_seed: str = ""):
     import hashlib, time
     server = secrets.token_hex(16)
@@ -755,6 +803,123 @@ CASES = {
         "desc": "От 300⭐ · редко Broom"
     },
 
+
+    # ===== THEMED =====
+    "bednyy_shkolnik": {
+        "name": "🎒 БЕДНЫЙ ШКОЛЬНИК", "price": 80, "category": "nft",
+        "icon": "🎒", "color": "c-starter",
+        "force_names": ["Мишка", "Сердце", "Конфета", "Подарок", "Ракета", "Букет"],
+        "desc": "Маленький бюджет · чаще 15–50⭐"
+    },
+    "bogach": {
+        "name": "💼 БОГАЧ", "price": 2500, "category": "rich",
+        "icon": "💼", "color": "c-durov",
+        "force_names": ["Top Hat", "Diamond Ring", "Swiss Watch", "Mini Oscar", "Ion Gem", "Crystal Ball", "Spy Agaric"],
+        "desc": "Дорого · EV < цена, иногда топ"
+    },
+    "master": {
+        "name": "🎯 МАСТЕР", "price": 1200, "category": "nft",
+        "icon": "🎯", "color": "c-frag",
+        "force_names": ["Кольцо", "Алмаз", "Spy Agaric", "Jelly Bunny", "Crystal Ball", "Flying Broom", "Top Hat", "Love Potion"],
+        "desc": "Средний риск · баланс EV"
+    },
+    # ===== DEPOSIT FREE (разовые за сумму депозита) =====
+    "dep_500": {
+        "name": "🎁 ДЕПО 500", "price": 0, "category": "deposit",
+        "icon": "🎁", "color": "free",
+        "require_deposit": 500,
+        "force_names": ["Мишка", "Сердце", "Конфета", "Подарок", "Ракета", "Букет", "Кольцо", "Triple Meow"],
+        "desc": "За депозит 500⭐ · разово"
+    },
+    "dep_1000": {
+        "name": "🎁 ДЕПО 1000", "price": 0, "category": "deposit",
+        "icon": "🎁", "color": "free",
+        "require_deposit": 1000,
+        "force_names": ["Мишка", "Конфета", "Кольцо", "Алмаз", "Triple Meow", "Candy Cane", "Lol Pop", "Jelly Bunny"],
+        "desc": "За депозит 1000⭐ · разово"
+    },
+    "dep_5000": {
+        "name": "🎁 ДЕПО 5000", "price": 0, "category": "deposit",
+        "icon": "💎", "color": "free",
+        "require_deposit": 5000,
+        "force_names": ["Candy Cane", "Lol Pop", "Spy Agaric", "Jelly Bunny", "Crystal Ball", "Top Hat", "Love Potion"],
+        "desc": "За депозит 5000⭐ · разово"
+    },
+    "dep_15000": {
+        "name": "🎁 ДЕПО 15000", "price": 0, "category": "deposit",
+        "icon": "👑", "color": "free",
+        "require_deposit": 15000,
+        "force_names": ["Top Hat", "Crystal Ball", "Diamond Ring", "Swiss Watch", "Mini Oscar", "Ion Gem", "Spy Agaric"],
+        "desc": "За депозит 15000⭐ · разово"
+    },
+    "free_friend": {
+        "name": "👥 ЗА ДРУГА", "price": 0, "category": "free",
+        "icon": "👥", "color": "free",
+        "require_share": True,
+        "min_stars": 1, "max_stars": 25, "stars_bias_low": True, "stars_chance": 1.0,
+        "desc": "Поделись ссылкой с другом · 1 раз / 12ч"
+    },
+    "spider_case": {
+        "name": "🕷️ SPIDER-MAN", "price": 350, "category": "themed",
+        "icon": "🕷️", "color": "c-durov", "theme": "spider",
+        "force_names": ["Мишка","Сердце","Конфета","Ракета","Кольцо","Алмаз","Spy Agaric","Jelly Bunny","Lol Pop","Candy Cane","Evil Eye","Top Hat"],
+        "desc": "Паучок · 70% не окуп"
+    },
+    "batman_case": {
+        "name": "🦇 BATMAN", "price": 420, "category": "themed",
+        "icon": "🦇", "color": "c-tg", "theme": "batman",
+        "force_names": ["Мишка","Подарок","Букет","Кольцо","Алмаз","Кубок","Spy Agaric","Crystal Ball","Top Hat","Electric Skull","Skull Flower","Voodoo Doll"],
+        "desc": "Тёмный рыцарь · EV < цена"
+    },
+    "bobik_case": {
+        "name": "🐶 БОБИК", "price": 180, "category": "themed",
+        "icon": "🐶", "color": "c-starter", "theme": "bobik",
+        "force_names": ["Мишка","Сердце","Конфета","Подарок","Ракета","Букет","Торт","Кольцо","Triple Meow","Jelly Bunny"],
+        "desc": "Собачий кейс · дешёвый"
+    },
+    "spongebob_case": {
+        "name": "🧽 ГУБКА БОБ", "price": 260, "category": "themed",
+        "icon": "🧽", "color": "c-frag", "theme": "spongebob",
+        "force_names": ["Конфета","Торт","Шампанское","Lol Pop","Candy Cane","Berry Box","Whip Cupcake","Cookie Heart","Instant Ramen","Pool Float"],
+        "desc": "Бикини Боттом · весело"
+    },
+    "ironman_case": {
+        "name": "🤖 IRON MAN", "price": 900, "category": "themed",
+        "icon": "🤖", "color": "c-durov", "theme": "ironman",
+        "force_names": ["Кольцо","Алмаз","Spy Agaric","Crystal Ball","Top Hat","Diamond Ring","Flying Broom","Ion Gem","Swiss Watch","Mini Oscar"],
+        "desc": "Броня · редко топ"
+    },
+    "joker_case": {
+        "name": "🃏 JOKER", "price": 550, "category": "themed",
+        "icon": "🃏", "color": "c-pepe", "theme": "joker",
+        "force_names": ["Мишка","Конфета","Evil Eye","Skull Flower","Electric Skull","Voodoo Doll","Spy Agaric","Top Hat","Crystal Ball","Love Potion"],
+        "desc": "Хаос · 70% слив"
+    },
+    "mario_case": {
+        "name": "🍄 MARIO", "price": 300, "category": "themed",
+        "icon": "🍄", "color": "c-durov", "theme": "mario",
+        "force_names": ["Мишка","Конфета","Торт","Ракета","Кольцо","Spy Agaric","Lol Pop","Candy Cane","Cookie Heart","Berry Box"],
+        "desc": "Грибное королевство"
+    },
+    "pokemon_case": {
+        "name": "⚡ POKÉMON", "price": 480, "category": "themed",
+        "icon": "⚡", "color": "c-frag", "theme": "pokemon",
+        "force_names": ["Мишка","Сердце","Ракета","Кольцо","Алмаз","Jelly Bunny","Spy Agaric","Crystal Ball","Top Hat","Ion Gem","Electric Skull"],
+        "desc": "Поймал? EV < цена"
+    },
+    "naruto_case": {
+        "name": "🍥 NARUTO", "price": 380, "category": "themed",
+        "icon": "🍥", "color": "c-tg", "theme": "naruto",
+        "force_names": ["Мишка","Конфета","Подарок","Кольцо","Кубок","Spy Agaric","Flying Broom","Crystal Ball","Top Hat","Evil Eye"],
+        "desc": "Ниндзя · баланс"
+    },
+    "freeze_case": {
+        "name": "❄️ FREEZE", "price": 700, "category": "themed",
+        "icon": "❄️", "color": "c-tg", "theme": "freeze",
+        "force_names": ["Кольцо","Алмаз","Spy Agaric","Crystal Ball","Ice Cream","Top Hat","Diamond Ring","Swiss Watch","Ion Gem","Love Potion"],
+        "desc": "Лёд · редко дорогой"
+    },
+
 }
 
 # ===== MODELS =====
@@ -765,7 +930,13 @@ class MinesStartRequest(BaseModel): bet:int; mines:int
 class MinesOpenRequest(BaseModel): game_id:str; cell:int
 class MinesCashoutRequest(BaseModel): game_id:str
 class AdminGiveRequest(BaseModel): user_id:int; amount:int
-class WithdrawRequest(BaseModel): amount:int; username:str; wallet:str|None=None
+class WithdrawRequest(BaseModel):
+    amount: int
+    username: str = ""
+    wallet: str | None = None
+    method: str = "stars"  # stars | gift | ton
+    dest: str = ""  # @user or TON address
+    note: str = ""
 class PromoCreateRequest(BaseModel): code:str; reward_type:str; case_id:str=None; stars:int=0; max_uses:int=1
 class AdminWithdrawStatusRequest(BaseModel): withdraw_id:int; status:str
 class DepositRequest(BaseModel): amount:int
@@ -879,6 +1050,12 @@ async def init_db():
         await db.execute(f"""CREATE TABLE IF NOT EXISTS ton_deposits (
             id {pk}, tg_id BIGINT, amount_ton DOUBLE PRECISION, stars INTEGER,
             boc TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS deposit_case_claims (
+            user_id BIGINT NOT NULL,
+            case_id TEXT NOT NULL,
+            claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, case_id)
+        )""")
         await db.execute("""CREATE TABLE IF NOT EXISTS user_quests (
             user_id BIGINT NOT NULL,
             quest_id TEXT NOT NULL,
@@ -911,6 +1088,18 @@ async def log_admin_action(admin_id, action, details=""):
 DEV_MODE = os.getenv("DEV_MODE", "1") == "1"
 PUBLIC_URL = os.getenv("PUBLIC_URL", "https://izuzus-2.onrender.com").rstrip("/")
 PENDING_DEPOSITS: Dict[str, dict] = {}  # invoice payload -> {tg_id, amount}
+
+def notify_admin_sync(text: str):
+    """Пишет админу в Telegram о заявке / событии."""
+    try:
+        tg_api("sendMessage", {
+            "chat_id": ADMIN_TG_ID,
+            "text": text[:3500],
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        })
+    except Exception as e:
+        print("[notify_admin]", e)
 
 def tg_api(method: str, data: dict) -> dict:
     """Вызов Telegram Bot API"""
@@ -1065,7 +1254,7 @@ async def quest_progress(tg_id: int, qtype: str, add: int = 1):
 
 # ===== HELPERS =====
 def calc_upgrade_chance(in_val, target):
-    """House edge ~18%: чаще слив, но шанс виден 0.01–75%."""
+    """House edge 36%: чаще слив. Шанс 0.01–75%."""
     try:
         iv = float(in_val or 0)
         tv = float(target or 1)
@@ -1074,17 +1263,17 @@ def calc_upgrade_chance(in_val, target):
     if tv <= 0 or iv <= 0:
         return 0.01
     raw = (iv / tv) * 100.0
-    edge = 0.18
+    edge = 0.36
     return max(0.01, min(75.0, raw * (1.0 - edge)))
 
 def calc_mines_multiplier(mines, opened):
     total, safe = 25, 25-mines
-    if opened >= safe: return round((1-HOUSE_EDGE*1.4)*80, 2)
+    if opened >= safe: return round(8.0, 2)
     p = 1.0
     for i in range(opened): p *= (safe-i)/(total-i)
-    # сильнее house edge + ниже капы — сложнее фармить
-    edge = max(HOUSE_EDGE, 0.12)
-    caps = {1:3.5, 3:10, 5:25, 10:80, 15:250, 20:800, 24:1500}
+    # очень сильный house edge ~45%
+    edge = 0.45
+    caps = {1:1.8, 3:4.0, 5:8, 10:22, 15:50, 20:120, 24:250}
     return round(min((1-edge)/p, caps[min(caps.keys(), key=lambda k: abs(k-mines))]), 2)
 
 # ===== CRASH =====
@@ -2500,17 +2689,109 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
     if c["price"] > 0 and u["balance"] < c["price"]:
         raise HTTPException(400, "Insufficient")
 
-    # free daily cooldown
-    if req.case_id == "free_daily":
+    # deposit milestone free cases
+    req_dep = int(c.get("require_deposit") or 0)
+    if req_dep > 0 or c.get("category") == "deposit":
         async with get_db() as db:
-            async with db.execute("SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)) as cur:
+            try:
+                await db.execute("""CREATE TABLE IF NOT EXISTS deposit_case_claims (
+                    user_id BIGINT NOT NULL, case_id TEXT NOT NULL,
+                    claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, case_id))""")
+                await db.commit()
+            except Exception:
+                pass
+            async with db.execute(
+                "SELECT 1 FROM deposit_case_claims WHERE user_id=? AND case_id=?",
+                (tg_id, req.case_id),
+            ) as cur:
+                if await cur.fetchone():
+                    raise HTTPException(400, "Уже открывал этот депозит-кейс")
+            async with db.execute(
+                "SELECT COALESCE(total_deposited,0) FROM users WHERE tg_id=?", (tg_id,)
+            ) as cur:
                 r = await cur.fetchone()
-                if r and (datetime.now() - datetime.fromisoformat(r[0])).total_seconds() < 86400:
-                    raise HTTPException(400, "Cooldown")
+                dep = int(r[0] or 0) if r else 0
+            if dep < req_dep:
+                raise HTTPException(400, f"Нужен депозит от {req_dep}⭐ (у тебя {dep})")
             await db.execute(
-                "INSERT OR REPLACE INTO free_case_cooldowns (user_id,last_used) VALUES (?,?)",
-                (tg_id, datetime.now().isoformat()),
+                "INSERT INTO deposit_case_claims (user_id, case_id) VALUES (?,?)",
+                (tg_id, req.case_id),
             )
+            await db.commit()
+
+    # free daily / free friend cooldown
+    if req.case_id in ("free_daily", "free_friend") or c.get("require_share"):
+        cd_key = f"{tg_id}:{req.case_id}"
+        cd_hours = 12 if req.case_id == "free_friend" or c.get("require_share") else 24
+        # free_friend: клиент должен подтвердить share (флаг в req нет — проверяем через отдельный claim)
+        if req.case_id == "free_friend" or c.get("require_share"):
+            async with get_db() as db:
+                try:
+                    await db.execute("""CREATE TABLE IF NOT EXISTS share_claims (
+                        user_id BIGINT NOT NULL, case_id TEXT NOT NULL,
+                        shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, case_id))""")
+                    await db.commit()
+                except Exception:
+                    pass
+                async with db.execute(
+                    "SELECT shared_at FROM share_claims WHERE user_id=? AND case_id=?",
+                    (tg_id, req.case_id),
+                ) as cur:
+                    sh = await cur.fetchone()
+                if not sh:
+                    raise HTTPException(400, "Сначала поделись ссылкой с другом")
+                # shared_at must be recent enough (within 24h of claim)
+                try:
+                    sat = sh[0]
+                    if isinstance(sat, str):
+                        sat = datetime.fromisoformat(str(sat).replace("Z",""))
+                    # ok if exists
+                except Exception:
+                    pass
+        async with get_db() as db:
+            try:
+                await db.execute("""CREATE TABLE IF NOT EXISTS free_case_cooldowns (
+                    user_id BIGINT NOT NULL, case_id TEXT DEFAULT 'free_daily',
+                    last_used TEXT, PRIMARY KEY (user_id, case_id))""")
+                await db.commit()
+            except Exception:
+                pass
+            # try extended schema, fallback simple
+            try:
+                async with db.execute(
+                    "SELECT last_used FROM free_case_cooldowns WHERE user_id=? AND case_id=?",
+                    (tg_id, req.case_id),
+                ) as cur:
+                    r = await cur.fetchone()
+            except Exception:
+                async with db.execute(
+                    "SELECT last_used FROM free_case_cooldowns WHERE user_id=?", (tg_id,)
+                ) as cur:
+                    r = await cur.fetchone() if req.case_id == "free_daily" else None
+            if r and r[0]:
+                try:
+                    last = datetime.fromisoformat(str(r[0]).replace("Z",""))
+                    if (datetime.now() - last).total_seconds() < cd_hours * 3600:
+                        raise HTTPException(400, f"Кулдаун {cd_hours}ч")
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
+            try:
+                await db.execute(
+                    "INSERT INTO free_case_cooldowns (user_id, case_id, last_used) VALUES (?,?,?) ON CONFLICT (user_id, case_id) DO UPDATE SET last_used=excluded.last_used",
+                    (tg_id, req.case_id, datetime.now().isoformat()),
+                )
+            except Exception:
+                try:
+                    await db.execute(
+                        "INSERT OR REPLACE INTO free_case_cooldowns (user_id,last_used) VALUES (?,?)",
+                        (tg_id, datetime.now().isoformat()),
+                    )
+                except Exception as e:
+                    print("free cd", e)
             await db.commit()
 
     # charge + track
@@ -2588,7 +2869,7 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
         return {"success": True, "stars_earned": stars, "balance": (await get_user(tg_id))["balance"], "fair": fair_info}
 
     # ---------- FREE: только 0.1–20⭐, NFT никогда ----------
-    if c.get("stars_bias_low") or req.case_id == "free_daily":
+    if c.get("stars_bias_low") or req.case_id in ("free_daily", "free_friend"):
         r = random.random()
         if r < 0.70:
             stars = round(random.uniform(0.1, 3), 1)
@@ -2638,19 +2919,24 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             for g in arr:
                 flat.append({**g, "rarity": r})
         for name in force:
-            found = None
             nl = (name or "").lower().strip()
             sn = gift_short_name(name)
+            matched = []
             for g in flat:
-                if (g["name"] or "").lower()==nl or (g.get("id") or "").lower()==nl or gift_short_name(g["name"])==sn:
-                    found = {**g}
-                    break
-            if not found:
+                gname = (g["name"] or "")
+                gl = gname.lower()
+                base = (g.get("base_name") or gname.split(" · ")[0]).lower()
+                if gl == nl or base == nl or (g.get("id") or "").lower() == nl or gift_short_name(gname) == sn or gift_short_name(base) == sn:
+                    gg = {**g}
+                    if not gg.get("img"):
+                        gg["img"] = gift_img_url(gg.get("base_name") or gg.get("name",""), gg.get("id"))
+                    matched.append(gg)
+            if not matched:
                 continue
-            # всегда нормальный img
-            if not found.get("img"):
-                found["img"] = gift_img_url(found.get("name",""), found.get("id"))
-            candidates.append(found)
+            # оригинал + до 6 расцветок
+            candidates.append(matched[0])
+            for gg in matched[1:7]:
+                candidates.append(gg)
         if not candidates:
             for r in (c.get("rarities") or ["Common"]):
                 candidates.extend([{**g,"rarity":r} for g in NFT_GIFTS.get(r,[])[:10]])
@@ -2688,10 +2974,11 @@ async def open_case(req:CaseOpenRequest, user=Depends(verify_telegram)):
             wts = [max(1, int((mx / v) ** power)) for v in vals]
             return random.choices(pool, weights=wts)[0]
         roll = random.random()
-        if roll < 0.72 and under:
-            gift = _pick(under, 1.4)
-        elif roll < 0.94 and (mild or under):
-            gift = _pick(mild or under, 1.5)
+        # 70% не окупают, 25% mild, 5% high
+        if roll < 0.70 and under:
+            gift = _pick(under, 1.5)
+        elif roll < 0.95 and (mild or under):
+            gift = _pick(mild or under, 1.4)
         else:
             gift = _pick(high or mild or under, 1.2)
         if not gift:
@@ -2818,6 +3105,12 @@ async def upgrade(req:UpgradeRequest, user=Depends(verify_telegram)):
     if not target.get("img"):
         target["img"] = gift_img_url(target.get("name", ""), target.get("id"))
     chance = calc_upgrade_chance(iv, int(target.get("value") or tv)) / 100.0
+    # admin chance override
+    try:
+        bonus = float(USER_CHANCE_BONUS.get(int(tg_id), 0) or 0) / 100.0
+        chance = max(0.0001, min(0.75, chance + bonus))
+    except Exception:
+        pass
     win = random.random() < chance
     win_deg = chance * 360.0
     if win and win_deg > 6:
@@ -3099,30 +3392,59 @@ async def mines_cashout(req:MinesCashoutRequest, user=Depends(verify_telegram)):
 # ===== WITHDRAW =====
 @app.post("/api/withdraw")
 async def withdraw(req:WithdrawRequest, user=Depends(verify_telegram)):
-    """Заявка на вывод: сумма + Telegram username. Админ подтверждает вручную."""
-    tg_id=user['id']
+    """Заявка: звёзды / подарок NFT / TON. Админу приходит сообщение в Telegram."""
+    tg_id = user["id"]
     check_rate(tg_id, "withdraw")
-    if req.amount<50 or req.amount>500000: raise HTTPException(400,"Мин. вывод 50⭐")
-    dest=(req.username or "").strip().lstrip("@")
-    if len(dest)<3 or len(dest)>32 or not dest.replace("_","").isalnum():
-        raise HTTPException(400,"Укажи корректный Telegram username")
-    u=await get_user(tg_id)
-    if u["balance"]<req.amount: raise HTTPException(400,"Недостаточно ⭐")
-    # холд: списываем сразу, при reject вернём
+    method = (req.method or "stars").lower().strip()
+    if method not in ("stars", "gift", "ton"):
+        raise HTTPException(400, "method: stars | gift | ton")
+    if req.amount < 50 or req.amount > 500000:
+        raise HTTPException(400, "Мин. вывод 50⭐")
+    dest = (req.dest or req.username or req.wallet or "").strip().lstrip("@")
+    if method == "ton":
+        if len(dest) < 20:
+            raise HTTPException(400, "Укажи TON-адрес кошелька")
+    else:
+        if len(dest) < 3 or len(dest) > 64:
+            raise HTTPException(400, "Укажи Telegram username или контакт")
+    u = await get_user(tg_id)
+    if u["balance"] < req.amount:
+        raise HTTPException(400, "Недостаточно ⭐")
+    uname = user.get("username") or user.get("first_name") or str(tg_id)
+    note = (req.note or "")[:200]
+    method_label = {"stars": "⭐ ЗВЁЗДЫ", "gift": "🎁 ПОДАРОК / NFT", "ton": "💎 TON"}[method]
+    wallet_info = f"{method}|{dest}|note:{note}|user:{tg_id}|@{uname}"
     async with get_db() as db:
-        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount,tg_id))
-        wallet_info = f"@{dest}|user:{tg_id}"
+        await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (req.amount, tg_id))
         await db.execute(
             "INSERT INTO withdrawals (tg_id,amount,wallet) VALUES (?,?,?)",
             (tg_id, req.amount, wallet_info),
         )
         await db.commit()
+        async with db.execute(
+            "SELECT id FROM withdrawals WHERE tg_id=? ORDER BY id DESC LIMIT 1", (tg_id,)
+        ) as c:
+            row = await c.fetchone()
+            wid = row[0] if row else "?"
+    try:
+        notify_admin_sync(
+            f"🔔 <b>Новая заявка на вывод #{wid}</b>\n"
+            f"Тип: <b>{method_label}</b>\n"
+            f"Сумма: <b>{req.amount}⭐</b>\n"
+            f"Куда: <code>{dest}</code>\n"
+            f"Игрок: @{uname} (id <code>{tg_id}</code>)\n"
+            f"Заметка: {note or '—'}\n"
+            f"Статус: pending — зайди в админку мини-аппа"
+        )
+    except Exception as e:
+        print("notify withdraw", e)
     return {
         "success": True,
         "requested": req.amount,
-        "username": "@"+dest,
+        "method": method,
+        "dest": dest,
         "status": "pending",
-        "message": "Заявка создана. Админ обработает вручную.",
+        "message": "Заявка создана. Админ получит уведомление.",
         "balance": (await get_user(tg_id))["balance"],
     }
 
@@ -3561,11 +3883,160 @@ class TonDepositRequest(BaseModel):
     boc: str = ""
     address: str = ""
 
+
+# ===== TON on-chain verify (tonapi) =====
+_USED_TX_HASHES = set()
+
+def _ton_to_nano(amount_ton: float) -> int:
+    return int(round(float(amount_ton) * 1_000_000_000))
+
+async def _fetch_treasury_events(limit: int = 30):
+    """Последние входящие на казну через tonapi.io (без ключа, публичный)."""
+    if not TON_TREASURY:
+        return []
+    import urllib.request
+    url = f"https://tonapi.io/v2/blockchain/accounts/{TON_TREASURY}/transactions?limit={limit}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "GiftUpgrader/1.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data.get("transactions") or data if isinstance(data, list) else (data.get("transactions") or [])
+    except Exception as e:
+        print("[TON] tonapi fetch", e)
+        # fallback toncenter
+        try:
+            url2 = f"https://toncenter.com/api/v2/getTransactions?address={TON_TREASURY}&limit={limit}"
+            with urllib.request.urlopen(url2, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return data.get("result") or []
+        except Exception as e2:
+            print("[TON] toncenter", e2)
+            return []
+
+def _tx_incoming_nano(tx: dict) -> tuple:
+    """Вернёт (nano_amount, tx_hash, utime) если это входящий перевод, иначе (0,'',0)."""
+    try:
+        # tonapi format
+        if "in_msg" in tx or "hash" in tx:
+            h = str(tx.get("hash") or tx.get("transaction_id", {}).get("hash") or "")
+            ut = int(tx.get("utime") or tx.get("now") or 0)
+            in_msg = tx.get("in_msg") or {}
+            val = in_msg.get("value")
+            if val is None and isinstance(in_msg.get("amount"), (int, str)):
+                val = in_msg.get("amount")
+            # tonapi value is string nano
+            if val is not None:
+                return int(val), h, ut
+            # sometimes value in message list
+        # toncenter format
+        if "transaction_id" in tx:
+            h = str((tx.get("transaction_id") or {}).get("hash") or "")
+            ut = int(tx.get("utime") or 0)
+            in_msg = tx.get("in_msg") or {}
+            val = in_msg.get("value")
+            if val is not None:
+                return int(val), h, ut
+    except Exception as e:
+        print("[TON] parse tx", e)
+    return 0, "", 0
+
+async def verify_and_credit_pending(tg_id: int = None, deposit_id: int = None) -> dict:
+    """Сканирует казну и кредитует pending-депозиты, если нашлась подходящая входящая TX."""
+    txs = await _fetch_treasury_events(25)
+    if not txs:
+        return {"credited": 0, "reason": "no_txs"}
+    # load pending
+    async with get_db() as db:
+        if deposit_id:
+            async with db.execute(
+                "SELECT id,tg_id,amount_ton,stars,status,created_at FROM ton_deposits WHERE id=? AND status='pending'",
+                (deposit_id,),
+            ) as c:
+                rows = await c.fetchall()
+        elif tg_id:
+            async with db.execute(
+                "SELECT id,tg_id,amount_ton,stars,status,created_at FROM ton_deposits WHERE tg_id=? AND status='pending' ORDER BY id DESC LIMIT 10",
+                (tg_id,),
+            ) as c:
+                rows = await c.fetchall()
+        else:
+            async with db.execute(
+                "SELECT id,tg_id,amount_ton,stars,status,created_at FROM ton_deposits WHERE status='pending' ORDER BY id DESC LIMIT 30"
+            ) as c:
+                rows = await c.fetchall()
+        # used hashes already credited
+        try:
+            async with db.execute("SELECT boc FROM ton_deposits WHERE status='credited' AND boc IS NOT NULL AND boc!='' ORDER BY id DESC LIMIT 200") as c:
+                for r in await c.fetchall():
+                    if r[0]:
+                        _USED_TX_HASHES.add(str(r[0])[:80])
+        except Exception:
+            pass
+
+    credited = 0
+    details = []
+    now_ts = datetime.now().timestamp()
+    for row in rows:
+        did, uid, amount_ton, stars, status, created = row
+        need = _ton_to_nano(float(amount_ton or 0))
+        # tolerance ±0.5% or 10_000 nano
+        tol = max(10_000, int(need * 0.005))
+        matched = None
+        for tx in txs:
+            nano, thash, ut = _tx_incoming_nano(tx)
+            if nano <= 0 or not thash:
+                continue
+            if thash in _USED_TX_HASHES:
+                continue
+            if abs(nano - need) > tol:
+                continue
+            # not older than 2h before pending created roughly
+            matched = (nano, thash, ut)
+            break
+        if not matched:
+            continue
+        _, thash, _ = matched
+        _USED_TX_HASHES.add(thash)
+        async with get_db() as db:
+            # re-check status
+            async with db.execute("SELECT status FROM ton_deposits WHERE id=?", (did,)) as c:
+                st = await c.fetchone()
+            if not st or st[0] != "pending":
+                continue
+            await db.execute(
+                "UPDATE ton_deposits SET status=?, boc=? WHERE id=?",
+                ("credited", thash[:120], did),
+            )
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (int(stars), int(uid)))
+            # track deposited
+            try:
+                await db.execute(
+                    "UPDATE users SET total_deposited=COALESCE(total_deposited,0)+? WHERE tg_id=?",
+                    (int(stars), int(uid)),
+                )
+            except Exception:
+                pass
+            await db.commit()
+        credited += 1
+        details.append({"id": did, "tg_id": uid, "stars": stars, "tx": thash[:20]})
+        print("[TON] credited deposit", did, "user", uid, "stars", stars, "tx", thash[:16])
+    return {"credited": credited, "details": details}
+
+
 @app.get("/api/ton/config")
 async def ton_config(user=Depends(verify_telegram)):
     return {
         "treasury": TON_TREASURY,
         "stars_per_ton": TON_STARS_PER_TON,
+        "enabled": bool(TON_TREASURY),
+        "min_ton": 0.1,
+    }
+
+@app.get("/api/rates")
+async def public_rates():
+    return {
+        "stars_per_ton": TON_STARS_PER_TON,
+        "treasury": TON_TREASURY,
         "enabled": bool(TON_TREASURY),
     }
 
@@ -3585,28 +4056,69 @@ async def ton_save_wallet(req:TonWalletRequest, user=Depends(verify_telegram)):
 
 @app.post("/api/ton/deposit")
 async def ton_deposit(req:TonDepositRequest, user=Depends(verify_telegram)):
-    """После sendTransaction из Mini App. В режиме credit начисляет сразу (для теста).
-    В проде поставь TON_DEPOSIT_MODE=verify и проверяй boc через tonapi."""
+    """После sendTransaction: pending → проверка сети → авто-начисление ⭐ только если TON реально пришли."""
     if not TON_TREASURY:
         raise HTTPException(400, "TON treasury not configured")
     if req.amount_ton < 0.1:
         raise HTTPException(400, "Min 0.1 TON")
     tg_id = user["id"]
-    stars = int(req.amount_ton * TON_STARS_PER_TON)
+    stars = int(round(float(req.amount_ton) * TON_STARS_PER_TON))
     if stars < 1:
         raise HTTPException(400, "Too small")
+    # dev shortcut
+    if TON_DEPOSIT_MODE == "credit":
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
+                (tg_id, req.amount_ton, stars, (req.boc or "")[:500], "credited"),
+            )
+            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
+            await db.commit()
+        return {"success": True, "stars": stars, "balance": (await get_user(tg_id))["balance"], "message": "Credited (dev)"}
+    # production: pending + try verify immediately
+    deposit_id = None
     async with get_db() as db:
         await db.execute(
             "INSERT INTO ton_deposits (tg_id, amount_ton, stars, boc, status) VALUES (?,?,?,?,?)",
-            (tg_id, req.amount_ton, stars, (req.boc or "")[:500], "credited" if TON_DEPOSIT_MODE=="credit" else "pending"),
+            (tg_id, float(req.amount_ton), stars, (req.boc or "")[:500], "pending"),
         )
-        if TON_DEPOSIT_MODE == "credit":
-            await db.execute("UPDATE users SET balance=balance+? WHERE tg_id=?", (stars, tg_id))
         await db.commit()
+        async with db.execute(
+            "SELECT id FROM ton_deposits WHERE tg_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
+            (tg_id,),
+        ) as c:
+            row = await c.fetchone()
+            deposit_id = row[0] if row else None
+    # небольшая пауза — TX может ещё не попасть в индекс
+    await asyncio.sleep(1.2)
+    result = await verify_and_credit_pending(tg_id=tg_id, deposit_id=deposit_id)
     bal = (await get_user(tg_id))["balance"]
-    if TON_DEPOSIT_MODE == "credit":
-        return {"success": True, "stars": stars, "balance": bal, "message": "Credited"}
-    return {"success": False, "message": "Pending on-chain verify", "stars": stars, "balance": bal}
+    if result.get("credited"):
+        return {"success": True, "stars": stars, "balance": bal, "message": "Подтверждено в сети", "deposit_id": deposit_id}
+    return {
+        "success": False,
+        "pending": True,
+        "deposit_id": deposit_id,
+        "stars": stars,
+        "balance": bal,
+        "message": "Ждём подтверждение в сети TON…",
+    }
+
+@app.post("/api/ton/check")
+async def ton_check_deposit(req: dict = None, user=Depends(verify_telegram)):
+    """Клиент поллит после оплаты — авто-кредит когда TX видна в сети."""
+    tg_id = user["id"]
+    dep_id = None
+    if isinstance(req, dict):
+        dep_id = req.get("deposit_id")
+    result = await verify_and_credit_pending(tg_id=tg_id, deposit_id=int(dep_id) if dep_id else None)
+    bal = (await get_user(tg_id))["balance"]
+    return {
+        "success": bool(result.get("credited")),
+        "credited": result.get("credited", 0),
+        "balance": bal,
+        "details": result.get("details") or [],
+    }
 
 
 
@@ -3648,6 +4160,79 @@ async def case_buy_ton(req: CaseBuyTonRequest, user=Depends(verify_telegram)):
     return {"success": True, "case_id": req.case_id, "ton": ton_need, "balance": (await get_user(tg_id))["balance"]}
 
 
+
+@app.post("/api/share/claim")
+async def share_claim(req: dict, user=Depends(verify_telegram)):
+    """Игрок поделился реф-ссылкой — разблокирует free_friend."""
+    tg_id = user["id"]
+    case_id = (req.get("case_id") or "free_friend").strip()
+    async with get_db() as db:
+        try:
+            await db.execute("""CREATE TABLE IF NOT EXISTS share_claims (
+                user_id BIGINT NOT NULL, case_id TEXT NOT NULL,
+                shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, case_id))""")
+            await db.commit()
+        except Exception:
+            pass
+        try:
+            await db.execute(
+                "INSERT INTO share_claims (user_id, case_id) VALUES (?,?) ON CONFLICT DO NOTHING",
+                (tg_id, case_id),
+            )
+        except Exception:
+            try:
+                await db.execute(
+                    "INSERT OR IGNORE INTO share_claims (user_id, case_id) VALUES (?,?)",
+                    (tg_id, case_id),
+                )
+            except Exception as e:
+                print("share claim", e)
+        await db.commit()
+    return {"success": True, "case_id": case_id}
+
+class AdminChanceRequest(BaseModel):
+    user_id: int
+    chance_bonus: float = 0.0  # -50..50 percentage points applied to upgrade
+
+class AdminTakeRequest(BaseModel):
+    user_id: int
+    amount: int = 0
+    item_index: int = -1  # -1 = only stars
+
+# in-memory chance overrides
+@app.post("/api/admin/chance")
+async def admin_set_chance(req: AdminChanceRequest, user=Depends(verify_admin)):
+    b = max(-50.0, min(50.0, float(req.chance_bonus)))
+    USER_CHANCE_BONUS[int(req.user_id)] = b
+    await log_admin_action(user["id"], "chance", f"{req.user_id} -> {b}")
+    return {"success": True, "user_id": req.user_id, "chance_bonus": b}
+
+@app.post("/api/admin/take")
+async def admin_take(req: AdminTakeRequest, user=Depends(verify_admin)):
+    """Отнять ⭐ и/или предмет по индексу у пользователя."""
+    uid = int(req.user_id)
+    u = await get_user(uid)
+    inv = list(u.get("inventory") or [])
+    removed = None
+    if req.item_index is not None and int(req.item_index) >= 0:
+        idx = int(req.item_index)
+        if idx >= len(inv):
+            raise HTTPException(400, "Нет предмета с таким индексом")
+        removed = inv.pop(idx)
+    take_amt = max(0, int(req.amount or 0))
+    if take_amt > int(u.get("balance") or 0):
+        take_amt = int(u.get("balance") or 0)
+    async with get_db() as db:
+        if take_amt > 0:
+            await db.execute("UPDATE users SET balance=balance-? WHERE tg_id=?", (take_amt, uid))
+        if removed is not None:
+            await db.execute("UPDATE users SET inventory=? WHERE tg_id=?", (json.dumps(inv), uid))
+        await db.commit()
+    await log_admin_action(user["id"], "take", f"{uid} stars={take_amt} item={removed}")
+    return {"success": True, "taken_stars": take_amt, "removed": removed, "balance": (await get_user(uid))["balance"]}
+
+
 # ===== STARTUP =====
 @app.on_event("startup")
 async def startup():
@@ -3666,6 +4251,15 @@ async def startup():
                     print("[DB] retry", i+1, e2)
         asyncio.create_task(_retry_init())
     asyncio.create_task(crash_loop())
+    async def ton_verify_loop():
+        while True:
+            try:
+                await verify_and_credit_pending()
+            except Exception as e:
+                print("[TON] loop", e)
+            await asyncio.sleep(12)
+    asyncio.create_task(ton_verify_loop())
+
     try:
         asyncio.create_task(auto_backup_loop())
     except Exception as e:
