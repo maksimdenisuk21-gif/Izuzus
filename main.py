@@ -3371,8 +3371,20 @@ async def mines_open(req:MinesOpenRequest, user=Depends(verify_telegram)):
     if tg_id not in active_mines: raise HTTPException(400,"No game")
     g=active_mines[tg_id]
     if g["game_id"]!=req.game_id or g["cashed_out"] or req.cell in g["opened"] or req.cell<0 or req.cell>=25: raise HTTPException(400,"Invalid")
-    if g["grid"][req.cell]==1:
-        mp=[i for i,v in enumerate(g["grid"]) if v==1]; del active_mines[tg_id]
+    # house bias: иногда «подсовываем» мину на безопасную клетку (~18%)
+    is_bomb = g["grid"][req.cell] == 1
+    if not is_bomb and len(g["opened"]) >= 0:
+        left_cells = 25 - len(g["opened"])
+        left_mines = max(0, g["mines"] - sum(1 for i,v in enumerate(g["grid"]) if v==1 and i in g["opened"]))
+        # чем дальше — тем чуть чаще мина сверх сетки
+        bias = 0.12 + min(0.12, len(g["opened"]) * 0.015)
+        if random.random() < bias:
+            is_bomb = True
+    if is_bomb:
+        mp=[i for i,v in enumerate(g["grid"]) if v==1]
+        if req.cell not in mp:
+            mp.append(req.cell)
+        del active_mines[tg_id]
         return {"status":"bomb","cell":req.cell,"opened":g["opened"],"mines":mp,"balance":(await get_user(tg_id))["balance"]}
     g["opened"].append(req.cell); g["multiplier"]=calc_mines_multiplier(g["mines"], len(g["opened"]))
     return {"status":"safe","cell":req.cell,"opened":g["opened"],"opened_count":len(g["opened"]),"multiplier":g["multiplier"]}
