@@ -1,7 +1,0 @@
-asyncpg>=0.29.0
-fastapi
-uvicorn
-aiosqlite
-python-socketio
-httpx
-pydantic
