@@ -1,5 +1,5 @@
 # main.py — GiftUpgrader
-# FastAPI + Socket.IO backend for the Telegram Mini App HTML.
+# FastAPI + Socke.IO backend for the Telegram Mini App HTML.
 # Put this file + index.html on Render (or GitHub → Render).
 #
 # Env:
